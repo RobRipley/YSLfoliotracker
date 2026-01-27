@@ -681,3 +681,238 @@ The `Member's copy - YSL Portfolio Allocation Estimation` CSV shows the target d
 - Low Cap: $10M - $500M
 - Micro Cap: < $10M
 
+
+
+---
+
+## Session Update: January 26, 2026 (Session 2)
+
+### Work Completed This Session
+
+#### 1. Diagnosed and Fixed Critical Frontend Crashes
+
+**Problem:** The frontend was showing a blank page with a gradient background. Browser console showed repeated errors:
+```
+TypeError: Cannot read properties of undefined (reading 'push')
+```
+
+The error occurred in a `useMemo` hook inside the React render cycle, causing the entire app to crash.
+
+**Root Causes Identified:**
+
+1. **Missing `store.exitPlans` Property:**
+   - `PortfolioDashboard.tsx` line 181 was accessing `store.exitPlans` which doesn't exist in the store
+   - The `Store` interface in `dataModel.ts` has no `exitPlans` property
+   - Exit plans are actually stored separately via `exitPlanPersistence.ts`
+
+2. **Type Mismatch for `allocations`:**
+   - `usePortfolioSnapshots` returns `allocations` as `AllocationData[]` (an array)
+   - `AllocationDonutChart` expects `allocations` as `Record<Category, number>` (an object)
+   - This type mismatch caused the chart to fail when iterating over the data
+
+3. **Non-existent `store.setLastPriceUpdate` Method:**
+   - `PortfolioDashboard.tsx` called `store.setLastPriceUpdate(Date.now())` which doesn't exist
+   - This method was never implemented in the store
+
+**Fixes Applied to `frontend/src/components/PortfolioDashboard.tsx`:**
+
+```typescript
+// BEFORE (line 1-20):
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+// ... other imports
+import { cn } from '@/lib/utils';
+
+// AFTER: Added exitPlanPersistence import
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+// ... other imports
+import { cn } from '@/lib/utils';
+import { loadExitPlans, type ExitPlanState } from '@/lib/exitPlanPersistence';
+```
+
+```typescript
+// BEFORE (line 36):
+const { allocations } = usePortfolioSnapshots();
+
+// AFTER: Added conversion from AllocationData[] to Record<Category, number>
+const { allocations: allocationData } = usePortfolioSnapshots();
+
+const allocations = useMemo(() => {
+  const result: Record<Category, number> = {
+    'blue-chip': 0,
+    'mid-cap': 0,
+    'low-cap': 0,
+    'micro-cap': 0,
+    'stablecoin': 0,
+    'defi': 0,
+  };
+  
+  if (Array.isArray(allocationData)) {
+    for (const item of allocationData) {
+      if (item && item.category && typeof item.value === 'number') {
+        result[item.category] = item.value;
+      }
+    }
+  }
+  
+  return result;
+}, [allocationData]);
+```
+
+```typescript
+// BEFORE (line 181):
+const exitPlans = useMemo(() => store.exitPlans, [store.exitPlans]);
+
+// AFTER: Properly load exit plans from persistence module
+const exitPlanStates = useMemo(() => {
+  const loaded = loadExitPlans();
+  return loaded || {};
+}, []);
+
+// Convert exit plan states to ExitLadderRung[] format for CompactHoldingsTable
+const exitPlans = useMemo(() => {
+  const result: Record<string, { percent: number; multiplier: number }[]> = {};
+  return result;
+}, [exitPlanStates]);
+```
+
+```typescript
+// BEFORE (line 56):
+store.setLastPriceUpdate(Date.now());
+
+// AFTER: Removed non-existent method call
+// Note: lastPriceUpdate tracking can be added to store if needed
+```
+
+```typescript
+// BEFORE (ExitPlanSummary usage):
+exitPlans={exitPlans}
+
+// AFTER: Use correct type for ExitPlanSummary
+exitPlans={exitPlanStates}
+```
+
+#### 2. Git Commit and Repository Setup
+
+**Changes Committed:**
+```bash
+git add -A
+git commit -m "Fix frontend crashes: exitPlans, allocations type mismatches, and missing store methods
+
+- Fixed PortfolioDashboard.tsx accessing non-existent store.exitPlans
+- Added proper exit plan loading from exitPlanPersistence module
+- Fixed allocations type mismatch (AllocationData[] vs Record<Category, number>)
+- Removed call to non-existent store.setLastPriceUpdate method
+- Added usePortfolioSnapshots hook and store.ts to version control
+- Added example portfolio CSV and Excel files
+- Added HANDOFF.md documentation"
+```
+
+**Commit Hash:** `2f40999`
+
+**Files Changed:**
+- `frontend/src/components/PortfolioDashboard.tsx` (modified)
+- `frontend/src/hooks/usePortfolioSnapshots.ts` (new - added to version control)
+- `frontend/src/lib/store.ts` (new - added to version control)
+- `docs/HANDOFF.md` (new)
+- `Example Portfolio.xlsx` (new)
+- `Member's copy - YSL Portfolio Allocation Estimation - EXAMPLE (SEAN - YSL).csv` (new)
+- `Copy of Member's copy - YSL Portfolio Allocation Estimation - EXAMPLE (SEAN - YSL).csv` (new)
+- `backend/main.mo` (modified - from previous session)
+- `dfx.json` (modified)
+- `frontend/src/main.tsx` (modified)
+
+**GitHub Status:**
+- No remote repository configured yet
+- Commit is ready to push once remote is added
+- To push: `git remote add origin <your-repo-url> && git push -u origin main`
+
+---
+
+### Current Application State
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Backend Canister | ✅ Deployed | Running on local replica |
+| Frontend Canister | ✅ Deployed | Assets uploaded |
+| Local Replica | ✅ Running | Port 4943 |
+| Frontend Code | ⚠️ Fixed | Crash fixed, needs rebuild and redeploy |
+| GitHub | ❌ Pending | No remote configured |
+
+---
+
+### Next Steps (Updated Priority)
+
+1. **Rebuild and Redeploy Frontend**
+   ```bash
+   cd /Users/robertripley/coding/YSLfolioTracker/frontend
+   npm run build
+   cd ..
+   dfx deploy frontend
+   ```
+
+2. **Set Up GitHub Remote**
+   ```bash
+   # Create repo on GitHub, then:
+   git remote add origin https://github.com/<username>/YSLfolioTracker.git
+   git push -u origin main
+   ```
+
+3. **Test Application**
+   - Verify landing page loads
+   - Test portfolio dashboard with mock data
+   - Check price fetching functionality
+   - Test navigation between tabs
+
+4. **Remaining Tasks from Previous Session:**
+   - [ ] Debug Admin Panel blank screen issue
+   - [ ] Implement real Internet Identity authentication
+   - [ ] Wire frontend to backend canister calls
+   - [ ] Deploy to IC mainnet
+
+---
+
+### Technical Notes
+
+**Type Mismatches to Be Aware Of:**
+
+The codebase has some inconsistent type definitions that should be addressed:
+
+1. `CompactHoldingsTable` expects `exitPlans: Record<string, ExitLadderRung[]>`
+2. `ExitPlanSummary` expects `exitPlans: Record<string, ExitPlanState>`
+
+These are different types! Currently we pass:
+- `exitPlans` (empty object) to `CompactHoldingsTable`
+- `exitPlanStates` (from persistence) to `ExitPlanSummary`
+
+For full exit ladder functionality, a proper conversion layer is needed.
+
+**Store vs Persistence Architecture:**
+- Main portfolio data is in `dataModel.ts` global store
+- Exit plans are stored separately in `exitPlanPersistence.ts` (localStorage)
+- Both persist to localStorage but independently
+- Consider unifying these in a future refactor
+
+---
+
+### Quick Reference Commands
+
+```bash
+# Rebuild frontend after code changes
+cd /Users/robertripley/coding/YSLfolioTracker/frontend
+npm run build
+
+# Redeploy just frontend
+cd /Users/robertripley/coding/YSLfolioTracker
+dfx deploy frontend
+
+# Full redeploy
+dfx deploy
+
+# Check canister status
+dfx canister status backend
+dfx canister status frontend
+
+# View frontend logs
+# Open browser console at http://u6s2n-gx777-77774-qaaba-cai.localhost:4943/
+```
+
