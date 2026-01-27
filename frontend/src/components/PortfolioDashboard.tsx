@@ -161,20 +161,20 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
 
   const handleEditHoldingInit = (holding: Holding) => {
     setEditingHolding(holding);
-    setEditTokens(holding.tokens.toString());
-    setEditAvgCost((holding.avgCostUsd ?? '').toString());
+    setEditTokens(holding.tokensOwned.toString());
+    setEditAvgCost((holding.avgCost ?? '').toString());
     setEditNotes(holding.notes ?? '');
     setShowEditDialog(true);
   };
 
   const handleEditHolding = () => {
     if (!editingHolding) return;
-    const tokens = parseFloat(editTokens || '0');
+    const tokensOwned = parseFloat(editTokens || '0');
     const avgCost = editAvgCost ? parseFloat(editAvgCost) : undefined;
 
     store.updateHolding(editingHolding.id, {
-      tokens,
-      avgCostUsd: avgCost,
+      tokensOwned,
+      avgCost,
       notes: editNotes
     });
 
