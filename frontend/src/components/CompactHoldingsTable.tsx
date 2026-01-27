@@ -559,7 +559,7 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
 
     return (
       <div
-        className="flex items-center justify-between rounded-xl px-4 py-3 mb-2"
+        className="flex items-center justify-between rounded-xl px-4 py-2 mb-2 mx-2"
         style={{
           background: categoryGradient(category),
           border: `1px solid ${accentColor}33`
@@ -568,55 +568,46 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
         <div className="flex items-center gap-3">
           <button
             onClick={() => onToggleCategory(category)}
-            className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/20 text-foreground/80 shadow-sm transition-smooth hover:bg-black/40"
+            className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-black/20 text-foreground/80 shadow-sm transition-smooth hover:bg-black/40"
           >
             {isExpanded ? (
-              <ChevronDown className="h-4 w-4" />
+              <ChevronDown className="h-3.5 w-3.5" />
             ) : (
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-3.5 w-3.5" />
             )}
           </button>
-          <div className="flex items-center gap-2">
-            <div
-              className="flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold text-primary-foreground shadow-md"
-              style={{ backgroundColor: color }}
+          <div
+            className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold text-primary-foreground shadow-md"
+            style={{ backgroundColor: color }}
+          >
+            {CATEGORY_LABELS[category].charAt(0)}
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold tracking-tight text-foreground/90">
+              {CATEGORY_LABELS[category]}
+            </span>
+            <Badge
+              variant="outline"
+              className="border-none bg-black/30 px-1.5 py-0 text-[10px] text-muted-foreground"
             >
-              {CATEGORY_LABELS[category].charAt(0)}
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold tracking-tight text-foreground/90">
-                  {CATEGORY_LABELS[category]}
-                </span>
-                <Badge
-                  variant="outline"
-                  className="border-none bg-black/30 px-1.5 py-0 text-[10px] text-muted-foreground"
-                >
-                  {groups[category]?.length ?? 0} positions
-                </Badge>
-                {selectedPreset === 'n4' && renderLadderPreviewChip(category)}
-              </div>
-              <div className="flex items-center gap-3 text-xs text-muted-foreground/80">
-                <span>
-                  Value <span className="font-medium text-foreground/90">{formatUsd(total.value)}</span>
-                </span>
-                <span className="h-3 w-px bg-divide/60" />
-                <span>
-                  Share{' '}
-                  <span className="font-medium text-foreground/90">
-                    {formatPercent(total.share, 1)}
-                  </span>
-                </span>
-              </div>
-            </div>
+              {groups[category]?.length ?? 0} positions
+            </Badge>
+            <span className="h-3 w-px bg-divide/40" />
+            <span className="text-xs text-muted-foreground/80">
+              Value <span className="font-medium text-foreground/90">{formatUsd(total.value)}</span>
+            </span>
+            <span className="h-3 w-px bg-divide/40" />
+            <span className="text-xs text-muted-foreground/80">
+              Share <span className="font-medium text-foreground/90">{formatPercent(total.share, 1)}</span>
+            </span>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <Tooltip>
             <TooltipTrigger asChild>
-              <button className="flex h-7 w-7 items-center justify-center rounded-full border border-divide/80 bg-black/20 text-muted-foreground transition-smooth hover:bg-black/40">
-                <Info className="h-3.5 w-3.5" />
+              <button className="flex h-6 w-6 items-center justify-center rounded-full border border-divide/80 bg-black/20 text-muted-foreground transition-smooth hover:bg-black/40">
+                <Info className="h-3 w-3" />
               </button>
             </TooltipTrigger>
             <TooltipContent className="glass-panel border-divide/60 text-[11px] leading-relaxed">
@@ -627,9 +618,9 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
 
           <Popover>
             <PopoverTrigger asChild>
-              <button className="flex h-7 items-center gap-1 rounded-full border border-divide/80 bg-black/20 px-2.5 text-[11px] text-muted-foreground transition-smooth hover:bg-black/40">
+              <button className="flex h-6 items-center gap-1 rounded-full border border-divide/80 bg-black/20 px-2 text-[10px] text-muted-foreground transition-smooth hover:bg-black/40">
                 <Settings className="h-3 w-3" />
-                <span>Category settings</span>
+                <span>Settings</span>
               </button>
             </PopoverTrigger>
             <PopoverContent className="w-72 glass-panel border-divide/60 text-xs">
@@ -937,41 +928,36 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
       <div className="border-t border-divide/60" />
 
       <div className="px-3 py-2">
-        <div className="mb-2 flex items-center justify-between px-1">
-          <div className="grid w-full grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto] text-[11px] uppercase tracking-[0.18em] text-muted-foreground/80">
-            <span className="pl-10">Symbol</span>
-            {!isColumnHidden('price') && <span>Price</span>}
-            {!isColumnHidden('tokens') && <span>Tokens</span>}
-            {!isColumnHidden('value') && <span>Value</span>}
-            {!isColumnHidden('avgCost') && <span>Avg Cost</span>}
-            {!isColumnHidden('%change') && <span>24h</span>}
-            {!isColumnHidden('ladder') && <span>Exit Ladder</span>}
-            <span className="text-right">
-              {!isColumnHidden('actions') && <span>Actions</span>}
-            </span>
-          </div>
-        </div>
-
         <div className="space-y-4">
           {displayedCategories.map(category => {
             const holdings = groups[category] || [];
             if (!holdings.length) return null;
+            const isExpanded = expandedCategories.has(category);
 
             return (
-              <Collapsible
-                key={category}
-                open={expandedCategories.has(category)}
-                onOpenChange={() => onToggleCategory(category)}
-              >
-                <CollapsibleTrigger>
-                  <div className="cursor-pointer">
-                    {renderCategoryHeader(category)}
+              <div key={category}>
+                {renderCategoryHeader(category)}
+                {isExpanded && (
+                  <div className="space-y-2">
+                    {/* Column headers - shown below category when expanded */}
+                    <div className="flex items-center justify-between px-1 mt-2 mb-1">
+                      <div className="grid w-full grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto] text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">
+                        <span className="pl-10">Symbol</span>
+                        {!isColumnHidden('price') && <span>Price</span>}
+                        {!isColumnHidden('tokens') && <span>Tokens</span>}
+                        {!isColumnHidden('value') && <span>Value</span>}
+                        {!isColumnHidden('avgCost') && <span>Avg Cost</span>}
+                        {!isColumnHidden('%change') && <span>24h</span>}
+                        {!isColumnHidden('ladder') && <span>Exit Ladder</span>}
+                        <span className="text-right">
+                          {!isColumnHidden('actions') && <span>Actions</span>}
+                        </span>
+                      </div>
+                    </div>
+                    {holdings.map(holding => renderHoldingRow(holding, category))}
                   </div>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="space-y-2">
-                  {holdings.map(holding => renderHoldingRow(holding, category))}
-                </CollapsibleContent>
-              </Collapsible>
+                )}
+              </div>
             );
           })}
         </div>

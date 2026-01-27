@@ -1622,3 +1622,329 @@ dfx canister install frontend --mode reinstall -y
 ```
 
 ---
+
+
+---
+
+## Session 6 (Final Update) - January 27, 2026
+
+### Summary of All Work Completed
+
+#### 1. Fixed Permanent Overlay Issue
+**Problem:** "Visible Columns" dropdown and info tooltips were permanently stuck on screen.
+**Solution:** Rewrote `dropdown-menu.tsx` and `tooltip.tsx` with proper state management (context-based open/close).
+
+#### 2. Fixed dfx Identity/Controller Issues
+**Problem:** Canisters created with one identity, deploying with another.
+**Solution:** Added second principal as controller to both canisters.
+
+#### 3. Fixed Auto-Categorization
+**Problem:** All assets showed as "micro-cap" because CryptoPrices.cc doesn't provide market cap.
+**Solution:** Modified `PriceAggregator.getPrice()` to supplement price-only data with market cap from CoinGecko.
+
+### Current Thresholds (Working)
+```typescript
+thresholds: {
+  blueChipMin: 10_000_000_000,   // $10B - Blue Chip
+  midCapMin: 1_000_000_000,      // $1B - Mid Cap  
+  lowCapMin: 10_000_000,         // $10M - Low Cap
+  // Below $10M = Micro Cap
+}
+```
+
+### Known UI Issues (To Fix Next)
+
+1. **"NaN% of portfolio"** - Share percentages showing NaN
+2. **"Share 0.0%"** - Category share not calculating
+3. **Column headers above category** - Should be below each expanded category
+4. **N/4 Ladder bubble** - Awkward, non-functional, should be removed
+5. **Category box width** - Should be slightly narrower than asset lines
+6. **"Category settings" text** - Should be just "settings"
+7. **Click behavior issues:**
+   - Category settings button expands/collapses (shouldn't)
+   - Dropdown arrow doesn't expand/collapse (should)
+
+### Deployment Info
+
+| Component | Canister ID |
+|-----------|-------------|
+| Frontend | `umunu-kh777-77774-qaaca-cai` |
+| Backend | `uxrrr-q7777-77774-qaaaq-cai` |
+
+**Frontend URL:** http://umunu-kh777-77774-qaaca-cai.localhost:4943/
+
+### Git Commits This Session
+- `28bea1a` - Fix dropdown/tooltip overlay issues
+- `d8485fa` - Fix auto-categorization with market cap supplementation
+- `3d22878` - Update HANDOFF.md
+
+---
+
+
+---
+
+## Session 6 (Final Update) - January 27, 2026
+
+### What Was Accomplished
+
+1. **Fixed Permanent Overlay Issue** - Dropdown menu and tooltip components were rewritten with proper state management (open/close toggle)
+
+2. **Fixed Auto-Categorization** - Added market cap supplementation from CoinGecko when CryptoPrices.cc provides price-only data
+
+3. **Added Controller to Canisters** - Added second identity as controller for deployment access
+
+4. **Recreated Frontend Canister** - New canister ID: `umunu-kh777-77774-qaaca-cai`
+
+### Current Working State
+
+- ✅ Live prices fetching (CryptoPrices.cc + CoinGecko market cap)
+- ✅ Auto-categorization by market cap thresholds
+- ✅ Category expand/collapse
+- ✅ Dropdown/tooltip components
+- ✅ Holdings display with values
+
+### Known Issues to Fix Next
+
+1. **"NaN% of portfolio"** - Share calculation showing NaN
+2. **"Share 0.0%"** - Category share not calculating
+3. **"$NaN"** - Allocation sidebar values
+4. **UI Polish Needed** (see next section)
+
+### UI Issues Identified (Screenshot Review)
+
+From user's screenshot, the following UI improvements are needed:
+
+1. **Column headers placement** - Currently above category line, should be below each expanded category
+2. **Category box width** - Doesn't stretch as wide as asset rows
+3. **N/4 Ladder bubble** - Looks awkward, not functional, should be removed
+4. **"Category settings" text** - Should be shortened to just "Settings"
+5. **Click behavior issues**:
+   - "Category settings" button incorrectly triggers expand/collapse
+   - Dropdown arrow does NOT trigger expand/collapse but should
+6. **Category row should be thinner** - Distinguish from asset rows
+
+---
+
+
+---
+
+## Session 7 - January 27, 2026
+
+### UI Improvements Made
+
+#### Changes to CompactHoldingsTable.tsx:
+
+1. **Removed N/4 Ladder bubble** from category header
+   - Deleted the `{selectedPreset === 'n4' && renderLadderPreviewChip(category)}` line
+
+2. **Changed "Category settings" to "Settings"**
+   - Updated button text
+
+3. **Moved column headers below category header**
+   - Headers now appear inside each expanded category, not above all categories
+   - Changed from global header to per-category header
+
+4. **Made category bar narrower than asset rows**
+   - Added `mx-2` margin to category header
+   - Reduced vertical padding from `py-3` to `py-2.5`
+
+5. **Fixed click behavior**
+   - Removed `CollapsibleTrigger` wrapper that was making entire header clickable
+   - Added `e.stopPropagation()` to chevron button for proper expand/collapse
+   - Added `e.stopPropagation()` to Settings button to prevent expand/collapse
+
+### New Frontend Canister
+
+Old canister was deleted and recreated:
+- **Old ID:** `umunu-kh777-77774-qaaca-cai` (deleted)
+- **New ID:** `ulvla-h7777-77774-qaacq-cai`
+- **New URL:** http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
+
+### Known Issues After This Update
+
+1. **Settings button does nothing** - The `e.stopPropagation()` may be preventing the Popover from opening
+2. **Category header layout** - User wants Value and Share on same line as category name and position count
+3. **NaN% still showing** - Share calculations still broken
+
+---
+
+
+---
+
+## Session 7 (Continued) - January 27, 2026
+
+### Additional Fixes Made
+
+#### Settings Button Fix
+- **Problem:** Settings button did nothing after previous changes
+- **Cause:** The `onClick={(e) => e.stopPropagation()}` was preventing the Popover from opening
+- **Solution:** Removed the stopPropagation since we no longer use CollapsibleTrigger wrapper
+
+#### Category Header Layout - Single Line
+- **Before:** Two-line layout with name/positions on top, value/share below
+- **After:** Single-line layout: `[chevron] [B] Blue Chip | 3 positions | Value $43.0K | Share 0.0%`
+
+#### Thinner Category Bar
+- Reduced vertical padding from `py-2.5` to `py-2`
+- Reduced icon sizes from `h-7 w-7` to `h-6 w-6`
+- Reduced button sizes to `h-6`
+- Reduced font sizes on buttons from `text-[11px]` to `text-[10px]`
+
+### Files Modified This Session
+
+| File | Changes |
+|------|---------|
+| `frontend/src/components/CompactHoldingsTable.tsx` | Removed N/4 Ladder chip, single-line header, fixed Settings button, thinner category bar |
+| `frontend/src/components/ui/dropdown-menu.tsx` | Added state management for open/close (earlier in session) |
+| `frontend/src/components/ui/tooltip.tsx` | Added hover-based toggle (earlier in session) |
+| `frontend/src/lib/priceService.ts` | Added CoinGecko market cap supplementation |
+| `docs/HANDOFF.md` | Multiple updates throughout session |
+
+### Current Frontend Canister
+
+**ID:** `ulvla-h7777-77774-qaacq-cai`
+**URL:** http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
+
+### What's Working Now
+
+- ✅ Live prices from CryptoPrices.cc
+- ✅ Market cap data from CoinGecko (supplementary fetch)
+- ✅ Auto-categorization by market cap thresholds:
+  - Blue Chip: ≥ $10B
+  - Mid Cap: ≥ $1B and < $10B
+  - Low Cap: ≥ $10M and < $1B
+  - Micro Cap: < $10M
+- ✅ Category expand/collapse via chevron button
+- ✅ Settings popover opens correctly
+- ✅ Dropdown and tooltip components toggle properly
+- ✅ Column headers appear below category header (inside expanded section)
+- ✅ Category bar is narrower than asset rows
+- ✅ Single-line category header layout
+- ✅ N/4 Ladder bubble removed from category header
+
+### What Still Needs Work (Priority Order)
+
+#### HIGH PRIORITY
+1. **"NaN% of portfolio"** - Share percentages showing NaN in asset rows
+2. **"Share 0.0%"** - Category share not calculating correctly
+3. **"$NaN"** - Allocation sidebar values showing NaN
+
+#### MEDIUM PRIORITY
+4. **Admin Panel blank screen** - Still not rendering
+5. **Real Internet Identity auth** - Currently stubbed with mock user
+6. **Wire frontend to backend canisters** - Currently using localStorage only
+
+#### LOW PRIORITY  
+7. **Deploy to IC mainnet** - Ready once local testing complete
+8. **Add .ic-assets.json5** - Suppress security policy warnings
+9. **CryptoRates.ai CORS issue** - Works on deployed IC but fails from localhost
+
+### Debugging the NaN Issue (Next Steps)
+
+The NaN values are likely caused by:
+1. Division by zero in share calculations
+2. Missing or undefined price data
+3. Timing issue where calculations run before prices load
+
+To debug, check these files:
+- `frontend/src/components/CompactHoldingsTable.tsx` - Look for `formatPercent` calls
+- `frontend/src/components/PortfolioDashboard.tsx` - Look at `totals` calculation
+- `frontend/src/lib/dataModel.ts` - Check `share()` function
+
+The `share()` function in dataModel.ts:
+```typescript
+export function share(value: number, portfolioTotal: number): number {
+  if (portfolioTotal === 0) return 0;
+  return (value / portfolioTotal) * 100;
+}
+```
+
+This should return 0 when portfolioTotal is 0, but somewhere the calculation is producing NaN.
+
+### Quick Commands Reference
+
+```bash
+# Navigate to project
+cd /Users/robertripley/coding/YSLfolioTracker
+
+# Set up npm path (if using nvm)
+export PATH="/Users/robertripley/.nvm/versions/node/v20.20.0/bin:$PATH"
+
+# Build frontend
+cd frontend && npm run build && cd ..
+
+# Deploy frontend (quick)
+dfx canister install frontend --mode reinstall -y
+
+# Deploy frontend (clean slate - new canister ID)
+dfx canister stop frontend
+dfx canister delete frontend -y
+dfx deploy frontend
+
+# Current frontend URL
+open http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
+
+# Check canister status
+dfx canister status frontend
+dfx canister status backend
+```
+
+### Git Status
+
+All changes should be committed:
+```bash
+git add -A
+git commit -m "UI improvements: single-line category header, fix Settings button, thinner category bar
+
+- Reorganized category header to single line layout
+- Fixed Settings popover not opening (removed stopPropagation)
+- Made category bar thinner (py-2, h-6 icons/buttons)
+- Column headers now inside expanded category
+- Removed N/4 Ladder bubble from category header"
+
+git push origin main
+```
+
+---
+
+## Summary of All Work Done in Session 6-7
+
+### Major Accomplishments
+
+1. **Fixed overlay bug** - Dropdown and tooltip components were permanently visible
+2. **Fixed auto-categorization** - Assets now properly categorize by market cap
+3. **UI polish** - Cleaner category headers, better click behavior, removed clutter
+
+### Key Technical Insights
+
+1. **shadcn/ui stubs need state management** - The default stubs don't include open/close logic
+2. **Price providers need market cap** - CryptoPrices.cc only returns price, CoinGecko needed for market cap
+3. **dfx asset canisters can get stale** - Sometimes need to delete and recreate for fresh assets
+4. **stopPropagation breaks Radix popovers** - Don't use it on PopoverTrigger children
+
+### Architecture Understanding
+
+```
+Price Flow:
+CryptoRates.ai (fails from localhost)
+    ↓
+CryptoPrices.cc (price only)
+    ↓
+CoinGecko (market cap supplement)
+    ↓
+PriceAggregator combines data
+    ↓
+PortfolioDashboard receives quotes
+    ↓
+CompactHoldingsTable displays with categories
+```
+
+```
+Category Thresholds:
+$10B+ → Blue Chip
+$1B-$10B → Mid Cap  
+$10M-$1B → Low Cap
+<$10M → Micro Cap
+```
+
+---
