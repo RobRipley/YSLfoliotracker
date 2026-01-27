@@ -916,3 +916,609 @@ dfx canister status frontend
 # Open browser console at http://u6s2n-gx777-77774-qaaba-cai.localhost:4943/
 ```
 
+
+
+---
+
+## Session 4 - January 27, 2026
+
+### Summary
+Attempted to rebuild and redeploy frontend to fix blank screen crash. **Issue persists** - the `.push()` error in `useMemo` still occurs even after rebuild and reinstall of frontend canister.
+
+### Actions Taken
+
+1. **Rebuilt Frontend**
+   ```bash
+   cd /Users/robertripley/coding/YSLfolioTracker/frontend
+   npm run build
+   ```
+   - Build succeeded: `index-BU4IKQvJ.js` (782.72 KB)
+
+2. **Redeployed Frontend**
+   ```bash
+   dfx deploy frontend
+   dfx canister install frontend --mode reinstall -y
+   ```
+   - Both commands completed successfully
+   - New JS bundle is being served (confirmed via console logs showing new filename)
+
+3. **Hard Refresh Browser**
+   - `Cmd+Shift+R` to bypass cache
+   - Confirmed new JS file is loaded (`index-BU4IKQvJ.js` vs old `index-BXLDCXqP.js`)
+
+### Current Error (Still Occurring)
+
+The exact same error persists in the NEW build:
+```
+TypeError: Cannot read properties of undefined (reading 'push')
+    at index-BU4IKQvJ.js:308:44171
+    at Object.useMemo (index-BU4IKQvJ.js:38:23321)
+```
+
+**Console output shows:**
+1. `[Store] Loaded persisted data: 8 holdings` ✅ (store is loading)
+2. `Applied theme: Midnight Neon with hue adjustment: 0°` ✅ (theme applied)
+3. Then immediately crashes with `.push()` error
+
+### Analysis
+
+The error is NOT in the old stale code - it's in the actual source files. The fixes mentioned in Session 2's HANDOFF.md may not have addressed the root cause, or there's another issue.
+
+**Key observation:** The error happens AFTER:
+- Store successfully loads 8 holdings
+- Theme is applied
+
+This suggests the crash occurs during the first render of a component that uses `useMemo` with `.push()`.
+
+### Files Using `.push()` in `useMemo` (Candidates for the Bug)
+
+Need to search for all `.push()` calls inside `useMemo` hooks:
+1. `usePortfolioSnapshots.ts` - uses `.push()` to build allocation data arrays
+2. `PortfolioDashboard.tsx` - has multiple `useMemo` hooks
+3. `CategoryAllocationSummary.tsx` - may have chart data building
+4. `AllocationDonutChart.tsx` - builds chart segments
+
+### Likely Root Cause
+
+Looking at the minified stack trace position (line 308, column 44171), this is deep in the bundle. The most likely candidates are:
+1. A `useMemo` that iterates over `holdings` and pushes to an array
+2. The array being pushed TO is somehow undefined (not the holdings array)
+3. Possibly `allocations` or `categories` object is undefined
+
+### What to Try Next
+
+1. **Add source maps for debugging**
+   ```bash
+   # In vite.config.ts, ensure:
+   build: { sourcemap: true }
+   ```
+
+2. **Search for the exact pattern**
+   ```bash
+   grep -rn "\.push(" frontend/src/components/ frontend/src/hooks/
+   ```
+   Then check each for proper array initialization.
+
+3. **Most likely fix locations:**
+   - `usePortfolioSnapshots.ts` lines 47-77: Check if `result` array is properly initialized
+   - `PortfolioDashboard.tsx`: Check all `useMemo` hooks for undefined array targets
+   - Any component building chart data from holdings
+
+4. **Defensive fix approach:**
+   Add null checks before all `.push()` calls:
+   ```typescript
+   // Before
+   result.push(item);
+   
+   // After (defensive)
+   if (result) result.push(item);
+   // Or ensure array is always initialized:
+   const result: SomeType[] = [];
+   ```
+
+5. **Check localStorage corruption:**
+   The store loads "8 holdings" - these might have corrupted or incompatible data from an older version. Try clearing localStorage:
+   ```javascript
+   // In browser console:
+   localStorage.clear();
+   // Then refresh
+   ```
+
+### Files to Examine
+
+| File | Priority | Reason |
+|------|----------|--------|
+| `usePortfolioSnapshots.ts` | HIGH | Has `useMemo` with `.push()` building allocation data |
+| `PortfolioDashboard.tsx` | HIGH | Main component, multiple `useMemo` hooks |
+| `CategoryAllocationSummary.tsx` | MEDIUM | Builds category data for display |
+| `AllocationDonutChart.tsx` | MEDIUM | Builds chart segment arrays |
+| `store.ts` | LOW | Already confirmed loading works |
+
+### Current State
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Backend Canister | ✅ Running | uxrrr-q7777-77774-qaaaq-cai |
+| Frontend Canister | ✅ Deployed | u6s2n-gx777-77774-qaaba-cai |
+| Frontend Bundle | ✅ New | index-BU4IKQvJ.js |
+| App Render | ❌ Crashing | `.push()` on undefined in useMemo |
+| Local Replica | ✅ Running | Port 4943 |
+
+### Next Session Priority
+
+1. First try clearing localStorage to rule out data corruption
+2. If still failing, add console.log statements before each `.push()` call
+3. Enable source maps for easier debugging
+4. Find and fix the specific array that's undefined
+
+---
+
+
+
+---
+
+## Session 5 - January 27, 2026
+
+### Summary
+
+Continued debugging and fixed the price service. The frontend is NOT crashing (contrary to Session 4 notes) - it loads and displays the portfolio. The main issue was **price fetching failing** due to CryptoRates.ai returning 503 errors and CoinGecko fallback throwing errors for unknown symbols (KMNO, DEEP).
+
+### Issues Identified
+
+#### 1. Price Service Cascade Failure
+**Root Cause Chain:**
+1. CryptoRates.ai (primary) → Returns 503 Service Unavailable
+2. CoinGecko (fallback) → Throws error because it lacks mappings for `KMNO` and `DEEP`
+3. When CoinGecko throws for ANY missing symbol, the ENTIRE price fetch fails
+4. Result: All prices return `$0.00`, all assets miscategorized as "micro-cap"
+
+**Evidence from Console:**
+```
+[Aggregator] Primary provider failed, trying fallback: TypeError: Failed to fetch
+[Aggregator] Both providers failed: Error: No data for symbol KMNO
+```
+
+#### 2. `.push()` Error (Non-Critical)
+The `.push()` error in `useMemo` still occurs but React Error Boundary catches it - the app recovers and renders. This is a bug but not a blocker.
+
+### Fixes Applied
+
+#### 1. Completely Rewrote `priceService.ts`
+
+**New 3-Tier Fallback Architecture:**
+```
+CryptoRates.ai (primary) → CryptoPrices.cc (new!) → CoinGecko (last resort)
+```
+
+**Key Changes:**
+
+1. **CryptoRates Provider** - Now returns partial results instead of throwing:
+   - Returns `null` for missing symbols instead of throwing error
+   - Allows other symbols to still get prices
+
+2. **NEW: CryptoPrices.cc Provider** - Added as middle-tier fallback:
+   - Simple per-symbol API: `https://cryptoprices.cc/BTC`
+   - Symbol must be UPPERCASE in URL
+   - Returns just price (no market cap data)
+   - Fetches sequentially to avoid rate limits
+
+3. **CoinGecko Provider** - Enhanced with more symbol mappings:
+   - Added: `KMNO` → `kamino`, `DEEP` → `deepbook-protocol`
+   - Added: `XRP`, `ADA`, `AVAX`, `DOT`, `MATIC`, `ATOM`, `UNI`, `AAVE`, `FIL`, `ARB`, `OP`
+   - Now returns `null` for missing symbols instead of throwing
+
+4. **PriceAggregator** - Multi-tier fallback logic:
+   ```typescript
+   // Step 1: Try CryptoRates.ai for all symbols
+   // Step 2: For missing symbols, try CryptoPrices.cc
+   // Step 3: For still missing, try CoinGecko  
+   // Step 4: Return stale data or zeros for anything still missing
+   ```
+
+**File Modified:** `frontend/src/lib/priceService.ts` (complete rewrite, 582 lines)
+
+### Deployment
+
+```bash
+# Build command (note: requires full path to npm due to nvm)
+export PATH="/Users/robertripley/.nvm/versions/node/v20.20.0/bin:$PATH"
+cd /Users/robertripley/coding/YSLfolioTracker/frontend
+npm run build
+
+# Deploy
+cd /Users/robertripley/coding/YSLfolioTracker
+dfx deploy frontend
+```
+
+**New Bundle:** `index-t5_Uk66J.js` (784.41 KB)
+
+### Current State After This Session
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Backend Canister | ✅ Running | uxrrr-q7777-77774-qaaaq-cai |
+| Frontend Canister | ✅ Deployed | u6s2n-gx777-77774-qaaba-cai |
+| Frontend Bundle | ✅ New | index-t5_Uk66J.js |
+| App Render | ✅ Working | Loads portfolio with 8 holdings |
+| Price Fetching | ⚠️ Partial | New code deployed, needs testing |
+| Local Replica | ✅ Running | Port 4943 |
+| GitHub | ✅ Pushed | https://github.com/RobRipley/YSLfoliotracker |
+
+### What Was Learned
+
+1. **CryptoRates.ai is Unreliable** - Returns 503 frequently. Cannot be sole provider.
+
+2. **CryptoPrices.cc is Simple but Useful** - Just returns a number for any ticker. Good fallback for price-only data.
+
+3. **Error Handling Strategy** - Price providers should return partial results, not throw on missing symbols. One missing symbol shouldn't break the entire fetch.
+
+4. **Symbol Normalization** - All providers now normalize to UPPERCASE consistently.
+
+5. **Node Path with nvm** - Desktop Commander shell doesn't have nvm in PATH. Must use:
+   ```bash
+   export PATH="/Users/robertripley/.nvm/versions/node/v20.20.0/bin:$PATH"
+   ```
+
+### Remaining Issues / TODO
+
+#### High Priority
+1. **Test the new price service** - Hard refresh browser and verify prices load from the fallback chain
+2. **Fix `.push()` error** - Still occurring in some `useMemo` hook. Non-critical but should be fixed.
+3. **Market cap data** - CryptoPrices.cc doesn't provide market cap, so categories may still be wrong for some tokens
+
+#### Medium Priority
+4. **Admin Panel blank screen** - Still needs debugging
+5. **Real Internet Identity auth** - Currently stubbed
+6. **Wire frontend to backend canisters** - Frontend uses localStorage only
+
+#### Low Priority
+7. **Deploy to IC mainnet** - Ready once local testing complete
+8. **Performance optimization** - Bundle is 784KB, could use code splitting
+
+### Quick Start Commands
+
+```bash
+# Navigate to project
+cd /Users/robertripley/coding/YSLfolioTracker
+
+# Ensure npm is available
+export PATH="/Users/robertripley/.nvm/versions/node/v20.20.0/bin:$PATH"
+
+# Start local replica (if not running)
+dfx start --background
+
+# Rebuild frontend after code changes
+cd frontend && npm run build && cd ..
+
+# Deploy
+dfx deploy frontend
+
+# Access frontend
+open http://u6s2n-gx777-77774-qaaba-cai.localhost:4943/
+
+# Hard refresh browser to clear cache
+# Cmd+Shift+R in Chrome
+```
+
+### Files Changed This Session
+
+| File | Change |
+|------|--------|
+| `frontend/src/lib/priceService.ts` | Complete rewrite with 3-tier fallback |
+
+### Price Service Architecture (New)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    PriceAggregator                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  getPrice(['BTC', 'ETH', 'KMNO', 'DEEP'])                  │
+│                     │                                       │
+│                     ▼                                       │
+│  ┌─────────────────────────────────────┐                   │
+│  │ 1. CryptoRatesProvider (Primary)    │                   │
+│  │    - Bulk fetch all 5000+ coins     │                   │
+│  │    - 5-min cache TTL                │                   │
+│  │    - Returns null for missing       │                   │
+│  └─────────────────────────────────────┘                   │
+│                     │                                       │
+│          Missing: [KMNO, DEEP]                             │
+│                     ▼                                       │
+│  ┌─────────────────────────────────────┐                   │
+│  │ 2. CryptoPricesProvider (Secondary) │                   │
+│  │    - Per-symbol: cryptoprices.cc/X  │                   │
+│  │    - Price only, no market cap      │                   │
+│  │    - Returns null for missing       │                   │
+│  └─────────────────────────────────────┘                   │
+│                     │                                       │
+│          Missing: [DEEP]                                   │
+│                     ▼                                       │
+│  ┌─────────────────────────────────────┐                   │
+│  │ 3. CoinGeckoProvider (Fallback)     │                   │
+│  │    - Symbol→ID mapping required     │                   │
+│  │    - Includes market cap            │                   │
+│  │    - Returns null for missing       │                   │
+│  └─────────────────────────────────────┘                   │
+│                     │                                       │
+│          Still missing? → Use stale data or zeros          │
+│                     │                                       │
+│                     ▼                                       │
+│  Return: [BTC quote, ETH quote, KMNO quote, DEEP quote]   │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### CoinGecko Symbol Mappings (Updated)
+
+```typescript
+{
+  'BTC': 'bitcoin',
+  'ETH': 'ethereum',
+  'SOL': 'solana',
+  'BNB': 'binancecoin',
+  'USDT': 'tether',
+  'USDC': 'usd-coin',
+  'LINK': 'chainlink',
+  'RENDER': 'render-token',
+  'ONDO': 'ondo-finance',
+  'SUI': 'sui',
+  'NEAR': 'near',
+  'ICP': 'internet-computer',
+  'KMNO': 'kamino',        // NEW
+  'DEEP': 'deepbook-protocol', // NEW
+  'XRP': 'ripple',         // NEW
+  'ADA': 'cardano',        // NEW
+  'AVAX': 'avalanche-2',   // NEW
+  'DOT': 'polkadot',       // NEW
+  'MATIC': 'matic-network', // NEW
+  'ATOM': 'cosmos',        // NEW
+  'UNI': 'uniswap',        // NEW
+  'AAVE': 'aave',          // NEW
+  'FIL': 'filecoin',       // NEW
+  'ARB': 'arbitrum',       // NEW
+  'OP': 'optimism',        // NEW
+}
+```
+
+---
+
+
+---
+
+## Session 6 - January 27, 2026
+
+### Summary
+
+Fixed the **permanent overlay issue** where the "Visible Columns" dropdown and category info tooltip were always visible on screen, blocking the UI. Also resolved dfx identity/controller issues and redeployed the frontend canister.
+
+### Issues Identified & Fixed
+
+#### 1. Broken UI Components (dropdown-menu.tsx and tooltip.tsx)
+
+**Root Cause:** The shadcn/ui component stubs for `DropdownMenu` and `Tooltip` were incomplete implementations that **always rendered their content as visible**. They had no state management to show/hide the popover content.
+
+**Before (dropdown-menu.tsx):**
+```typescript
+// No state management - content always visible
+export function DropdownMenuContent({ children, className = "" }: ContentProps) {
+  return (
+    <div className="absolute right-0 z-50 ...">
+      {children}
+    </div>
+  );
+}
+```
+
+**After (dropdown-menu.tsx):**
+```typescript
+// Added context for open/close state
+const DropdownMenuContext = React.createContext<DropdownMenuContextType | null>(null);
+
+export function DropdownMenu({ children, ... }) {
+  const [internalOpen, setInternalOpen] = React.useState(!!defaultOpen);
+  // Click outside to close
+  // Escape key to close
+  return (
+    <DropdownMenuContext.Provider value={{ open: actualOpen, setOpen }}>
+      ...
+    </DropdownMenuContext.Provider>
+  );
+}
+
+export function DropdownMenuContent({ children, ... }) {
+  const ctx = React.useContext(DropdownMenuContext);
+  if (!ctx?.open) return null;  // Only render when open
+  return <div>...</div>;
+}
+```
+
+**Same pattern applied to tooltip.tsx:**
+- Added `TooltipContext` for open/close state
+- `TooltipTrigger` now uses `onMouseEnter`/`onMouseLeave` to toggle visibility
+- `TooltipContent` only renders when `ctx.open` is true
+
+#### 2. dfx Identity/Controller Mismatch
+
+**Problem:** The canisters were created with one identity (`fd7h3-mgmok-...`) but I was trying to deploy with a different identity (`7ma2w-gqief-...`).
+
+**Fix:** Added the second principal as a controller:
+```bash
+dfx canister update-settings frontend --add-controller 7ma2w-gqief-6zbuk-7hxgr-aehmx-imu3j-bwstx-2fvfw-jazen-6ljbd-hqe
+dfx canister update-settings backend --add-controller 7ma2w-gqief-6zbuk-7hxgr-aehmx-imu3j-bwstx-2fvfw-jazen-6ljbd-hqe
+```
+
+#### 3. Stale Frontend Assets Not Updating
+
+**Problem:** After `dfx deploy frontend`, the old JS bundle was still being served. The `dfx canister install --mode reinstall` wasn't working properly.
+
+**Fix:** Deleted and recreated the frontend canister:
+```bash
+dfx canister stop frontend
+dfx canister delete frontend -y
+dfx deploy frontend
+```
+
+**New Frontend Canister ID:** `umunu-kh777-77774-qaaca-cai`
+
+### Files Modified This Session
+
+| File | Change |
+|------|--------|
+| `frontend/src/components/ui/dropdown-menu.tsx` | Complete rewrite with proper state management (196 lines) |
+| `frontend/src/components/ui/tooltip.tsx` | Complete rewrite with hover-based toggle (144 lines) |
+
+### Current Deployment Status
+
+| Component | Canister ID | Status |
+|-----------|-------------|--------|
+| Backend | `uxrrr-q7777-77774-qaaaq-cai` | ✅ Running |
+| Frontend | `umunu-kh777-77774-qaaca-cai` | ✅ Running (NEW ID) |
+| Local Replica | Port 4943 | ✅ Running |
+
+**Frontend URL:** http://umunu-kh777-77774-qaaca-cai.localhost:4943/
+
+### Current State After This Session
+
+**What's Working:**
+- ✅ Overlay issue FIXED - dropdowns and tooltips properly toggle
+- ✅ UI loads without permanent overlays blocking content
+- ✅ 8 holdings load from localStorage
+- ✅ Theme applies correctly (Midnight Neon)
+- ✅ Navigation between tabs works
+
+**What's NOT Working:**
+- ❌ **Prices still showing $0** - All assets categorized as "micro-cap" because market cap = $0
+- ❌ **Category expand/collapse** - Clicking the arrow on "Micro Cap" doesn't expand to show individual holdings
+- ❌ **Allocation percentages all 0.0%** - Because prices aren't loading
+
+### Analysis: Why Prices Are Still $0
+
+Looking at console logs, the app loads holdings but all have `MarketCap: $0.00B`. This means:
+1. The price service isn't being called, OR
+2. The price service is failing silently, OR  
+3. Price data isn't being stored/passed to the categorization logic
+
+The priceService.ts was rewritten in Session 5 but that code may not have been deployed correctly (since we had the stale bundle issue). Need to verify the new price service code is actually in the deployed bundle.
+
+### Remaining Issues (Priority Order)
+
+#### HIGH PRIORITY
+1. **Fix price fetching** - Debug why prices are $0. Check if:
+   - CryptoRates.ai API is being called
+   - Network requests are succeeding
+   - Price data is being stored in the price map
+   - Holdings are receiving price updates
+
+2. **Fix category expand/collapse** - The chevron click on category headers doesn't expand to show holdings
+
+#### MEDIUM PRIORITY
+3. **Admin Panel blank screen** - Still needs debugging
+4. **Real Internet Identity auth** - Currently stubbed
+5. **Wire frontend to backend canisters** - Frontend uses localStorage only
+
+#### LOW PRIORITY
+6. **Deploy to IC mainnet** - Ready once local testing complete
+7. **Push latest changes to GitHub**
+8. **Add .ic-assets.json5** to suppress security policy warnings
+
+### Quick Start Commands (Updated)
+
+```bash
+# Navigate to project
+cd /Users/robertripley/coding/YSLfolioTracker
+
+# Ensure npm is available (if using nvm)
+export PATH="/Users/robertripley/.nvm/versions/node/v20.20.0/bin:$PATH"
+
+# Start local replica (if not running)
+dfx start --background
+
+# Rebuild frontend after code changes
+cd frontend && npm run build && cd ..
+
+# Deploy frontend
+dfx deploy frontend
+
+# If deployment fails due to stale assets, delete and recreate:
+dfx canister stop frontend
+dfx canister delete frontend -y  
+dfx deploy frontend
+
+# Access frontend (use the CURRENT canister ID)
+open http://umunu-kh777-77774-qaaca-cai.localhost:4943/
+
+# Check canister info
+dfx canister info frontend
+dfx canister info backend
+
+# Add a controller (if needed)
+dfx canister update-settings frontend --add-controller <principal>
+```
+
+### Debugging Price Service (Next Steps)
+
+To debug why prices are $0, add console logging to trace the flow:
+
+1. **Check if price fetch is triggered:**
+   ```typescript
+   // In priceService.ts or wherever prices are fetched
+   console.log('[PriceService] Fetching prices for:', symbols);
+   ```
+
+2. **Check network tab in browser:**
+   - Look for requests to `cryptorates.ai`, `cryptoprices.cc`, or `coingecko.com`
+   - Check response status codes
+
+3. **Check if price data reaches holdings:**
+   ```typescript
+   // In dataModel.ts or CompactHoldingsTable.tsx
+   console.log('[Holdings] Price for', symbol, ':', priceData);
+   ```
+
+4. **Verify the price service singleton is initialized:**
+   ```typescript
+   const aggregator = getPriceAggregator();
+   console.log('[Aggregator] Instance:', aggregator);
+   ```
+
+### Component Architecture (Updated Understanding)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                       UI Components                          │
+├─────────────────────────────────────────────────────────────┤
+│  dropdown-menu.tsx (FIXED)                                  │
+│    - DropdownMenuContext for open/close state               │
+│    - Click outside closes menu                              │
+│    - Escape key closes menu                                 │
+│    - DropdownMenuContent only renders when open             │
+│                                                             │
+│  tooltip.tsx (FIXED)                                        │
+│    - TooltipContext for open/close state                    │
+│    - Hover triggers show/hide with 150ms delay             │
+│    - TooltipContent only renders when open                  │
+│                                                             │
+│  popover.tsx (Already working)                              │
+│    - PopoverContext was already implemented                 │
+│    - Click to toggle                                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Git Status
+
+Changes made this session need to be committed:
+```bash
+git add -A
+git commit -m "Fix dropdown and tooltip overlay issues - add proper state management
+
+- Rewrote dropdown-menu.tsx with DropdownMenuContext for open/close state
+- Added click-outside and escape-key handlers to close dropdown
+- Rewrote tooltip.tsx with TooltipContext and hover-based toggle
+- Both components now only render content when open
+- Fixed permanent overlay blocking UI"
+
+git push origin main
+```
+
+---

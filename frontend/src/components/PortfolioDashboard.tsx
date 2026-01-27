@@ -3,7 +3,7 @@ import { usePortfolioStore } from '@/lib/store';
 import { CompactHoldingsTable } from './CompactHoldingsTable';
 import { CategoryAllocationSummary } from './CategoryAllocationSummary';
 import { ExitPlanSummary } from './ExitPlanSummary';
-import { type Category, type Holding } from '@/lib/dataModel';
+import { type Category, type Holding, getCategoryForHolding } from '@/lib/dataModel';
 import { getPriceAggregator, type ExtendedPriceQuote } from '@/lib/priceService';
 import { usePortfolioSnapshots } from '@/hooks/usePortfolioSnapshots';
 import { AllocationDonutChart } from './AllocationDonutChart';
@@ -104,9 +104,12 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     };
 
     for (const holding of store.holdings) {
-      const price = prices[holding.symbol.toUpperCase()]?.priceUsd ?? holding.avgCostUsd ?? 0;
+      const priceData = prices[holding.symbol.toUpperCase()];
+      const price = priceData?.priceUsd ?? holding.avgCostUsd ?? 0;
+      const marketCap = priceData?.marketCapUsd ?? 0;
       const value = holding.tokens * price;
-      byCategory[holding.category] += value;
+      const category = getCategoryForHolding(holding, marketCap);
+      byCategory[category] += value;
     }
 
     return { totalValue, byCategory };
@@ -123,11 +126,13 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     };
 
     for (const holding of store.holdings) {
-      result[holding.category].push(holding);
+      const marketCap = prices[holding.symbol.toUpperCase()]?.marketCapUsd ?? 0;
+      const category = getCategoryForHolding(holding, marketCap);
+      result[category].push(holding);
     }
 
     return result;
-  }, [store.holdings]);
+  }, [store.holdings, prices]);
 
   const [expandedCategories, setExpandedCategories] = useState<Set<Category>>(
     () => new Set(['blue-chip', 'mid-cap'])
@@ -322,7 +327,7 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
                   selectedCategory={selectedCategory}
                 />
 
-                <CategoryTrendCharts snapshots={store.portfolioSnapshots} />
+                <CategoryTrendCharts snapshots={store.snapshots} />
               </div>
             </Card>
           </div>

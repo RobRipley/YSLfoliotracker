@@ -1,10 +1,12 @@
 /**
  * Price Fetching & Aggregation Module
  * 
- * Uses CryptoRates.ai free service (top 5000 coins, no rate limits, 5-min updates)
- * - Fetches all coins once and caches in memory + localStorage
- * - Falls back to CoinGecko if CryptoRates.ai fails
- * - Emits events for significant price/marketCap changes (>1%)
+ * Provider Priority:
+ * 1. CryptoRates.ai - Free bulk API (5000+ coins, no rate limits, 5-min updates)
+ * 2. CryptoPrices.cc - Simple per-symbol API (price only, no market cap)
+ * 3. CoinGecko - Reliable fallback with market cap data
+ * 
+ * All providers normalize symbols to UPPERCASE for consistency.
  */
 
 import { PriceQuote } from './dataModel';
@@ -48,7 +50,7 @@ interface CryptoRatesCoin {
 class CryptoRatesProvider {
   private cache: Map<string, CryptoRatesCoin> = new Map();
   private lastFetch: number = 0;
-  private readonly cacheTTL: number = 5 * 60 * 1000; // 5 minutes (matches their update frequency)
+  private readonly cacheTTL: number = 5 * 60 * 1000; // 5 minutes
   private readonly localStorageKey = 'cryptorates_cache';
   private readonly localStorageTimestampKey = 'cryptorates_cache_timestamp';
 
@@ -56,9 +58,6 @@ class CryptoRatesProvider {
     this.loadFromLocalStorage();
   }
 
-  /**
-   * Load cached data from localStorage
-   */
   private loadFromLocalStorage(): void {
     try {
       const cached = localStorage.getItem(this.localStorageKey);
@@ -66,7 +65,6 @@ class CryptoRatesProvider {
       
       if (cached && timestamp) {
         const age = Date.now() - parseInt(timestamp, 10);
-        
         if (age < this.cacheTTL) {
           const data: CryptoRatesCoin[] = JSON.parse(cached);
           this.cache = new Map(data.map(coin => [coin.symbol.toUpperCase(), coin]));
@@ -79,9 +77,6 @@ class CryptoRatesProvider {
     }
   }
 
-  /**
-   * Save cached data to localStorage
-   */
   private saveToLocalStorage(): void {
     try {
       const data = Array.from(this.cache.values());
@@ -92,9 +87,6 @@ class CryptoRatesProvider {
     }
   }
 
-  /**
-   * Fetch all coins from CryptoRates.ai API
-   */
   private async fetchAllCoins(): Promise<void> {
     const response = await fetch('https://cryptorates.ai/v1/coins/all');
     
@@ -103,8 +95,6 @@ class CryptoRatesProvider {
     }
 
     const data = await response.json();
-    
-    // Parse the response - format may vary, handle both array and object
     let coins: CryptoRatesCoin[] = [];
     
     if (Array.isArray(data)) {
@@ -115,9 +105,9 @@ class CryptoRatesProvider {
       throw new Error('Unexpected CryptoRates API response format');
     }
 
-    // Build the cache
     this.cache.clear();
     for (const coin of coins) {
+      // Normalize symbol to UPPERCASE
       const symbol = coin.symbol?.toUpperCase();
       if (symbol && coin.price) {
         this.cache.set(symbol, {
@@ -133,27 +123,27 @@ class CryptoRatesProvider {
 
     this.lastFetch = Date.now();
     this.saveToLocalStorage();
-    
     console.log('[CryptoRates] Fetched', this.cache.size, 'coins');
   }
 
   /**
-   * Get prices for multiple symbols
+   * Get prices for multiple symbols.
+   * Returns partial results - missing symbols get null instead of throwing.
    */
-  async getPrice(symbols: string[]): Promise<ExtendedPriceQuote[]> {
-    // Refresh cache if expired
+  async getPrice(symbols: string[]): Promise<(ExtendedPriceQuote | null)[]> {
     const now = Date.now();
     if (now - this.lastFetch > this.cacheTTL || this.cache.size === 0) {
       await this.fetchAllCoins();
     }
 
-    // Look up each symbol in cache
     return symbols.map(symbol => {
+      // Normalize to UPPERCASE for lookup
       const normalizedSymbol = symbol.toUpperCase();
       const coin = this.cache.get(normalizedSymbol);
 
       if (!coin) {
-        throw new Error(`Symbol not found: ${symbol}`);
+        console.warn(`[CryptoRates] Symbol not found: ${normalizedSymbol}`);
+        return null; // Return null instead of throwing
       }
 
       return {
@@ -165,9 +155,6 @@ class CryptoRatesProvider {
     });
   }
 
-  /**
-   * Clear cache (useful for testing)
-   */
   clearCache(): void {
     this.cache.clear();
     this.lastFetch = 0;
@@ -177,13 +164,77 @@ class CryptoRatesProvider {
 }
 
 // ============================================================================
-// COINGECKO PROVIDER (Fallback)
+// CRYPTOPRICES.CC PROVIDER (Secondary Fallback - Simple per-symbol API)
+// ============================================================================
+
+class CryptoPricesProvider {
+  /**
+   * Fetch price for a single symbol from cryptoprices.cc
+   * URL format: https://cryptoprices.cc/BTC (ticker in UPPERCASE)
+   * Returns just the price as a number (no market cap data)
+   */
+  async getSinglePrice(symbol: string): Promise<number | null> {
+    try {
+      // Symbol must be UPPERCASE
+      const normalizedSymbol = symbol.toUpperCase();
+      const response = await fetch(`https://cryptoprices.cc/${normalizedSymbol}`);
+      
+      if (!response.ok) {
+        console.warn(`[CryptoPrices] Failed for ${normalizedSymbol}: ${response.status}`);
+        return null;
+      }
+
+      const text = await response.text();
+      const price = parseFloat(text.trim());
+      
+      if (isNaN(price)) {
+        console.warn(`[CryptoPrices] Invalid price for ${normalizedSymbol}: ${text}`);
+        return null;
+      }
+
+      console.log(`[CryptoPrices] Got ${normalizedSymbol}: $${price}`);
+      return price;
+    } catch (error) {
+      console.warn(`[CryptoPrices] Error fetching ${symbol}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch prices for multiple symbols (sequential to avoid rate limits)
+   */
+  async getPrice(symbols: string[]): Promise<(ExtendedPriceQuote | null)[]> {
+    const now = Date.now();
+    const results: (ExtendedPriceQuote | null)[] = [];
+
+    for (const symbol of symbols) {
+      const normalizedSymbol = symbol.toUpperCase();
+      const price = await this.getSinglePrice(normalizedSymbol);
+      
+      if (price !== null) {
+        results.push({
+          symbol: normalizedSymbol,
+          priceUsd: price,
+          marketCapUsd: undefined, // CryptoPrices.cc doesn't provide market cap
+          timestamp: now,
+        });
+      } else {
+        results.push(null);
+      }
+    }
+
+    return results;
+  }
+}
+
+// ============================================================================
+// COINGECKO PROVIDER (Last Resort Fallback)
 // ============================================================================
 
 class CoinGeckoProvider {
   private readonly baseUrl = 'https://api.coingecko.com/api/v3';
   
-  // Map common symbols to CoinGecko IDs
+  // Map common symbols (UPPERCASE) to CoinGecko IDs
   private symbolToId: Record<string, string> = {
     'BTC': 'bitcoin',
     'ETH': 'ethereum',
@@ -197,10 +248,23 @@ class CoinGeckoProvider {
     'SUI': 'sui',
     'NEAR': 'near',
     'ICP': 'internet-computer',
+    'KMNO': 'kamino',
+    'DEEP': 'deepbook-protocol',
+    'XRP': 'ripple',
+    'ADA': 'cardano',
+    'AVAX': 'avalanche-2',
+    'DOT': 'polkadot',
+    'MATIC': 'matic-network',
+    'ATOM': 'cosmos',
+    'UNI': 'uniswap',
+    'AAVE': 'aave',
+    'FIL': 'filecoin',
+    'ARB': 'arbitrum',
+    'OP': 'optimism',
   };
 
-  async getPrice(symbols: string[]): Promise<ExtendedPriceQuote[]> {
-    // Convert symbols to CoinGecko IDs
+  async getPrice(symbols: string[]): Promise<(ExtendedPriceQuote | null)[]> {
+    // Convert symbols to CoinGecko IDs (use UPPERCASE for lookup)
     const ids = symbols
       .map(s => this.symbolToId[s.toUpperCase()] || s.toLowerCase())
       .join(',');
@@ -217,17 +281,19 @@ class CoinGeckoProvider {
     const now = Date.now();
 
     return symbols.map(symbol => {
-      const id = this.symbolToId[symbol.toUpperCase()] || symbol.toLowerCase();
+      const normalizedSymbol = symbol.toUpperCase();
+      const id = this.symbolToId[normalizedSymbol] || symbol.toLowerCase();
       const priceData = data[id];
 
       if (!priceData) {
-        throw new Error(`No data for symbol ${symbol}`);
+        console.warn(`[CoinGecko] No data for ${normalizedSymbol} (id: ${id})`);
+        return null;
       }
 
       return {
-        symbol: symbol.toUpperCase(),
+        symbol: normalizedSymbol,
         priceUsd: priceData.usd || 0,
-        marketCapUsd: priceData.usd_market_cap,
+        marketCapUsd: priceData.usd_market_cap || 0,
         timestamp: now,
       };
     });
@@ -259,6 +325,7 @@ export class MockPriceProvider {
     // Low Cap ($10M - $1B)
     this.prices.set('ONDO', { price: 0.66, marketCap: 900_000_000 });
     this.prices.set('KMNO', { price: 0.061, marketCap: 45_000_000 });
+    this.prices.set('DEEP', { price: 0.15, marketCap: 80_000_000 });
   }
 
   startRandomWalk(intervalMs: number = 5000): void {
@@ -278,7 +345,7 @@ export class MockPriceProvider {
     }
   }
 
-  async getPrice(symbols: string[]): Promise<ExtendedPriceQuote[]> {
+  async getPrice(symbols: string[]): Promise<(ExtendedPriceQuote | null)[]> {
     const now = Date.now();
     
     return symbols.map(symbol => {
@@ -310,11 +377,12 @@ export class MockPriceProvider {
 
 export class PriceAggregator {
   private primaryProvider: CryptoRatesProvider | MockPriceProvider;
+  private secondaryProvider: CryptoPricesProvider;
   private fallbackProvider: CoinGeckoProvider;
   private listeners: EventListener[] = [];
   private lastKnownQuotes: Map<string, ExtendedPriceQuote> = new Map();
   private lastEmitTime: Map<string, number> = new Map();
-  private readonly emitThrottle: number = 2000; // Max 1 event per 2 seconds per symbol
+  private readonly emitThrottle: number = 2000;
 
   constructor(useMock: boolean = false) {
     if (useMock) {
@@ -324,12 +392,10 @@ export class PriceAggregator {
     } else {
       this.primaryProvider = new CryptoRatesProvider();
     }
+    this.secondaryProvider = new CryptoPricesProvider();
     this.fallbackProvider = new CoinGeckoProvider();
   }
 
-  /**
-   * Subscribe to price change events
-   */
   on(listener: EventListener): () => void {
     this.listeners.push(listener);
     return () => {
@@ -337,19 +403,13 @@ export class PriceAggregator {
     };
   }
 
-  /**
-   * Emit price change event with throttling
-   */
   private emit(event: PriceChangeEvent): void {
     const now = Date.now();
     const lastEmit = this.lastEmitTime.get(event.symbol) || 0;
     
-    if (now - lastEmit < this.emitThrottle) {
-      return;
-    }
+    if (now - lastEmit < this.emitThrottle) return;
     
     this.lastEmitTime.set(event.symbol, now);
-    
     this.listeners.forEach(listener => {
       try {
         listener(event);
@@ -359,9 +419,6 @@ export class PriceAggregator {
     });
   }
 
-  /**
-   * Check if quote changed significantly (>1%)
-   */
   private checkSignificantChange(
     oldQuote: ExtendedPriceQuote,
     newQuote: ExtendedPriceQuote
@@ -391,62 +448,115 @@ export class PriceAggregator {
   }
 
   /**
-   * Get prices for multiple symbols with fallback
+   * Get prices with multi-tier fallback:
+   * 1. Try CryptoRates.ai for all symbols
+   * 2. For missing symbols, try CryptoPrices.cc
+   * 3. For still missing, try CoinGecko
+   * 4. Return stale data or zeros for anything still missing
    */
   async getPrice(symbols: string[]): Promise<ExtendedPriceQuote[]> {
     const normalizedSymbols = symbols.map(s => s.toUpperCase());
+    const results: Map<string, ExtendedPriceQuote> = new Map();
+    let missingSymbols: string[] = [...normalizedSymbols];
 
+    // Step 1: Try primary provider (CryptoRates.ai)
     try {
-      // Try primary provider (CryptoRates or Mock)
-      const quotes = await this.primaryProvider.getPrice(normalizedSymbols);
+      const primaryQuotes = await this.primaryProvider.getPrice(normalizedSymbols);
       
-      // Check for significant changes and emit events
-      quotes.forEach(quote => {
-        const lastKnown = this.lastKnownQuotes.get(quote.symbol);
-        if (lastKnown && !quote.stale) {
-          this.checkSignificantChange(lastKnown, quote);
+      primaryQuotes.forEach((quote, index) => {
+        if (quote) {
+          results.set(normalizedSymbols[index], quote);
         }
-        this.lastKnownQuotes.set(quote.symbol, quote);
       });
       
-      return quotes;
+      missingSymbols = normalizedSymbols.filter(s => !results.has(s));
+      
+      if (missingSymbols.length > 0) {
+        console.log('[Aggregator] Missing from primary:', missingSymbols.join(', '));
+      }
     } catch (primaryError) {
-      console.warn('[Aggregator] Primary provider failed, trying fallback:', primaryError);
+      console.warn('[Aggregator] Primary provider failed:', primaryError);
+    }
 
+    // Step 2: Try secondary provider (CryptoPrices.cc) for missing symbols
+    if (missingSymbols.length > 0) {
       try {
-        // Try fallback provider (CoinGecko)
-        const quotes = await this.fallbackProvider.getPrice(normalizedSymbols);
+        const secondaryQuotes = await this.secondaryProvider.getPrice(missingSymbols);
         
-        quotes.forEach(quote => {
-          this.lastKnownQuotes.set(quote.symbol, quote);
-        });
-        
-        return quotes;
-      } catch (fallbackError) {
-        console.error('[Aggregator] Both providers failed:', fallbackError);
-
-        // Return stale data if available
-        return normalizedSymbols.map(symbol => {
-          const lastKnown = this.lastKnownQuotes.get(symbol);
-          if (lastKnown) {
-            return { ...lastKnown, stale: true };
+        secondaryQuotes.forEach((quote, index) => {
+          if (quote) {
+            results.set(missingSymbols[index], quote);
           }
-          
-          // No data available
-          return {
-            symbol,
-            priceUsd: 0,
-            timestamp: Date.now(),
-            stale: true,
-          };
         });
+        
+        missingSymbols = normalizedSymbols.filter(s => !results.has(s));
+        
+        if (missingSymbols.length > 0) {
+          console.log('[Aggregator] Missing from secondary:', missingSymbols.join(', '));
+        }
+      } catch (secondaryError) {
+        console.warn('[Aggregator] Secondary provider failed:', secondaryError);
       }
     }
+
+    // Step 3: Try fallback provider (CoinGecko) for still missing symbols
+    if (missingSymbols.length > 0) {
+      try {
+        const fallbackQuotes = await this.fallbackProvider.getPrice(missingSymbols);
+        
+        fallbackQuotes.forEach((quote, index) => {
+          if (quote) {
+            results.set(missingSymbols[index], quote);
+          }
+        });
+        
+        missingSymbols = normalizedSymbols.filter(s => !results.has(s));
+        
+        if (missingSymbols.length > 0) {
+          console.log('[Aggregator] Still missing after all providers:', missingSymbols.join(', '));
+        }
+      } catch (fallbackError) {
+        console.warn('[Aggregator] Fallback provider failed:', fallbackError);
+      }
+    }
+
+    // Step 4: Fill in any remaining missing symbols with stale data or zeros
+    for (const symbol of normalizedSymbols) {
+      if (!results.has(symbol)) {
+        const lastKnown = this.lastKnownQuotes.get(symbol);
+        if (lastKnown) {
+          results.set(symbol, { ...lastKnown, stale: true });
+        } else {
+          results.set(symbol, {
+            symbol,
+            priceUsd: 0,
+            marketCapUsd: 0,
+            timestamp: Date.now(),
+            stale: true,
+          });
+        }
+      }
+    }
+
+    // Check for significant changes and update cache
+    const finalQuotes = normalizedSymbols.map(symbol => {
+      const quote = results.get(symbol)!;
+      const lastKnown = this.lastKnownQuotes.get(symbol);
+      
+      if (lastKnown && !quote.stale && quote.priceUsd > 0) {
+        this.checkSignificantChange(lastKnown, quote);
+      }
+      
+      if (!quote.stale && quote.priceUsd > 0) {
+        this.lastKnownQuotes.set(symbol, quote);
+      }
+      
+      return quote;
+    });
+
+    return finalQuotes;
   }
 
-  /**
-   * Get current price for a single symbol (convenience method)
-   */
   async getCurrentPrice(symbol: string): Promise<number> {
     const quotes = await this.getPrice([symbol]);
     return quotes[0]?.priceUsd || 0;
@@ -459,9 +569,6 @@ export class PriceAggregator {
 
 let globalAggregator: PriceAggregator | null = null;
 
-/**
- * Get or create the global price aggregator
- */
 export function getPriceAggregator(useMock: boolean = false): PriceAggregator {
   if (!globalAggregator) {
     globalAggregator = new PriceAggregator(useMock);
@@ -469,9 +576,6 @@ export function getPriceAggregator(useMock: boolean = false): PriceAggregator {
   return globalAggregator;
 }
 
-/**
- * Reset the global aggregator (useful for testing)
- */
 export function resetGlobalAggregator(): void {
   globalAggregator = null;
 }
