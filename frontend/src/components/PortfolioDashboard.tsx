@@ -155,7 +155,12 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
   };
 
   const handleUnifiedSubmit = (holding: Holding) => {
-    store.addHolding(holding);
+    // Call addHolding with separate parameters as expected by the store
+    store.addHolding(holding.symbol, holding.tokensOwned, {
+      avgCost: holding.avgCost,
+      purchaseDate: holding.purchaseDate,
+      notes: holding.notes,
+    });
     setShowUnifiedModal(false);
   };
 

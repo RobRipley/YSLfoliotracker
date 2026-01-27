@@ -923,6 +923,15 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
             const holdings = groups[category] || [];
             if (!holdings.length) return null;
             const isExpanded = expandedCategories.has(category);
+            
+            // Sort holdings by value (highest first)
+            const sortedHoldings = [...holdings].sort((a, b) => {
+              const priceA = prices[a.symbol]?.priceUsd ?? a.avgCost ?? 0;
+              const priceB = prices[b.symbol]?.priceUsd ?? b.avgCost ?? 0;
+              const valueA = valueUsd(a, priceA);
+              const valueB = valueUsd(b, priceB);
+              return valueB - valueA; // Descending order (highest first)
+            });
 
             return (
               <div key={category}>
@@ -944,7 +953,7 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
                         </span>
                       </div>
                     </div>
-                    {holdings.map(holding => renderHoldingRow(holding, category))}
+                    {sortedHoldings.map(holding => renderHoldingRow(holding, category))}
                   </div>
                 )}
               </div>

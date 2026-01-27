@@ -3,9 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
-import { ChevronDown, ChevronRight, DollarSign, TrendingUp } from 'lucide-react';
+import { TrendingUp } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { getPriceAggregator } from '@/lib/priceService';
 import { store, calculateWeightedAverage, type Holding } from '@/lib/dataModel';
@@ -14,15 +13,7 @@ import { toast } from 'sonner';
 interface UnifiedAssetModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (data: {
-    symbol: string;
-    tokens: string;
-    avgCost: string;
-    date: string;
-    notes: string;
-    isEdit: boolean;
-    existingHolding?: Holding;
-  }) => void;
+  onSubmit: (holding: Holding) => void;
   prefilledSymbol?: string;
 }
 
@@ -35,12 +26,14 @@ export function UnifiedAssetModal({
   const [symbol, setSymbol] = useState('');
   const [tokens, setTokens] = useState('');
   const [avgCost, setAvgCost] = useState('');
-  const [date, setDate] = useState('');
+  const [date, setDate] = useState(() => {
+    // Default to today's date in YYYY-MM-DD format
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  });
   const [notes, setNotes] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [isFetchingPrice, setIsFetchingPrice] = useState(false);
   const [existingHolding, setExistingHolding] = useState<Holding | null>(null);
-  const [priceSource, setPriceSource] = useState<'live' | 'cached' | null>(null);
 
   // Detect existing holding when symbol changes
   useEffect(() => {
@@ -53,7 +46,6 @@ export function UnifiedAssetModal({
         setTokens(holding.tokensOwned.toString());
         setAvgCost(holding.avgCost?.toString() || '');
         setNotes(holding.notes || '');
-        setShowAdvanced(true);
       }
     } else {
       setExistingHolding(null);
@@ -75,9 +67,7 @@ export function UnifiedAssetModal({
       setAvgCost('');
       setDate('');
       setNotes('');
-      setShowAdvanced(false);
       setExistingHolding(null);
-      setPriceSource(null);
     }
   }, [open]);
 
@@ -88,7 +78,6 @@ export function UnifiedAssetModal({
     }
 
     setIsFetchingPrice(true);
-    setPriceSource(null);
     
     try {
       const aggregator = getPriceAggregator();
@@ -96,20 +85,8 @@ export function UnifiedAssetModal({
       
       if (quotes.length > 0 && quotes[0].priceUsd > 0) {
         const price = quotes[0].priceUsd;
-        const isStale = quotes[0].stale;
-        
         setAvgCost(price.toFixed(2));
-        setPriceSource(isStale ? 'cached' : 'live');
-        
-        toast.success(
-          isStale 
-            ? `Using cached price: $${price.toFixed(2)}` 
-            : `Current price: $${price.toFixed(2)}`
-        );
-        
-        if (!showAdvanced) {
-          setShowAdvanced(true);
-        }
+        toast.success(`Price: $${price.toFixed(2)}`);
       } else {
         toast.error('Could not fetch price for this symbol');
       }
@@ -127,15 +104,23 @@ export function UnifiedAssetModal({
       return;
     }
 
-    onSubmit({
-      symbol,
-      tokens,
-      avgCost,
-      date,
-      notes,
-      isEdit: !!existingHolding,
-      existingHolding: existingHolding || undefined
-    });
+    const tokensOwned = parseFloat(tokens);
+    if (isNaN(tokensOwned) || tokensOwned <= 0) {
+      toast.error('Please enter a valid token amount');
+      return;
+    }
+
+    // Create Holding object
+    const newHolding: Holding = {
+      id: existingHolding?.id || crypto.randomUUID(),
+      symbol: symbol.toUpperCase(),
+      tokensOwned,
+      avgCost: avgCost ? parseFloat(avgCost) : undefined,
+      purchaseDate: date ? new Date(date).getTime() : undefined,
+      notes: notes || undefined,
+    };
+
+    onSubmit(newHolding);
 
     // Reset form
     setSymbol('');
@@ -143,9 +128,7 @@ export function UnifiedAssetModal({
     setAvgCost('');
     setDate('');
     setNotes('');
-    setShowAdvanced(false);
     setExistingHolding(null);
-    setPriceSource(null);
   };
 
   // Calculate weighted average preview if merging
@@ -179,7 +162,7 @@ export function UnifiedAssetModal({
         <div className="space-y-4 py-4">
           {/* Symbol Input */}
           <div>
-            <Label htmlFor="unified-symbol">Symbol</Label>
+            <Label htmlFor="unified-symbol">Symbol *</Label>
             <Input
               id="unified-symbol"
               placeholder="e.g., BTC, ETH, SOL"
@@ -198,7 +181,7 @@ export function UnifiedAssetModal({
           {/* Tokens Input */}
           <div>
             <Label htmlFor="unified-tokens">
-              {existingHolding ? 'Additional Tokens' : 'Tokens'}
+              {existingHolding ? 'Additional Tokens *' : 'Tokens *'}
             </Label>
             <Input
               id="unified-tokens"
@@ -210,79 +193,65 @@ export function UnifiedAssetModal({
             />
           </div>
 
-          {/* Use Current Price Button */}
-          <button
-            type="button"
-            onClick={handleUseCurrentPrice}
-            disabled={isFetchingPrice || !symbol}
-            className="w-full gradient-outline-btn disabled:opacity-50 disabled:cursor-not-allowed transition-smooth"
-          >
-            <span className="flex items-center justify-center gap-2 bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent">
-              <DollarSign className="h-4 w-4" />
-              {isFetchingPrice ? 'Fetching...' : 'Use Current Market Price'}
-            </span>
-          </button>
-
-          {priceSource && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Badge variant={priceSource === 'live' ? 'default' : 'secondary'} className="text-xs">
-                {priceSource === 'live' ? 'Live Price' : 'Cached Price'}
-              </Badge>
-              <span>Price auto-filled below</span>
+          {/* Token Price with inline "use market" link */}
+          <div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="unified-avgCost">Token Price</Label>
+              <button
+                type="button"
+                onClick={handleUseCurrentPrice}
+                disabled={isFetchingPrice || !symbol}
+                className="text-xs text-primary underline hover:text-primary/80 disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
+              >
+                {isFetchingPrice ? 'fetching...' : 'use market'}
+              </button>
             </div>
-          )}
+            <Input
+              id="unified-avgCost"
+              type="number"
+              placeholder="Optional"
+              value={avgCost}
+              onChange={(e) => setAvgCost(e.target.value)}
+              className="glass-panel transition-smooth"
+            />
+            {weightedAvgPreview && (
+              <div className="mt-2 p-2 rounded-lg bg-accent/10 border border-accent/30">
+                <div className="flex items-center gap-2 text-xs">
+                  <TrendingUp className="h-3 w-3 text-accent" />
+                  <span className="text-muted-foreground">New weighted average:</span>
+                  <span className="font-semibold">${weightedAvgPreview.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+          </div>
 
-          {/* Advanced Options */}
-          <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="w-full justify-start transition-smooth">
-                {showAdvanced ? <ChevronDown className="h-4 w-4 mr-2" /> : <ChevronRight className="h-4 w-4 mr-2" />}
-                Advanced Options
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="space-y-4 pt-4">
-              <div>
-                <Label htmlFor="unified-avgCost">Average Cost (USD)</Label>
-                <Input
-                  id="unified-avgCost"
-                  type="number"
-                  placeholder="Optional"
-                  value={avgCost}
-                  onChange={(e) => setAvgCost(e.target.value)}
-                  className="glass-panel transition-smooth"
-                />
-                {weightedAvgPreview && (
-                  <div className="mt-2 p-2 rounded-lg bg-accent/10 border border-accent/30">
-                    <div className="flex items-center gap-2 text-xs">
-                      <TrendingUp className="h-3 w-3 text-accent" />
-                      <span className="text-muted-foreground">New weighted average:</span>
-                      <span className="font-semibold">${weightedAvgPreview.toFixed(2)}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div>
-                <Label htmlFor="unified-date">Purchase Date</Label>
-                <Input
-                  id="unified-date"
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="glass-panel transition-smooth"
-                />
-              </div>
-              <div>
-                <Label htmlFor="unified-notes">Notes</Label>
-                <Textarea
-                  id="unified-notes"
-                  placeholder="Optional notes..."
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="glass-panel transition-smooth"
-                />
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
+          {/* Purchase Date */}
+          <div>
+            <Label htmlFor="unified-date">Purchase Date</Label>
+            <Input
+              id="unified-date"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="glass-panel transition-smooth"
+            />
+          </div>
+
+          {/* Notes */}
+          <div>
+            <Label htmlFor="unified-notes">Notes</Label>
+            <Textarea
+              id="unified-notes"
+              placeholder="Optional"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="glass-panel transition-smooth"
+              rows={2}
+            />
+          </div>
+
+          {/* Required fields note */}
+          <p className="text-xs text-muted-foreground">* Required fields</p>
         </div>
 
         <DialogFooter>

@@ -2395,3 +2395,114 @@ Much cleaner and the ticker is now the focus.
 
 ---
 
+
+### Task 7: Fix 24h % Change Data - IN PROGRESS
+
+**Current State:**
+The 24h % change is hardcoded to 0 in `CompactHoldingsTable.tsx`:
+```typescript
+const percentChange = 0; // Not available in current ExtendedPriceQuote
+```
+
+**Analysis:**
+Looking at `priceService.ts`, the `ExtendedPriceQuote` interface DOES include `change24h`:
+```typescript
+export interface ExtendedPriceQuote extends PriceQuote {
+  marketCapUsd?: number;
+  volume24h?: number;
+  change24h?: number;  // <-- This exists!
+  stale?: boolean;
+}
+```
+
+And the `CryptoRatesCoin` interface also has `change24h`. The data may be available from the API but not being passed through to the component.
+
+**Next Steps:**
+1. Check if CryptoRates.ai or CoinGecko APIs actually return change24h data
+2. Verify the data flows through the aggregator to the frontend
+3. Update `renderHoldingRow` to use `prices[holding.symbol]?.change24h ?? 0` instead of hardcoded 0
+
+---
+
+## Session 8 Progress Summary
+
+### Completed Tasks:
+1. ✅ Donut chart - Working correctly
+2. ✅ Add Asset button - Working correctly  
+3. ✅ Edit button - Working correctly
+4. ✅ Delete button - Working correctly
+5. ✅ UI cleanup - Removed category badge, tagline; made ticker larger
+
+### In Progress:
+7. 🔄 24h % change data - Needs to wire up existing data
+
+### Remaining:
+8. Fix popover stacking issues
+9. Fix initial load race condition
+10. Remove lock button from actions (if desired)
+11. Add "Notes" column header when enabled
+
+### Git Commits This Session:
+- `79809f3` - Session 8: Verify and document working features
+- `fbc1e7a` - UI cleanup: remove redundant category badge and tagline, make ticker larger
+
+### Deployment:
+- Frontend: `ulvla-h7777-77774-qaacq-cai`
+- Backend: `uxrrr-q7777-77774-qaaaq-cai`
+- GitHub: https://github.com/RobRipley/YSLfoliotracker
+
+---
+
+
+### Add Asset Modal Fixes - COMPLETED ✅
+
+**Issues Fixed:**
+
+1. **Add Asset button not working** - The `handleUnifiedSubmit` was passing a Holding object directly to `store.addHolding()`, but the store's `addHolding` function expects separate parameters: `(symbol, tokensOwned, options)`. Fixed by destructuring the Holding object.
+
+2. **UI Cleanup:**
+   - Removed big "Use Current Market Price" button
+   - Added small "use market" underlined link, right-aligned on same line as "Token Price" label
+   - Changed "Average Cost (USD)" to "Token Price"
+   - Removed "Live Price" badge and "Price auto-filled below" text
+   - Removed "Advanced Options" collapsible - all fields now visible by default
+   - Added asterisks to required fields (Symbol *, Tokens *)
+   - Added "* Required fields" footnote
+
+**Code Changes:**
+- `UnifiedAssetModal.tsx` - Complete rewrite with cleaner UI
+- `PortfolioDashboard.tsx` - Fixed `handleUnifiedSubmit` to call store correctly:
+```typescript
+store.addHolding(holding.symbol, holding.tokensOwned, {
+  avgCost: holding.avgCost,
+  purchaseDate: holding.purchaseDate,
+  notes: holding.notes,
+});
+```
+
+---
+
+
+### Additional Improvements - COMPLETED ✅
+
+**1. Purchase Date Defaults to Today**
+- Modal now pre-fills the Purchase Date field with today's date
+- Users can still change it if needed
+- Code: `useState(() => new Date().toISOString().split('T')[0])`
+
+**2. Holdings Sorted by Value Within Categories**
+- Assets are now automatically sorted by value (highest first) within each category
+- BTC ($22.1K) now displays above SOL ($6.3K) in Blue Chip
+- Applied to all categories: Blue Chip, Mid Cap, Low Cap, Micro Cap
+
+**Regarding 20-30 Second Delay for New Assets:**
+This is expected behavior when adding assets locally because:
+1. Price aggregator needs to fetch prices from external APIs (CryptoRates.ai, CoinGecko)
+2. Market cap needs to be fetched to categorize the asset
+3. Local development adds network latency vs. deployed CDN
+4. The component re-renders after prices arrive
+
+Production deployment should be faster due to better network proximity and caching.
+
+---
+
