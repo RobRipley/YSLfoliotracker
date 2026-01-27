@@ -2165,3 +2165,14 @@ LOW priority:
 
 ### Task 2: Fix Add Asset Button - IN PROGRESS
 
+
+**Additional Fix:** Increased donut chart gradient opacity from 0.95/0.75 to 1.0/0.9 for more vibrant colors matching the legend.
+
+**Commit:** `aada128` - Fix donut chart colors: increase gradient opacity for more vibrant appearance
+
+---
+
+### Task 2: Fix Add Asset Button - IN PROGRESS
+
+**Testing the button...**
+

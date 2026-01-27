@@ -7,13 +7,41 @@ type DialogProps = {
 };
 
 /**
- * Very lightweight dialog primitives.
- * They do not manage their own state; the parent controls visibility.
- * For now we just render children inline so the app can function.
+ * Dialog component with proper open/close state management.
+ * Renders a modal overlay when open is true.
  */
 
-export const Dialog: React.FC<DialogProps> = ({ children }) => {
-  return <>{children}</>;
+export const Dialog: React.FC<DialogProps> = ({ open, onOpenChange, children }) => {
+  // Handle escape key to close
+  React.useEffect(() => {
+    if (!open) return;
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onOpenChange?.(false);
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open, onOpenChange]);
+
+  // Don't render anything if not open
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div 
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={() => onOpenChange?.(false)}
+      />
+      {/* Content wrapper */}
+      <div className="relative z-50">
+        {children}
+      </div>
+    </div>
+  );
 };
 
 type DialogSectionProps = {
@@ -27,7 +55,7 @@ export const DialogContent: React.FC<DialogSectionProps> = ({
 }) => (
   <div
     className={
-      "rounded-2xl border border-slate-700 bg-slate-900/95 p-4 shadow-xl " +
+      "rounded-2xl border border-slate-700 bg-slate-900/95 p-4 shadow-xl max-h-[85vh] overflow-y-auto " +
       className
     }
   >
