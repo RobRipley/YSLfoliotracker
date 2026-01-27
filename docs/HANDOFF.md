@@ -1522,3 +1522,103 @@ git push origin main
 ```
 
 ---
+
+
+---
+
+## Session 6 (Continued) - January 27, 2026
+
+### Major Fix: Auto-Categorization Now Working!
+
+**Problem:** Assets were all showing as "micro-cap" because:
+1. CryptoRates.ai (primary provider) fails with "Failed to fetch" from localhost (CORS issue)
+2. CryptoPrices.cc (secondary fallback) successfully fetches prices but provides **no market cap data**
+3. Without market cap, the categorization logic defaulted everything to micro-cap ($0 market cap)
+
+**Solution:** Modified `PriceAggregator.getPrice()` to add a supplementary step:
+- After CryptoPrices.cc returns price-only data, fetch market cap from CoinGecko
+- Merge the CoinGecko market cap with the existing price data
+- Categories now work correctly based on thresholds
+
+**Updated Price Fetching Flow:**
+```
+Step 1: Try CryptoRates.ai (fails from localhost)
+Step 2: Try CryptoPrices.cc (gets prices, no market cap)  
+Step 3: NEW - Fetch market cap from CoinGecko for price-only symbols
+Step 4: Try CoinGecko for completely missing symbols
+Step 5: Fill remaining with stale/zero data
+```
+
+### Current Category Thresholds (Working!)
+
+From `dataModel.ts`:
+```typescript
+thresholds: {
+  blueChipMin: 10_000_000_000,   // $10B - Blue Chip
+  midCapMin: 1_000_000_000,      // $1B - Mid Cap
+  lowCapMin: 10_000_000,         // $10M - Low Cap
+  // Below $10M = Micro Cap
+}
+```
+
+### Verified Working Categorization
+
+| Asset | Price | Market Cap | Category |
+|-------|-------|-----------|----------|
+| BTC | $88,162 | ~$1.7T | Blue Chip ✅ |
+| ETH | $2,947 | ~$350B | Blue Chip ✅ |
+| SOL | $124.97 | ~$60B | Blue Chip ✅ |
+| ONDO | $0.33 | ~$1B | Mid Cap ✅ |
+| ICP | $3.26 | ~$1.5B | Mid Cap ✅ |
+| RENDER | $1.84 | ~$1B | Mid Cap ✅ |
+| KMNO | $0.04 | ~$45M | Low Cap ✅ |
+| DEEP | $0.04 | ~$80M | Low Cap ✅ |
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `frontend/src/lib/priceService.ts` | Added Step 3 in `getPrice()` to fetch market cap supplement from CoinGecko |
+
+### Git Commits
+
+1. `28bea1a` - Fix dropdown/tooltip overlay issues
+2. `d8485fa` - Fix auto-categorization with market cap supplementation
+
+### Current State
+
+**What's Working:**
+- ✅ Live prices from CryptoPrices.cc
+- ✅ Market cap data from CoinGecko
+- ✅ Auto-categorization based on market cap thresholds
+- ✅ Category expand/collapse functionality
+- ✅ Dropdown and tooltip UI components
+- ✅ Holdings display with correct categories
+
+**What Needs Work:**
+- ⚠️ "Share" percentages show "0.0%" and allocation sidebar shows "$NaN"
+- ⚠️ CryptoRates.ai fails from localhost (CORS) - works fine on deployed IC
+- ❌ Admin Panel still shows blank
+- ❌ Real Internet Identity auth (stubbed)
+- ❌ Frontend not wired to backend canisters
+
+### Frontend Canister
+
+**Current ID:** `umunu-kh777-77774-qaaca-cai`
+**URL:** http://umunu-kh777-77774-qaaca-cai.localhost:4943/
+
+### Quick Test Commands
+
+```bash
+# Hard refresh browser to see changes
+# Cmd+Shift+R in Chrome
+
+# Rebuild and redeploy frontend
+export PATH="/Users/robertripley/.nvm/versions/node/v20.20.0/bin:$PATH"
+cd /Users/robertripley/coding/YSLfolioTracker/frontend
+npm run build
+cd ..
+dfx canister install frontend --mode reinstall -y
+```
+
+---
