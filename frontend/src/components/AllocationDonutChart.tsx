@@ -23,7 +23,7 @@ const CATEGORY_COLORS: Record<Category, string> = {
 interface AllocationDonutChartProps {
   allocations: Record<Category, number>;
   onSliceClick?: (category: Category) => void;
-  selectedCategory?: Category | null;
+  selectedCategory?: Category | 'all' | null;
 }
 
 const CustomTooltip = memo(({ active, payload, total }: any) => {
@@ -51,6 +51,7 @@ export const AllocationDonutChart = memo(function AllocationDonutChart({
   selectedCategory 
 }: AllocationDonutChartProps) {
   const { data, total } = useMemo(() => {
+    console.log('[DonutChart] allocations input:', allocations);
     const chartData = Object.entries(allocations)
       .filter(([_, value]) => value > 0)
       .map(([category, value]) => ({
@@ -61,6 +62,7 @@ export const AllocationDonutChart = memo(function AllocationDonutChart({
       }));
 
     const totalValue = chartData.reduce((sum, item) => sum + item.value, 0);
+    console.log('[DonutChart] chartData:', chartData, 'total:', totalValue);
 
     return { data: chartData, total: totalValue };
   }, [allocations]);
@@ -73,8 +75,8 @@ export const AllocationDonutChart = memo(function AllocationDonutChart({
             <defs>
               {data.map((entry, index) => (
                 <linearGradient key={`gradient-${index}`} id={`gradient-${entry.category}`} x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor={entry.color} stopOpacity={0.95} />
-                  <stop offset="100%" stopColor={entry.color} stopOpacity={0.75} />
+                  <stop offset="0%" stopColor={entry.color} stopOpacity={1} />
+                  <stop offset="100%" stopColor={entry.color} stopOpacity={0.9} />
                 </linearGradient>
               ))}
             </defs>
@@ -96,9 +98,9 @@ export const AllocationDonutChart = memo(function AllocationDonutChart({
                 <Cell 
                   key={`cell-${index}`} 
                   fill={`url(#gradient-${entry.category})`}
-                  opacity={selectedCategory && selectedCategory !== entry.category ? 0.3 : 1}
-                  stroke={selectedCategory === entry.category ? '#e5e7eb' : 'transparent'}
-                  strokeWidth={selectedCategory === entry.category ? 2 : 0}
+                  opacity={selectedCategory && selectedCategory !== 'all' && selectedCategory !== entry.category ? 0.3 : 1}
+                  stroke={selectedCategory && selectedCategory !== 'all' && selectedCategory === entry.category ? '#e5e7eb' : 'transparent'}
+                  strokeWidth={selectedCategory && selectedCategory !== 'all' && selectedCategory === entry.category ? 2 : 0}
                   style={{ 
                     transition: 'opacity 150ms ease-out, stroke 150ms ease-out',
                     filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))'
@@ -116,7 +118,7 @@ export const AllocationDonutChart = memo(function AllocationDonutChart({
             key={index} 
             className={`flex items-center justify-between p-2 rounded-lg ${
               onSliceClick ? 'cursor-pointer hover:bg-secondary/8' : ''
-            } ${selectedCategory === item.category ? 'bg-secondary/12 ring-1 ring-primary/20' : ''}`}
+            } ${selectedCategory && selectedCategory !== 'all' && selectedCategory === item.category ? 'bg-secondary/12 ring-1 ring-primary/20' : ''}`}
             onClick={() => onSliceClick?.(item.category)}
             style={{ transition: 'background-color 150ms ease-out' }}
           >
