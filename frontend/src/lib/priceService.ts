@@ -449,10 +449,11 @@ export class PriceAggregator {
 
   /**
    * Get prices with multi-tier fallback:
-   * 1. Try CryptoRates.ai for all symbols
-   * 2. For missing symbols, try CryptoPrices.cc
-   * 3. For still missing, try CoinGecko
-   * 4. Return stale data or zeros for anything still missing
+   * 1. Try CryptoRates.ai for all symbols (has market cap)
+   * 2. For missing symbols, try CryptoPrices.cc (price only)
+   * 3. For symbols with price but no market cap, supplement from CoinGecko
+   * 4. For still missing, try CoinGecko for full data
+   * 5. Return stale data or zeros for anything still missing
    */
   async getPrice(symbols: string[]): Promise<ExtendedPriceQuote[]> {
     const normalizedSymbols = symbols.map(s => s.toUpperCase());
@@ -499,7 +500,37 @@ export class PriceAggregator {
       }
     }
 
-    // Step 3: Try fallback provider (CoinGecko) for still missing symbols
+    // Step 3: Supplement missing market cap data from CoinGecko
+    // Find symbols that have price but no market cap
+    const symbolsNeedingMarketCap = normalizedSymbols.filter(s => {
+      const quote = results.get(s);
+      return quote && quote.priceUsd > 0 && (!quote.marketCapUsd || quote.marketCapUsd === 0);
+    });
+
+    if (symbolsNeedingMarketCap.length > 0) {
+      console.log('[Aggregator] Fetching market cap from CoinGecko for:', symbolsNeedingMarketCap.join(', '));
+      try {
+        const marketCapQuotes = await this.fallbackProvider.getPrice(symbolsNeedingMarketCap);
+        
+        marketCapQuotes.forEach((geckoQuote, index) => {
+          const symbol = symbolsNeedingMarketCap[index];
+          const existingQuote = results.get(symbol);
+          
+          if (geckoQuote && geckoQuote.marketCapUsd && existingQuote) {
+            // Merge: keep existing price, add market cap from CoinGecko
+            results.set(symbol, {
+              ...existingQuote,
+              marketCapUsd: geckoQuote.marketCapUsd,
+            });
+            console.log(`[Aggregator] Added market cap for ${symbol}: $${(geckoQuote.marketCapUsd / 1e9).toFixed(2)}B`);
+          }
+        });
+      } catch (marketCapError) {
+        console.warn('[Aggregator] Failed to fetch market cap supplement:', marketCapError);
+      }
+    }
+
+    // Step 4: Try fallback provider (CoinGecko) for still completely missing symbols
     if (missingSymbols.length > 0) {
       try {
         const fallbackQuotes = await this.fallbackProvider.getPrice(missingSymbols);
@@ -520,7 +551,7 @@ export class PriceAggregator {
       }
     }
 
-    // Step 4: Fill in any remaining missing symbols with stale data or zeros
+    // Step 5: Fill in any remaining missing symbols with stale data or zeros
     for (const symbol of normalizedSymbols) {
       if (!results.has(symbol)) {
         const lastKnown = this.lastKnownQuotes.get(symbol);
