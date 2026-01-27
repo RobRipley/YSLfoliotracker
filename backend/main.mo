@@ -6,13 +6,12 @@ import Time "mo:base/Time";
 import Int "mo:base/Int";
 import Principal "mo:base/Principal";
 import Debug "mo:base/Debug";
-import OutCall "http-outcalls/outcall";
 import AccessControl "authorization/access-control";
 
-actor CryptoPortfolioTracker {
+persistent actor CryptoPortfolioTracker {
 
   // Initialize the access control system
-  let accessControlState = AccessControl.initState();
+  transient let accessControlState = AccessControl.initState();
 
   // Initialize auth (first caller becomes admin, others become users)
   public shared ({ caller }) func initializeAccessControl() : async () {
@@ -40,7 +39,7 @@ actor CryptoPortfolioTracker {
   };
 
   transient let principalMap = OrderedMap.Make<Principal>(Principal.compare);
-  var userProfiles = principalMap.empty<UserProfile>();
+  transient var userProfiles = principalMap.empty<UserProfile>();
 
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
@@ -69,15 +68,15 @@ actor CryptoPortfolioTracker {
   };
 
   // Data structures using Principal as key instead of Text
-  var userPortfolios = principalMap.empty<[Holding]>();
-  var adminSettings = principalMap.empty<AdminSettings>();
-  var performanceHistory = principalMap.empty<[PortfolioPerformance]>();
-  var uiPreferences = principalMap.empty<UIPreferences>();
-  var exitStrategies = principalMap.empty<[ExitStrategy]>();
+  transient var userPortfolios = principalMap.empty<[Holding]>();
+  transient var adminSettings = principalMap.empty<AdminSettings>();
+  transient var performanceHistory = principalMap.empty<[PortfolioPerformance]>();
+  transient var uiPreferences = principalMap.empty<UIPreferences>();
+  transient var exitStrategies = principalMap.empty<[ExitStrategy]>();
 
   // Market data cache is shared across all users (public read access)
   transient let textMap = OrderedMap.Make<Text>(Text.compare);
-  var marketDataCache : OrderedMap.Map<Text, [MarketAsset]> = textMap.empty<[MarketAsset]>();
+  transient var marketDataCache : OrderedMap.Map<Text, [MarketAsset]> = textMap.empty<[MarketAsset]>();
 
   type Holding = {
     ticker : Text;
@@ -171,10 +170,6 @@ actor CryptoPortfolioTracker {
     isBase : Bool;
   };
 
-  public query func transform(input : OutCall.TransformationInput) : async OutCall.TransformationOutput {
-    OutCall.transform(input);
-  };
-
   // Portfolio Management Functions - User can only access their own data
   public shared ({ caller }) func addHolding(ticker : Text, quantity : Float, purchasePrice : Float) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
@@ -219,22 +214,10 @@ actor CryptoPortfolioTracker {
     principalMap.get(adminSettings, caller);
   };
 
-  // Market Data Functions - Authenticated users can fetch and access market data
-  public shared ({ caller }) func fetchCoinGeckoData(endpoint : Text) : async Text {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Debug.trap("Unauthorized: Only users can fetch market data");
-    };
-    let url = "https://api.coingecko.com/api/v3/" # endpoint;
-    await OutCall.httpGetRequest(url, [], transform);
-  };
-
-  public shared ({ caller }) func getMarketData(endpoint : Text) : async Text {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Debug.trap("Unauthorized: Only users can access market data");
-    };
-    let url = "https://api.coingecko.com/api/v3/" # endpoint;
-    await OutCall.httpGetRequest(url, [], transform);
-  };
+  // Market Data Functions - These are now handled by frontend
+  // HTTP outcalls removed - frontend uses CryptoRates.ai/CoinGecko directly
+  // public shared ({ caller }) func fetchCoinGeckoData(endpoint : Text) : async Text - REMOVED
+  // public shared ({ caller }) func getMarketData(endpoint : Text) : async Text - REMOVED
 
   // Market data cache - shared across users but requires authentication to write
   public shared ({ caller }) func cacheMarketData(cacheKey : Text, assets : [MarketAsset]) : async () {

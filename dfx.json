@@ -9,7 +9,7 @@
     "frontend": {
       "type": "assets",
       "source": [
-        "frontend"
+        "frontend/dist"
       ],
       "dependencies": [
         "backend"

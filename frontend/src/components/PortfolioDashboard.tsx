@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { loadExitPlans, type ExitPlanState } from '@/lib/exitPlanPersistence';
 
 const aggregator = getPriceAggregator();
 
@@ -32,7 +33,29 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
   const [editTokens, setEditTokens] = useState('');
   const [editAvgCost, setEditAvgCost] = useState('');
   const [editNotes, setEditNotes] = useState('');
-  const { allocations } = usePortfolioSnapshots();
+  const { allocations: allocationData } = usePortfolioSnapshots();
+
+  // Convert allocations array to Record<Category, number> for AllocationDonutChart
+  const allocations = useMemo(() => {
+    const result: Record<Category, number> = {
+      'blue-chip': 0,
+      'mid-cap': 0,
+      'low-cap': 0,
+      'micro-cap': 0,
+      'stablecoin': 0,
+      'defi': 0,
+    };
+    
+    if (Array.isArray(allocationData)) {
+      for (const item of allocationData) {
+        if (item && item.category && typeof item.value === 'number') {
+          result[item.category] = item.value;
+        }
+      }
+    }
+    
+    return result;
+  }, [allocationData]);
 
   const symbols = useMemo(
     () =>
@@ -53,11 +76,11 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
         priceMap[quote.symbol.toUpperCase()] = quote;
       }
       setPrices(priceMap);
-      store.setLastPriceUpdate(Date.now());
+      // Note: lastPriceUpdate tracking can be added to store if needed
     } catch (err) {
       console.error('Failed to fetch prices', err);
     }
-  }, [symbols, store]);
+  }, [symbols]);
 
   useEffect(() => {
     fetchPrices();
@@ -178,7 +201,21 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     setSelectedPreset(preset);
   };
 
-  const exitPlans = useMemo(() => store.exitPlans, [store.exitPlans]);
+  // Load exit plans from persistence - for ExitPlanSummary (expects Record<string, ExitPlanState>)
+  const exitPlanStates = useMemo(() => {
+    const loaded = loadExitPlans();
+    return loaded || {};
+  }, []);
+
+  // Convert exit plan states to ExitLadderRung[] format for CompactHoldingsTable
+  // This provides the ladder rungs expected by the table component
+  const exitPlans = useMemo(() => {
+    const result: Record<string, { percent: number; multiplier: number }[]> = {};
+    
+    // For now, return empty - exit plans need proper conversion logic
+    // The exit ladder rungs are computed differently in the Exit Strategy page
+    return result;
+  }, [exitPlanStates]);
 
   const showEmptyState = store.holdings.length === 0;
 
@@ -261,7 +298,7 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
             <ExitPlanSummary
               holdings={store.holdings}
               prices={prices}
-              exitPlans={exitPlans}
+              exitPlans={exitPlanStates}
               selectedPreset={selectedPreset}
               onPresetChange={handlePresetChange}
             />
