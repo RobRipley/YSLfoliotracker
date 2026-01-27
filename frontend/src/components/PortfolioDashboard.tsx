@@ -89,8 +89,8 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
 
   const totals = useMemo(() => {
     const totalValue = store.holdings.reduce((sum, holding) => {
-      const price = prices[holding.symbol.toUpperCase()]?.priceUsd ?? holding.avgCostUsd ?? 0;
-      return sum + holding.tokens * price;
+      const price = prices[holding.symbol.toUpperCase()]?.priceUsd ?? holding.avgCost ?? 0;
+      return sum + holding.tokensOwned * price;
     }, 0);
 
     const byCategory: Record<Category, number> = {
@@ -104,9 +104,9 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
 
     for (const holding of store.holdings) {
       const priceData = prices[holding.symbol.toUpperCase()];
-      const price = priceData?.priceUsd ?? holding.avgCostUsd ?? 0;
+      const price = priceData?.priceUsd ?? holding.avgCost ?? 0;
       const marketCap = priceData?.marketCapUsd ?? 0;
-      const value = holding.tokens * price;
+      const value = holding.tokensOwned * price;
       const category = getCategoryForHolding(holding, marketCap);
       byCategory[category] += value;
     }
@@ -266,7 +266,7 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
           </div>
         </Card>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2.4fr)]">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,3.5fr)_minmax(0,1.8fr)]">
           <div className="space-y-4">
             <CompactHoldingsTable
               groups={groups}
@@ -301,7 +301,7 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
               <div className="border-t border-divide/60" />
               <div className="space-y-3 px-4 py-3">
                 <AllocationDonutChart
-                  allocations={allocations}
+                  allocations={totals.byCategory}
                   onSliceClick={handleSliceClick}
                   selectedCategory={selectedCategory}
                 />

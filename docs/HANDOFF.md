@@ -2008,3 +2008,88 @@ $10M-$1B → Low Cap
 - URL: http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
 
 ---
+
+
+---
+
+## Session 7 - Bug Reports & Tasks To Do
+
+### Issues Identified From User Testing (January 27, 2026)
+
+#### 1. Initial Load Shows All Assets as Micro Cap
+- **Issue:** On hard refresh, all 8 positions show as "Micro Cap" initially
+- **After ~1 minute:** Categories correct themselves to Blue Chip, Mid Cap, etc.
+- **Cause:** Likely a race condition - categorization runs before market cap data loads from CoinGecko
+- **Priority:** Low (eventually fix)
+
+#### 2. Donut Chart Not Showing
+- **Issue:** After recent changes, the donut chart stopped rendering entirely
+- **Possible cause:** Changed from `allocations` to `totals.byCategory` but data might not be in correct format
+- **Priority:** High
+
+#### 3. Asset Row Cleanup Needed
+- **Issue:** Each asset row shows redundant info:
+  - Category badge (e.g., "Blue Chip") - redundant since it's inside the category section
+  - Tagline/description (e.g., "Bitcoin - Store of value") - unnecessary
+- **Task:** Remove category badge and tagline from individual asset rows
+- **Task:** Make ticker symbol slightly larger and/or bolder
+- **Priority:** Medium
+
+#### 4. Add Asset Button Not Working
+- **Issue:** Clicking "+ Add Asset" button does nothing
+- **Priority:** High
+
+#### 5. Action Buttons Behaving Oddly
+- **Trash icon:** No immediate feedback, asset disappears after ~60 seconds delay
+- **Edit button:** Not working at all
+- **Lock button:** Purpose unclear - remove it
+- **Priority:** High
+
+#### 6. Notes Column Missing Header
+- **Issue:** When "Notes" column is enabled via Columns menu, there's no column header for it
+- **Priority:** Low
+
+#### 7. 24h % Change Always Shows 0.00%
+- **Issue:** All assets show "0.00% 24h change"
+- **Cause:** Not receiving change data from price providers
+- **Priority:** Medium
+
+#### 8. Popover/Modal Stacking Issues
+- **Issue:** Clicking to open one popover doesn't close other open popovers
+- **Example:** Settings popover stays open when clicking Columns button
+- **Example:** Columns dropdown opens behind the Settings popover
+- **Task:** Clicking outside a popover should close it
+- **Task:** Opening a new popover should close any existing open popovers
+- **Priority:** Medium
+
+### Column Width Changes Made
+- Changed grid from `3fr/2.4fr` to `3.5fr/1.8fr`
+- Left column (positions) is now wider
+- Right column (allocation overview) is narrower
+
+### Donut Chart Data Source Change
+- Changed from `allocations` (from usePortfolioSnapshots) to `totals.byCategory` (calculated from current prices)
+- This may have broken the chart - needs investigation
+
+---
+
+## Tasks Summary (Priority Order)
+
+### HIGH Priority
+1. Fix donut chart not rendering
+2. Fix Add Asset button not working
+3. Fix action buttons (trash delay, edit not working)
+
+### MEDIUM Priority
+4. Remove category badge from asset rows (redundant)
+5. Remove tagline/description from asset rows
+6. Make ticker symbol larger/bolder
+7. Fix 24h % change data (always 0.00%)
+8. Fix popover stacking issues (close on outside click, close when opening another)
+
+### LOW Priority
+9. Fix initial load race condition (all micro cap on refresh)
+10. Remove lock button from actions
+11. Add "Notes" column header when enabled
+
+---
