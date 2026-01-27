@@ -692,13 +692,7 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           </div>
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-1.5">
-              <span className="text-sm font-medium text-foreground/90">{holding.symbol}</span>
-              <Badge
-                variant="outline"
-                className="border-none bg-black/30 px-1.5 py-0 text-[10px] text-muted-foreground"
-              >
-                {CATEGORY_LABELS[category]}
-              </Badge>
+              <span className="text-base font-semibold text-foreground">{holding.symbol}</span>
               {isLocked && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -713,10 +707,6 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
                 </Tooltip>
               )}
             </div>
-            <span className="text-[11px] text-muted-foreground">
-              {(holding.notes || '').slice(0, 80) || 'No notes added'}
-              {holding.notes && holding.notes.length > 80 ? '…' : ''}
-            </span>
           </div>
         </div>
 

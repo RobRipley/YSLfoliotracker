@@ -2369,3 +2369,29 @@ This mismatch caused the edit dialog to crash when trying to access undefined pr
 
 ---
 
+
+### Tasks 4-6: UI Cleanup for Asset Rows - COMPLETED ✅
+
+**Changes Made to `CompactHoldingsTable.tsx`:**
+
+1. **Removed redundant category badge** - The small "Blue Chip" badge next to the ticker was redundant since the asset is already inside the Blue Chip category section.
+
+2. **Removed tagline/description** - Removed the line showing notes like "Solana - High-performance L1" or "No notes added". Notes can still be viewed via the Notes column if enabled.
+
+3. **Made ticker symbol larger/bolder** - Changed from `text-sm font-medium text-foreground/90` to `text-base font-semibold text-foreground` for more prominence.
+
+**Before:**
+```
+[S] SOL  Blue Chip  🔒
+    Solana - High-performance L1
+```
+
+**After:**
+```
+[S] SOL 🔒
+```
+
+Much cleaner and the ticker is now the focus.
+
+---
+
