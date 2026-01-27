@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { usePortfolioStore } from '@/lib/store';
 import { CompactHoldingsTable } from './CompactHoldingsTable';
-import { CategoryAllocationSummary } from './CategoryAllocationSummary';
 import { ExitPlanSummary } from './ExitPlanSummary';
 import { type Category, type Holding, getCategoryForHolding } from '@/lib/dataModel';
 import { getPriceAggregator, type ExtendedPriceQuote } from '@/lib/priceService';
@@ -9,7 +8,7 @@ import { usePortfolioSnapshots } from '@/hooks/usePortfolioSnapshots';
 import { AllocationDonutChart } from './AllocationDonutChart';
 import { CategoryTrendCharts } from './CategoryTrendCharts';
 import { Button } from '@/components/ui/button';
-import { Plus, TrendingUp, Wand2 } from 'lucide-react';
+import { Plus, TrendingUp } from 'lucide-react';
 import { UnifiedAssetModal } from './UnifiedAssetModal';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -236,15 +235,6 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
         <div className="flex items-center gap-2">
           <Button
             size="sm"
-            variant="outline"
-            className="hidden h-9 items-center gap-2 rounded-full border-divide/80 bg-black/30 px-3 text-xs text-muted-foreground transition-smooth hover:bg-black/40 hover:text-foreground md:inline-flex"
-            onClick={() => handlePresetChange(selectedPreset === 'n4' ? 'custom' : 'n4')}
-          >
-            <Wand2 className="h-3.5 w-3.5" />
-            <span>{selectedPreset === 'n4' ? 'Switch to custom ladders' : 'Use N/4 presets'}</span>
-          </Button>
-          <Button
-            size="sm"
             className="h-9 rounded-full bg-gradient-to-r from-primary to-primary/60 px-4 text-xs font-medium shadow-lg shadow-primary/30 transition-smooth hover:shadow-primary/50"
             onClick={handleAddAssetClick}
           >
@@ -295,18 +285,7 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
           </div>
 
           <div className="space-y-4">
-            <CategoryAllocationSummary
-              totals={totals}
-              selectedCategory={selectedCategory}
-              onCategoryChange={setSelectedCategory}
-            />
-            <ExitPlanSummary
-              holdings={store.holdings}
-              prices={prices}
-              exitPlans={exitPlanStates}
-              selectedPreset={selectedPreset}
-              onPresetChange={handlePresetChange}
-            />
+            {/* Allocation Overview - moved to top */}
             <Card className="glass-panel border-divide/80">
               <div className="flex items-center justify-between px-4 py-3">
                 <div className="flex items-center gap-2">
@@ -330,6 +309,14 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
                 <CategoryTrendCharts snapshots={store.snapshots} />
               </div>
             </Card>
+
+            <ExitPlanSummary
+              holdings={store.holdings}
+              prices={prices}
+              exitPlans={exitPlanStates}
+              selectedPreset={selectedPreset}
+              onPresetChange={handlePresetChange}
+            />
           </div>
         </div>
       )}

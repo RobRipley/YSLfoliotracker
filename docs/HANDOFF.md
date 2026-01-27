@@ -1948,3 +1948,63 @@ $10M-$1B → Low Cap
 ```
 
 ---
+
+
+---
+
+## Session 7 (Additional Changes) - January 27, 2026
+
+### UI Cleanup - Right Sidebar Reorganization
+
+#### Changes Made to PortfolioDashboard.tsx:
+
+1. **Removed "Switch to custom ladders" button**
+   - Deleted the Button component with Wand2 icon
+   - Only "Add Asset" button remains in header
+   - Removed unused `Wand2` import from lucide-react
+
+2. **Removed "Allocation by Category" card**
+   - Deleted `CategoryAllocationSummary` component usage
+   - Removed unused import for `CategoryAllocationSummary`
+   - This card was redundant since the donut chart shows the same data
+
+3. **Moved "Allocation overview" to top of right sidebar**
+   - Donut chart and trend charts now appear first
+   - Exit plan overview moved below it
+
+#### Right Sidebar Layout (Before → After):
+
+**Before:**
+1. Allocation by Category (list with $NaN)
+2. Exit plan overview
+3. Allocation overview (donut chart)
+
+**After:**
+1. Allocation overview (donut chart + trends)
+2. Exit plan overview
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `frontend/src/components/PortfolioDashboard.tsx` | Removed custom ladders button, removed CategoryAllocationSummary, reordered sidebar |
+
+### Current State
+
+**Working:**
+- ✅ Cleaner header with just "Add Asset" button
+- ✅ Donut chart at top of sidebar
+- ✅ No more redundant allocation list with $NaN values
+
+**Still Needs Fix:**
+- ❌ "NaN% of portfolio" in asset rows
+- ❌ "Share 0.0%" in category headers
+- ❌ Donut chart may still show incorrect data (needs price/total calculation fix)
+
+### Build Info
+
+- Build output: `dist/assets/index-Ck6iPSDh.js` (780.28 KB)
+- Canister ID: `ulvla-h7777-77774-qaacq-cai`
+- URL: http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
+
+---
