@@ -3972,3 +3972,62 @@ Object.keys(groups).forEach(cat => {
 | `frontend/src/pages/ExitStrategy.tsx` | Added position value sorting to `groupedHoldings` useMemo |
 
 ---
+
+
+---
+
+## Session 15 (continued) - January 28, 2026
+
+### Exit Strategy Conceptual Layer Improvements ✅
+
+**Task:** Add conceptual layer to make the Exit Strategy page immediately understandable and encourage disciplined behavior.
+
+**Goal:** The page should convey: "We are optimizing for discipline - set exit points now when you are not emotional, so when the market is booming you take profits and avoid regret from round-tripping."
+
+### Changes Implemented
+
+#### 1. New Subheader
+**Before:** "Plan your exit ladder for each asset with customizable targets"
+**After:** "Set your exits now, so you can take profits later without emotion."
+
+- Concise, calm, non-marketing
+- Communicates the core philosophy of disciplined profit-taking
+
+#### 2. Summary Status (Top-Right of Page)
+Shows at-a-glance confirmation state:
+- "All 5 assets use templates" (when none customized)
+- "1 of 5 assets edited" (when some customized)
+- "All 5 assets have custom edits" (when all customized)
+
+#### 3. Per-Asset Status Indicators
+Small badge next to each asset symbol:
+- **"TEMPLATE"** - muted gray badge when using Conservative/Aggressive preset
+- **"EDITED"** - amber/yellow badge when using Custom preset
+
+Badge styling:
+```tsx
+planStatus === 'Edited' 
+  ? 'bg-amber-500/10 text-amber-400/80 border border-amber-500/20' 
+  : 'bg-secondary/30 text-muted-foreground/60'
+```
+
+#### 4. Updated Expanded Table Helper Text
+**Before:** "These targets are based on your plan basis (avg cost +10%)."
+**After:** "Each rung is a price target where you'll sell a portion of your position. When the price hits that multiple, sell that percentage."
+
+- Plain English explanation of what rungs represent
+- More actionable guidance
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `frontend/src/pages/ExitStrategy.tsx` | Added planStats useMemo, updated subheader, added status indicators, updated helper text |
+
+### Technical Notes
+
+- `planStats` useMemo must be placed BEFORE any early returns (React hooks rules)
+- Status indicator uses `plan.preset === 'custom'` to determine "Edited" vs "Template"
+- Summary calculation iterates over `exitPlans` object to count custom vs template plans
+
+---

@@ -254,6 +254,9 @@ const AssetRow = memo(({
   // Determine if editing is locked (locked for conservative and aggressive presets)
   const isLocked = plan.preset !== 'custom';
   
+  // Determine plan status for display
+  const planStatus = plan.preset === 'custom' ? 'Edited' : 'Template';
+  
   // Get available strategies based on category
   const strategyOptions = category === 'blue-chip' 
     ? [{ value: 'conservative', label: 'Conservative' }, { value: 'custom', label: 'Custom' }]
@@ -281,6 +284,15 @@ const AssetRow = memo(({
             {/* Symbol - prominent */}
             <div className="font-semibold font-heading text-base w-16">
               {holding.symbol}
+            </div>
+            
+            {/* Plan Status Indicator */}
+            <div className={`text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider font-medium ${
+              planStatus === 'Edited' 
+                ? 'bg-amber-500/10 text-amber-400/80 border border-amber-500/20' 
+                : 'bg-secondary/30 text-muted-foreground/60'
+            }`}>
+              {planStatus}
             </div>
             
             {/* Tokens */}
@@ -382,9 +394,9 @@ const AssetRow = memo(({
             animation: 'expandRow 180ms ease-out'
           }}
         >
-          {/* Helper text */}
+          {/* Helper text - explains what the rungs represent */}
           <div className="text-xs text-muted-foreground/60 mb-3 pl-1">
-            These targets are based on your plan basis ({plan.useBase ? 'avg cost +10%' : 'avg cost'}).
+            Each rung is a price target where you'll sell a portion of your position. When the price hits that multiple, sell that percentage.
           </div>
           
           <div className="overflow-x-auto">
@@ -728,14 +740,30 @@ export function ExitStrategy() {
     return groups;
   }, [prices]);
 
+  // Calculate summary stats for custom vs template plans (must be before early returns)
+  const planStats = useMemo(() => {
+    let customCount = 0;
+    let templateCount = 0;
+    
+    Object.values(exitPlans).forEach(plan => {
+      if (plan.preset === 'custom') {
+        customCount++;
+      } else {
+        templateCount++;
+      }
+    });
+    
+    return { customCount, templateCount, total: customCount + templateCount };
+  }, [exitPlans]);
+
   // Show loading state while fetching initial prices
   if (isLoading && !hasFetchedOnce) {
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold font-heading tracking-tight">Exit Strategy</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Plan your exit ladder for each asset with customizable targets
+          <p className="text-sm text-muted-foreground/70 mt-1">
+            Set your exits now, so you can take profits later without emotion.
           </p>
         </div>
         <Card className="p-12 text-center glass-panel border-divide-lighter/30">
@@ -762,10 +790,22 @@ export function ExitStrategy() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold font-heading tracking-tight">Exit Strategy</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Plan your exit ladder for each asset with customizable targets
+          <p className="text-sm text-muted-foreground/70 mt-1">
+            Set your exits now, so you can take profits later without emotion.
           </p>
         </div>
+        {/* Summary status */}
+        {planStats.total > 0 && (
+          <div className="text-xs text-muted-foreground/60">
+            {planStats.customCount === 0 ? (
+              <span>All {planStats.total} assets use templates</span>
+            ) : planStats.templateCount === 0 ? (
+              <span>All {planStats.total} assets have custom edits</span>
+            ) : (
+              <span>{planStats.customCount} of {planStats.total} assets edited</span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Holdings by Category */}
