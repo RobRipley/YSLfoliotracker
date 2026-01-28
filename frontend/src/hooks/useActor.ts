@@ -45,7 +45,12 @@ const idlFactory = ({ IDL }: { IDL: any }) => {
   });
 };
 
-// Get canister ID from environment or use local default
+// Mainnet backend canister ID
+const IC_BACKEND_CANISTER_ID = 'ranje-7qaaa-aaaas-qdwxq-cai';
+// Local backend canister ID  
+const LOCAL_BACKEND_CANISTER_ID = 'uxrrr-q7777-77774-qaaaq-cai';
+
+// Get canister ID from environment or use defaults
 const getBackendCanisterId = (): string => {
   // Check for environment variable first
   if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_BACKEND_CANISTER_ID) {
@@ -53,18 +58,16 @@ const getBackendCanisterId = (): string => {
   }
   
   // Check if we're on IC mainnet
-  if (typeof window !== 'undefined' && window.location.hostname.endsWith('.ic0.app')) {
-    // Parse canister ID from URL for IC deployment
-    const match = window.location.hostname.match(/^([a-z0-9-]+)\.ic0\.app$/);
-    if (match) {
-      // This is the frontend canister ID, we need the backend one
-      // For now, use a placeholder - this should be configured properly
-      console.warn('[Actor] Running on IC but backend canister ID not configured');
+  if (typeof window !== 'undefined') {
+    if (window.location.hostname.endsWith('.ic0.app') || 
+        window.location.hostname.endsWith('.icp0.io')) {
+      console.log('[Actor] Running on IC mainnet, using backend:', IC_BACKEND_CANISTER_ID);
+      return IC_BACKEND_CANISTER_ID;
     }
   }
   
   // Default to local canister ID
-  return 'uxrrr-q7777-77774-qaaaq-cai';
+  return LOCAL_BACKEND_CANISTER_ID;
 };
 
 // Get the IC host based on environment

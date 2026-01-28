@@ -15,12 +15,13 @@ interface LayoutProps {
   onEnterPortfolio: () => void;
 }
 
-// Storage key for tracking if first login prompt was shown
+// Storage keys
 const FIRST_LOGIN_PROMPTED_KEY = 'ysl-first-login-prompted';
+const LOCAL_PROFILE_KEY = 'ysl-local-profile';
 
 export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: LayoutProps) {
   const { login, clear, identity, principal, isLoggingIn, loginStatus } = useInternetIdentity();
-  const { actor, isFetching: actorFetching } = useActor();
+  const { actor, isFetching: actorFetching, error: actorError } = useActor();
   const queryClient = useQueryClient();
   const isAuthenticated = identity !== null && principal !== null && principal !== '2vxsx-fae';
 
@@ -30,38 +31,76 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
   const [showNamePrompt, setShowNamePrompt] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [useLocalStorage, setUseLocalStorage] = useState(false);
 
-  // Load profile when actor is ready
+  // Load profile when actor is ready OR fall back to localStorage
   useEffect(() => {
     const loadProfile = async () => {
-      if (!actor || !isAuthenticated) {
+      if (!isAuthenticated || !principal) {
         setProfile(null);
         return;
       }
 
       setIsLoadingProfile(true);
-      try {
-        const result = await actor.get_profile();
-        if (result && result.length > 0) {
-          setProfile(result[0]);
-          console.log('[Layout] Profile loaded:', result[0]);
-        } else {
-          // No profile exists - check if we should show prompt
-          const wasPrompted = localStorage.getItem(`${FIRST_LOGIN_PROMPTED_KEY}-${principal}`);
-          if (!wasPrompted) {
-            console.log('[Layout] No profile found, showing name prompt');
-            setShowNamePrompt(true);
+      
+      // First try to load from localStorage (fast)
+      const localProfileKey = `${LOCAL_PROFILE_KEY}-${principal}`;
+      const localProfile = localStorage.getItem(localProfileKey);
+      if (localProfile) {
+        try {
+          const parsed = JSON.parse(localProfile);
+          setProfile(parsed);
+          console.log('[Layout] Profile loaded from localStorage:', parsed);
+        } catch (e) {
+          console.warn('[Layout] Failed to parse local profile:', e);
+        }
+      }
+
+      // Then try to load from backend (if actor is available)
+      if (actor) {
+        try {
+          const result = await actor.get_profile();
+          if (result && result.length > 0) {
+            setProfile(result[0]);
+            // Sync to localStorage
+            localStorage.setItem(localProfileKey, JSON.stringify(result[0]));
+            console.log('[Layout] Profile loaded from backend:', result[0]);
+            setUseLocalStorage(false);
+          } else {
+            // No profile exists on backend - check if we should show prompt
+            const wasPrompted = localStorage.getItem(`${FIRST_LOGIN_PROMPTED_KEY}-${principal}`);
+            if (!wasPrompted && !localProfile) {
+              console.log('[Layout] No profile found, showing name prompt');
+              setShowNamePrompt(true);
+            }
+          }
+        } catch (error) {
+          console.error('[Layout] Failed to load profile from backend, using localStorage fallback:', error);
+          setUseLocalStorage(true);
+          // Show a one-time warning toast if actor fails
+          if (!localProfile) {
+            // No local profile either - check if we should show prompt
+            const wasPrompted = localStorage.getItem(`${FIRST_LOGIN_PROMPTED_KEY}-${principal}`);
+            if (!wasPrompted) {
+              setShowNamePrompt(true);
+            }
           }
         }
-      } catch (error) {
-        console.error('[Layout] Failed to load profile:', error);
-      } finally {
-        setIsLoadingProfile(false);
+      } else if (actorError) {
+        console.log('[Layout] No actor available, using localStorage fallback');
+        setUseLocalStorage(true);
+        // Check if we should show prompt
+        const wasPrompted = localStorage.getItem(`${FIRST_LOGIN_PROMPTED_KEY}-${principal}`);
+        if (!wasPrompted && !localProfile) {
+          setShowNamePrompt(true);
+        }
       }
+      
+      setIsLoadingProfile(false);
     };
 
     loadProfile();
-  }, [actor, isAuthenticated, principal]);
+  }, [actor, actorError, isAuthenticated, principal]);
 
   // Watch for successful login and transition to portfolio
   useEffect(() => {
@@ -77,6 +116,7 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
     if (isAuthenticated) {
       await clear();
       setProfile(null);
+      setUseLocalStorage(false);
       // Clear all cached data on logout
       queryClient.clear();
       // Navigate to landing
@@ -92,49 +132,88 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
   };
 
   const handleSaveProfile = useCallback(async (firstName: string, lastName: string) => {
-    if (!actor) return;
+    if (!principal) return;
 
     setIsSavingProfile(true);
-    try {
-      const updatedProfile = await actor.upsert_profile(firstName, lastName);
-      setProfile(updatedProfile);
-      setShowNamePrompt(false);
-      setIsEditMode(false);
-      
-      // Mark that we've prompted this user
-      if (principal) {
-        localStorage.setItem(`${FIRST_LOGIN_PROMPTED_KEY}-${principal}`, 'true');
+    
+    const newProfile: UserProfile = {
+      firstName,
+      lastName,
+      updatedAt: BigInt(Date.now() * 1000000), // nanoseconds
+    };
+
+    // Try to save to backend first
+    if (actor && !useLocalStorage) {
+      try {
+        const updatedProfile = await actor.upsert_profile(firstName, lastName);
+        setProfile(updatedProfile);
+        // Also save to localStorage as backup
+        const localProfileKey = `${LOCAL_PROFILE_KEY}-${principal}`;
+        localStorage.setItem(localProfileKey, JSON.stringify(updatedProfile));
+        console.log('[Layout] Profile saved to backend');
+      } catch (error) {
+        console.error('[Layout] Failed to save profile to backend, using localStorage:', error);
+        setUseLocalStorage(true);
+        // Fall through to localStorage save
       }
-      
-      toast.success(firstName || lastName ? 'Name saved!' : 'Profile updated');
-    } catch (error) {
-      console.error('[Layout] Failed to save profile:', error);
-      toast.error('Failed to save name. Please try again.');
-    } finally {
-      setIsSavingProfile(false);
     }
-  }, [actor, principal]);
+    
+    // Save to localStorage (either as primary or as fallback)
+    if (useLocalStorage || !actor) {
+      const localProfileKey = `${LOCAL_PROFILE_KEY}-${principal}`;
+      localStorage.setItem(localProfileKey, JSON.stringify(newProfile));
+      setProfile(newProfile);
+      console.log('[Layout] Profile saved to localStorage');
+    }
+    
+    setShowNamePrompt(false);
+    setIsEditMode(false);
+    
+    // Mark that we've prompted this user
+    localStorage.setItem(`${FIRST_LOGIN_PROMPTED_KEY}-${principal}`, 'true');
+    
+    toast.success(firstName || lastName ? 'Name saved!' : 'Profile updated');
+    setIsSavingProfile(false);
+  }, [actor, principal, useLocalStorage]);
 
   const handleSkipProfile = useCallback(async () => {
-    if (!actor) return;
+    if (!principal) return;
 
     setIsSavingProfile(true);
-    try {
-      // Save empty profile to prevent nagging
-      const updatedProfile = await actor.upsert_profile('', '');
-      setProfile(updatedProfile);
-      setShowNamePrompt(false);
-      
-      // Mark that we've prompted this user
-      if (principal) {
-        localStorage.setItem(`${FIRST_LOGIN_PROMPTED_KEY}-${principal}`, 'true');
+    
+    const emptyProfile: UserProfile = {
+      firstName: '',
+      lastName: '',
+      updatedAt: BigInt(Date.now() * 1000000),
+    };
+
+    // Try backend first
+    if (actor && !useLocalStorage) {
+      try {
+        const updatedProfile = await actor.upsert_profile('', '');
+        setProfile(updatedProfile);
+        const localProfileKey = `${LOCAL_PROFILE_KEY}-${principal}`;
+        localStorage.setItem(localProfileKey, JSON.stringify(updatedProfile));
+      } catch (error) {
+        console.error('[Layout] Failed to skip profile via backend, using localStorage:', error);
+        setUseLocalStorage(true);
       }
-    } catch (error) {
-      console.error('[Layout] Failed to skip profile:', error);
-    } finally {
-      setIsSavingProfile(false);
     }
-  }, [actor, principal]);
+    
+    // Save to localStorage
+    if (useLocalStorage || !actor) {
+      const localProfileKey = `${LOCAL_PROFILE_KEY}-${principal}`;
+      localStorage.setItem(localProfileKey, JSON.stringify(emptyProfile));
+      setProfile(emptyProfile);
+    }
+    
+    setShowNamePrompt(false);
+    
+    // Mark that we've prompted this user
+    localStorage.setItem(`${FIRST_LOGIN_PROMPTED_KEY}-${principal}`, 'true');
+    
+    setIsSavingProfile(false);
+  }, [actor, principal, useLocalStorage]);
 
   const handleEditName = () => {
     setIsEditMode(true);
