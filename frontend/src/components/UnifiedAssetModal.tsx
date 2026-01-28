@@ -270,7 +270,7 @@ export function UnifiedAssetModal({
         </DialogHeader>
         
         <div className="space-y-4 py-4">
-          {/* Quick Add Toggle */}
+          {/* Quick Add Toggle - HIDDEN: needs UX rework, see handoff.md LOW PRIORITY section
           <div className="flex items-center justify-between p-2 rounded-lg bg-muted/30 border border-divide/30">
             <div className="flex flex-col">
               <Label htmlFor="quick-add-toggle" className="text-sm font-medium cursor-pointer">
@@ -286,6 +286,7 @@ export function UnifiedAssetModal({
               onCheckedChange={setQuickAddMode}
             />
           </div>
+          */}
 
           {/* Symbol Input */}
           <div>

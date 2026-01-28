@@ -3485,3 +3485,99 @@ git push origin main
 ```
 
 ---
+
+
+---
+
+## LOW PRIORITY: Quick Add Feature - Incomplete/Needs Rework
+
+### 1. Original Intent/Spec
+
+**Quick Add mode** was supposed to:
+- Keep the modal open after saving an asset
+- Auto-focus the Symbol input after each save for rapid keyboard entry
+- Support keyboard-first workflow: Enter in Symbol → focus Tokens, Enter in Tokens → submit
+- Work alongside "Add & Add Another" button
+
+**"Add & Add Another"** is the button that:
+- Saves the current asset
+- Keeps modal open
+- Resets per-asset fields (symbol, tokens, notes)
+- Preserves reusable fields (date, price mode)
+
+The **Quick Add toggle** was meant to enhance this with automatic Enter-key submission behavior.
+
+### 2. What Was Actually Implemented
+
+**UI Components Added:**
+- `Switch` component toggle at top of modal with label "Quick Add"
+- Helper text: "Keep modal open and focus Asset for rapid entry"
+- "Add & Add Another" button (works correctly)
+- State variable: `quickAddMode` in UnifiedAssetModal
+
+**What IS working:**
+- "Add & Add Another" button correctly keeps modal open and resets fields
+- Focus returns to Symbol input after add
+- Toast notification appears
+- Date persists between entries
+
+**What is NOT working/implemented:**
+- Quick Add toggle visual feedback is too subtle (hard to see state change)
+- No autocomplete/dropdown suggestions while typing symbols
+- No CoinGecko search integration
+- The toggle state doesn't meaningfully change behavior beyond what "Add & Add Another" already does
+
+### 3. Observed UX Issues
+
+- Toggle appears static/too dark - hard to tell if it's on or off
+- No dropdown suggestions when typing in Symbol field (user must know exact ticker)
+- The distinction between "Quick Add ON" vs just using "Add & Add Another" is unclear
+- Enter-key submission in Quick Add mode may not be intuitive without visual cues
+
+### 4. Root Cause Analysis
+
+**Why no autocomplete dropdown:**
+- Was never in scope for this task - the spec focused on "keep modal open" workflow
+- Would require: CoinGecko search API integration, debounced input, dropdown component, result caching
+- No autocomplete component exists in the codebase
+
+**Toggle visual issues:**
+- Switch uses `bg-muted` (off) vs `bg-primary` (on) - both are subtle on dark theme
+- The `bg-primary` color may not have enough contrast
+
+### 5. Code Pointers
+
+| Location | What's There |
+|----------|--------------|
+| `frontend/src/components/UnifiedAssetModal.tsx` | Main modal with Quick Add logic |
+| `frontend/src/components/ui/switch.tsx` | Toggle component |
+| `quickAddMode` state (line ~43) | Controls whether Enter-key shortcuts are active |
+| `submitHolding(keepOpen: boolean)` | Shared save function |
+| `resetForNextEntry()` | Clears per-asset fields after add |
+| `handleTokensKeyDown()` | Enter key handler that checks `quickAddMode` |
+
+### 6. Next Steps (When Revisiting)
+
+**To fix Quick Add toggle visibility:**
+1. Increase contrast: change `bg-primary` to a brighter color when checked
+2. Or add a checkmark icon inside the toggle
+3. Or replace with a more visible checkbox
+
+**To add CoinGecko autocomplete (future feature):**
+1. Add CoinGecko search endpoint: `https://api.coingecko.com/api/v3/search?query={term}`
+2. Create `AssetSearchInput` component with debounced input (300ms)
+3. Show dropdown with coin name, symbol, and logo
+4. On select: populate symbol field, optionally fetch current price
+5. Cache search results to reduce API calls
+
+**To test current implementation:**
+1. Open Add Asset modal
+2. Click "Add & Add Another" - should keep modal open
+3. Verify symbol/tokens clear but date persists
+4. Toggle Quick Add on, type symbol, press Enter in Tokens field - should auto-submit
+
+### 7. Immediate Action: Hide Quick Add UI
+
+The Quick Add toggle should be hidden until properly implemented. The "Add & Add Another" button alone provides the core rapid-entry functionality.
+
+---
