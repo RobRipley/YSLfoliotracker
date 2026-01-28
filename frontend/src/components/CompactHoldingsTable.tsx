@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { ChevronDown, ChevronRight, Edit, Trash2, Lock, Unlock, Info, Settings, Target, Plus, Pencil, Check, Loader2, DollarSign } from 'lucide-react';
+import { ChevronDown, ChevronRight, Edit, Trash2, Info, Settings, Target, Plus, Pencil, Check, Loader2, DollarSign } from 'lucide-react';
 import { type Holding, type Category, valueUsd, share } from '@/lib/dataModel';
 import { type ExtendedPriceQuote } from '@/lib/priceService';
 import { saveUIPreferences, loadUIPreferences } from '@/lib/uiPreferences';
@@ -170,6 +170,9 @@ function formatUsd(value: number, decimals = 2): string {
 }
 
 function formatPercent(value: number, decimals = 1): string {
+  if (!Number.isFinite(value) || Number.isNaN(value)) {
+    return '0.0%';
+  }
   return `${value.toFixed(decimals)}%`;
 }
 
@@ -204,6 +207,7 @@ function formatTokens(amount: number): string {
   return amount.toExponential(2);
 }
 
+
 const CompactHoldingsTable = memo(function CompactHoldingsTable({
   groups,
   prices,
@@ -225,7 +229,6 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
   // Default hidden columns: only "Exit Ladder" and "Notes"
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => {
     const prefs = loadUIPreferences();
-    // If no preferences saved, default to hiding only ladder and notes
     return new Set(prefs.hiddenColumns.length > 0 ? prefs.hiddenColumns : ['ladder', 'notes']);
   });
 
@@ -245,21 +248,17 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
 
   const handleCashSave = useCallback(() => {
     const newCash = parseFloat(cashInput);
-    // Validate: disallow negative or invalid values
     if (isNaN(newCash) || newCash < 0 || cashInput.trim() === '') {
-      // Revert to previous value
       setCashInput(previousCash.toString());
       setIsEditingCash(false);
       return;
     }
     
-    // Only save if value changed
     if (newCash !== previousCash) {
       setCashSaveStatus('saving');
       onUpdateCash(newCash);
       setPreviousCash(newCash);
       
-      // Show saved indicator briefly
       setTimeout(() => {
         setCashSaveStatus('saved');
         setTimeout(() => {
@@ -284,7 +283,6 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
   }, [handleCashSave, handleCashCancel]);
 
   const handleCashBlur = useCallback(() => {
-    // Save on blur if changed
     handleCashSave();
   }, [handleCashSave]);
 
@@ -293,13 +291,28 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
     setIsEditingCash(true);
   }, [cash]);
 
-  // Format currency with commas, no decimals unless user entered them
   const formatCashDisplay = (value: number): string => {
     if (Number.isInteger(value)) {
       return `$${value.toLocaleString()}`;
     }
     return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
+
+  // Calculate cash share of portfolio
+  const cashShare = useMemo(() => {
+    const totalValue = totals.totalValue || 0;
+    if (totalValue === 0) return 0;
+    return (cash / totalValue) * 100;
+  }, [cash, totals.totalValue]);
+
+  // Calculate stablecoins-only value (excluding cash)
+  const stablecoinsOnlyValue = useMemo(() => {
+    const holdings = groups['stablecoin'] || [];
+    return holdings.reduce((total, holding) => {
+      const price = prices[holding.symbol]?.priceUsd ?? holding.avgCost ?? 0;
+      return total + valueUsd(holding, price);
+    }, 0);
+  }, [groups, prices]);
 
   const categoryTotals = useMemo(() => {
     const result: Record<Category, { value: number; share: number }> = {} as any;
@@ -398,6 +411,7 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
     const totalPercent = rungs.reduce((sum, rung) => sum + rung.percent, 0);
     return `${Math.round(totalPercent)}% of position, weighted avg ${avgMultiplier.toFixed(2)}×`;
   };
+
 
   const renderExitLadderPill = (holding: Holding, category: Category) => {
     const rungs = getHoldingExitPlan(holding, category);
@@ -521,131 +535,13 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
     );
   };
 
-  const renderLadderPreviewChip = (category: Category) => {
-    const rungs = getCategoryExitPlan(category);
-    const color = ladderColor(category);
-    const ringColor = ladderRingColor(category);
-    const bgColor = ladderBgColor(category);
-    const borderColor = ladderBorderColor(category);
-    const gradientId = `ladder-ring-category-${category}`;
-
-    return (
-      <Popover>
-        <PopoverTrigger>
-          <button
-            className="group flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[10px] font-medium transition-smooth"
-            style={{
-              background: bgColor,
-              border: `1px solid ${borderColor}`,
-              boxShadow: '0 6px 18px rgba(0,0,0,0.35)'
-            }}
-            type="button"
-          >
-            <span className="relative flex items-center justify-center">
-              <svg width="22" height="22" viewBox="0 0 32 32" className="transition-transform group-hover:scale-105">
-                <defs>
-                  <radialGradient id={gradientId} cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" stopColor={color} stopOpacity="0.9" />
-                    <stop offset="65%" stopColor={color} stopOpacity="0.3" />
-                    <stop offset="100%" stopColor={color} stopOpacity="0" />
-                  </radialGradient>
-                </defs>
-                <circle cx="16" cy="16" r="11" fill={ringColor} />
-                <circle cx="16" cy="16" r="10" fill="transparent" stroke={color} strokeWidth="1.2" />
-                <circle
-                  cx="16"
-                  cy="16"
-                  r="6"
-                  fill={`url(#${gradientId})`}
-                  stroke={color}
-                  strokeWidth="0.6"
-                  style={{ filter: 'drop-shadow(0 0 4px rgba(0,0,0,0.5))' }}
-                />
-              </svg>
-              <Target className="absolute inset-0 m-auto h-3 w-3 text-white/80 opacity-70" />
-            </span>
-            <span className="flex flex-col items-start">
-              <span className="text-[10px] font-semibold tracking-wide text-primary-foreground/90">
-                N/4 Ladder
-              </span>
-              <span className="text-[9px] text-primary-foreground/60">
-                {formatLadderSummary(rungs)}
-              </span>
-            </span>
-          </button>
-        </PopoverTrigger>
-        <PopoverContent className="w-[360px] glass-panel border-divide/50 backdrop-blur-lg">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <div
-                className="flex h-7 w-7 items-center justify-center rounded-full"
-                style={{ backgroundColor: ladderCapsuleBg(category), border: `1px solid ${ladderCapsuleBorder(category)}` }}
-              >
-                <Target className="h-3.5 w-3.5" style={{ color }} />
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-foreground/80">
-                  {CATEGORY_LABELS[category]} Exit Ladder Preset
-                </div>
-                <div className="text-[11px] text-muted-foreground">
-                  {formatLadderSummary(rungs)}
-                </div>
-              </div>
-            </div>
-          </div>
-          {rungs.length ? (
-            <div className="space-y-2">
-              {rungs.map((rung, idx) => (
-                <div
-                  key={idx}
-                  className="glass-panel flex items-center justify-between rounded-lg border border-divide/60 px-3 py-2 text-xs hover:border-divide transition-smooth"
-                >
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold"
-                      style={{
-                        backgroundColor: ladderCapsuleBg(category),
-                        border: `1px solid ${ladderCapsuleBorder(category)}`,
-                        color
-                      }}
-                    >
-                      {idx + 1}
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="font-medium text-foreground/90">
-                        Sell {rung.percent.toFixed(0)}% at {rung.multiplier.toFixed(2)}×
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        Target: {formatPrice(rung.targetPrice)}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Badge
-                      variant="outline"
-                      className="border-none bg-emerald-500/10 text-[10px] text-emerald-400"
-                    >
-                      Preset
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-lg border border-dashed border-divide/60 bg-muted/40 px-3 py-4 text-center text-xs text-muted-foreground/80">
-              No default ladder defined yet for this category. Configure strategies in the Exit Strategy tab.
-            </div>
-          )}
-        </PopoverContent>
-      </Popover>
-    );
-  };
 
   const renderCategoryHeader = (category: Category) => {
     const total = categoryTotals[category] || { value: 0, share: 0 };
     const isExpanded = expandedCategories.has(category);
     const color = categoryColor(category);
     const accentColor = categoryAccentColor(category);
+    const holdingsCount = groups[category]?.length ?? 0;
 
     return (
       <div
@@ -680,7 +576,7 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
               variant="outline"
               className="border-none bg-black/30 px-1.5 py-0 text-[10px] text-muted-foreground"
             >
-              {groups[category]?.length ?? 0} positions
+              {holdingsCount} positions
             </Badge>
             <span className="h-3 w-px bg-divide/40" />
             <span className="text-xs text-muted-foreground/80">
@@ -761,17 +657,18 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
     );
   };
 
+
+  // Standard holding row for non-stablecoin categories - WITH lock removed, Edit/Delete only
   const renderHoldingRow = (holding: Holding, category: Category) => {
     const price = prices[holding.symbol]?.priceUsd ?? holding.avgCost ?? 0;
     const value = valueUsd(holding, price);
     const posShare = share(value, totals.totalValue);
     const percentChange = 0; // Not available in current ExtendedPriceQuote
-    const isLocked = holding.categoryLocked ?? false;
 
     return (
       <div
         key={holding.id}
-        className="grid grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto] items-center gap-3 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth"
+        className="group grid grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto] items-center gap-3 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth"
       >
         <div className="flex items-center gap-3">
           <div
@@ -783,19 +680,6 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-1.5">
               <span className="text-base font-semibold text-foreground">{holding.symbol}</span>
-              {isLocked && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
-                      <Lock className="h-3 w-3" />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent className="glass-panel border-divide/60 text-[11px] leading-relaxed">
-                    This position is locked. It will remain in place even if you rebalance other parts of the
-                    portfolio.
-                  </TooltipContent>
-                </Tooltip>
-              )}
             </div>
           </div>
         </div>
@@ -864,73 +748,42 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
         )}
 
         {!isColumnHidden('actions') && (
-          <div className="flex items-center justify-end gap-2">
-            <Tooltip>
-              <TooltipTrigger>
-                <button
-                  className={cn(
-                    'h-7 w-7 rounded-full border border-divide/80 bg-black/20 text-muted-foreground transition-smooth hover:bg-black/40 hover:text-foreground',
-                    isLocked && 'border-emerald-500/60 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
-                  )}
-                  onClick={() => handleToggleLock(holding)}
-                  type="button"
-                >
-                  {isLocked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent className="glass-panel border-divide/60 text-[11px] leading-relaxed">
-                {isLocked
-                  ? 'Unlock this position so it can be adjusted when you rebalance.'
-                  : 'Lock this position to keep it fixed while adjusting others.'}
-              </TooltipContent>
-            </Tooltip>
+          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            {/* Edit button - neutral subtle circle */}
+            <button
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divide/80 bg-black/20 text-muted-foreground transition-smooth hover:bg-black/40 hover:text-foreground"
+              onClick={() => handleEditHolding(holding)}
+              type="button"
+            >
+              <Edit className="block h-4 w-4" />
+            </button>
 
-            <Tooltip>
-              <TooltipTrigger>
-                <button
-                  className="h-7 w-7 rounded-full border border-divide/80 bg-black/20 text-muted-foreground transition-smooth hover:bg-black/40 hover:text-foreground"
-                  onClick={() => handleEditHolding(holding)}
-                  type="button"
-                >
-                  <Edit className="h-3.5 w-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent className="glass-panel border-divide/60 text-[11px]">
-                Edit this position
-              </TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger>
-                <button
-                  className="h-7 w-7 rounded-full border border-rose-500/60 bg-rose-500/10 text-rose-300 transition-smooth hover:bg-rose-500/20 hover:text-rose-200"
-                  onClick={() => handleRemoveHolding(holding)}
-                  type="button"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent className="glass-panel border-divide/60 text-[11px]">
-                Remove this position
-              </TooltipContent>
-            </Tooltip>
+            {/* Delete button - red-tinted subtle circle */}
+            <button
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-rose-500/40 bg-rose-500/10 text-rose-400 transition-smooth hover:bg-rose-500/20 hover:text-rose-300"
+              onClick={() => handleRemoveHolding(holding)}
+              type="button"
+            >
+              <Trash2 className="block h-4 w-4" />
+            </button>
           </div>
         )}
       </div>
     );
   };
 
-  // Simplified row for stablecoin assets - only shows Symbol, Price, Tokens, Value, Actions
+
+  // Stablecoin row - NOW uses standard full column layout like other assets
   const renderStablecoinRow = (holding: Holding) => {
-    const price = prices[holding.symbol]?.priceUsd ?? holding.avgCost ?? 0;
+    const price = prices[holding.symbol]?.priceUsd ?? holding.avgCost ?? 1;
     const value = valueUsd(holding, price);
     const posShare = share(value, totals.totalValue);
-    const isLocked = holding.categoryLocked ?? false;
+    const percentChange = 0;
 
     return (
       <div
         key={holding.id}
-        className="grid grid-cols-[2fr_1.2fr_1.2fr_1.4fr_auto] items-center gap-3 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth"
+        className="group grid grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto] items-center gap-3 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth"
       >
         {/* Symbol */}
         <div className="flex items-center gap-3">
@@ -943,84 +796,161 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-1.5">
               <span className="text-base font-semibold text-foreground">{holding.symbol}</span>
-              {isLocked && (
-                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
-                  <Lock className="h-3 w-3" />
-                </span>
-              )}
             </div>
           </div>
         </div>
 
         {/* Price */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/90">{formatPrice(price)}</div>
-          <div className="text-[11px] text-muted-foreground/80">Live price</div>
-        </div>
+        {!isColumnHidden('price') && (
+          <div className="text-sm">
+            <div className="font-mono text-foreground/90">{formatPrice(price)}</div>
+            <div className="text-[11px] text-muted-foreground/80">Live price</div>
+          </div>
+        )}
 
         {/* Tokens */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/90">{formatTokens(holding.tokensOwned)}</div>
-          <div className="text-[11px] text-muted-foreground/80">Tokens</div>
-        </div>
+        {!isColumnHidden('tokens') && (
+          <div className="text-sm">
+            <div className="font-mono text-foreground/90">{formatTokens(holding.tokensOwned)}</div>
+            <div className="text-[11px] text-muted-foreground/80">Tokens</div>
+          </div>
+        )}
 
         {/* Value */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/90">{formatUsd(value)}</div>
-          <div className="text-[11px] text-muted-foreground/80">
-            {formatPercent(posShare, 1)} of portfolio
+        {!isColumnHidden('value') && (
+          <div className="text-sm">
+            <div className="font-mono text-foreground/90">{formatUsd(value)}</div>
+            <div className="text-[11px] text-muted-foreground/80">
+              {formatPercent(posShare, 1)} of portfolio
+            </div>
+          </div>
+        )}
+
+        {/* Avg Cost - show dash for stablecoins */}
+        {!isColumnHidden('avgCost') && (
+          <div className="text-sm">
+            <div className="font-mono text-muted-foreground">—</div>
+            <div className="text-[11px] text-muted-foreground/80">N/A</div>
+          </div>
+        )}
+
+        {/* 24h Change - show dash for stablecoins */}
+        {!isColumnHidden('%change') && (
+          <div className="text-sm">
+            <div className="font-mono text-muted-foreground">—</div>
+            <div className="text-[11px] text-muted-foreground/80">24h change</div>
+          </div>
+        )}
+
+        {/* Exit Ladder - empty for stablecoins */}
+        {!isColumnHidden('ladder') && (
+          <div className="text-[11px] text-muted-foreground/60">
+            No exit ladder
+          </div>
+        )}
+
+        {/* Actions - Edit and Delete only */}
+        {!isColumnHidden('actions') && (
+          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divide/80 bg-black/20 text-muted-foreground transition-smooth hover:bg-black/40 hover:text-foreground"
+              onClick={() => handleEditHolding(holding)}
+              type="button"
+            >
+              <Edit className="block h-4 w-4" />
+            </button>
+
+            <button
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-rose-500/40 bg-rose-500/10 text-rose-400 transition-smooth hover:bg-rose-500/20 hover:text-rose-300"
+              onClick={() => handleRemoveHolding(holding)}
+              type="button"
+            >
+              <Trash2 className="block h-4 w-4" />
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+
+  // Cash Balance Row - skinny, single-line label, big green value, share to the right
+  const renderCashBalanceRow = () => {
+    const cashShareValue = cashShare;
+
+    return (
+      <div 
+        className="flex items-center justify-between rounded-lg border border-teal-500/20 px-3 py-2"
+        style={{
+          background: 'linear-gradient(135deg, rgba(20, 184, 166, 0.06) 0%, rgba(15, 118, 110, 0.02) 100%)',
+        }}
+      >
+        {/* Left side: Icon + Label + Badge + Subtitle */}
+        <div className="flex items-center gap-3">
+          <div 
+            className="flex h-7 w-7 items-center justify-center rounded-full shadow-md"
+            style={{
+              background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)',
+              boxShadow: '0 2px 8px rgba(20, 184, 166, 0.25)',
+            }}
+          >
+            <DollarSign className="h-3.5 w-3.5 text-white" />
+          </div>
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-foreground/90">Cash Balance</span>
+              <span 
+                className="rounded-full px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-wider"
+                style={{
+                  background: 'rgba(20, 184, 166, 0.15)',
+                  color: '#2dd4bf',
+                  border: '1px solid rgba(20, 184, 166, 0.25)',
+                }}
+              >
+                Manual
+              </span>
+            </div>
+            <span className="text-[10px] text-muted-foreground/50">Dry powder</span>
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center justify-end gap-2">
-          <Tooltip>
-            <TooltipTrigger>
-              <button
-                className={cn(
-                  'h-7 w-7 rounded-full border border-divide/80 bg-black/20 text-muted-foreground transition-smooth hover:bg-black/40 hover:text-foreground',
-                  isLocked && 'border-emerald-500/60 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
-                )}
-                onClick={() => handleToggleLock(holding)}
-                type="button"
-              >
-                {isLocked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent className="glass-panel border-divide/60 text-[11px] leading-relaxed">
-              {isLocked ? 'Unlock this position' : 'Lock this position'}
-            </TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger>
-              <button
-                className="h-7 w-7 rounded-full border border-divide/80 bg-black/20 text-muted-foreground transition-smooth hover:bg-black/40 hover:text-foreground"
-                onClick={() => handleEditHolding(holding)}
-                type="button"
-              >
-                <Edit className="h-3.5 w-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent className="glass-panel border-divide/60 text-[11px]">
-              Edit this position
-            </TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger>
-              <button
-                className="h-7 w-7 rounded-full border border-rose-500/60 bg-rose-500/10 text-rose-300 transition-smooth hover:bg-rose-500/20 hover:text-rose-200"
-                onClick={() => handleRemoveHolding(holding)}
-                type="button"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent className="glass-panel border-divide/60 text-[11px]">
-              Remove this position
-            </TooltipContent>
-          </Tooltip>
+        {/* Right side: Editable value + share % */}
+        <div className="flex items-center gap-3">
+          {isEditingCash ? (
+            <div className="flex items-center">
+              <span className="text-lg font-bold text-emerald-400 mr-0.5">$</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={cashInput}
+                onChange={(e) => setCashInput(e.target.value)}
+                onKeyDown={handleCashKeyDown}
+                onBlur={handleCashBlur}
+                autoFocus
+                className="w-28 bg-transparent text-lg font-bold text-emerald-400 outline-none border-b-2 border-emerald-400/50 focus:border-emerald-400 transition-colors"
+                placeholder="0"
+              />
+              {cashSaveStatus === 'saving' && (
+                <Loader2 className="ml-2 h-4 w-4 text-emerald-400 animate-spin" />
+              )}
+              {cashSaveStatus === 'saved' && (
+                <Check className="ml-2 h-4 w-4 text-emerald-400" />
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={startCashEdit}
+              className="group flex items-center gap-2 rounded-md px-2 py-1 hover:bg-white/5 transition-colors cursor-text"
+            >
+              <span className="text-lg font-bold text-emerald-400 group-hover:underline group-hover:decoration-emerald-400/40 group-hover:underline-offset-2 transition-all">
+                {formatCashDisplay(cash)}
+              </span>
+              <Pencil className="h-3.5 w-3.5 text-emerald-400/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+            </button>
+          )}
+          <span className="text-xs text-muted-foreground/60 whitespace-nowrap">
+            {formatPercent(cashShareValue, 1)} of portfolio
+          </span>
         </div>
       </div>
     );
@@ -1068,6 +998,7 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
     );
   };
 
+
   return (
     <Card className="glass-panel border-divide/80 shadow-[0_22px_60px_rgba(0,0,0,0.75)]">
       <div className="flex items-center justify-between px-4 pb-2 pt-3">
@@ -1108,13 +1039,14 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
             </PopoverContent>
           </Popover>
 
+          {/* Add Asset CTA - Strong purple button */}
           {onAddAsset && (
             <button
               type="button"
               onClick={onAddAsset}
-              className="flex h-7 items-center gap-1.5 rounded-full bg-gradient-to-r from-primary to-primary/60 px-3 text-[11px] font-medium text-primary-foreground shadow-lg shadow-primary/30 transition-smooth hover:shadow-primary/50"
+              className="flex h-9 items-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 via-purple-500 to-violet-500 px-4 text-sm font-semibold text-white shadow-lg shadow-purple-500/40 transition-all hover:shadow-xl hover:shadow-purple-500/50 hover:scale-[1.02] active:scale-[0.98]"
             >
-              <Plus className="h-3.5 w-3.5" />
+              <Plus className="h-4 w-4" />
               <span>Add Asset</span>
             </button>
           )}
@@ -1140,30 +1072,41 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
               const priceB = prices[b.symbol]?.priceUsd ?? b.avgCost ?? 0;
               const valueA = valueUsd(a, priceA);
               const valueB = valueUsd(b, priceB);
-              return valueB - valueA; // Descending order (highest first)
+              return valueB - valueA;
             });
+
+            // Check if this is Cash & Stablecoins category
+            const isCashCategory = category === 'stablecoin';
+            const hasStablecoinAssets = sortedHoldings.length > 0;
 
             return (
               <div key={category}>
                 {renderCategoryHeader(category)}
                 {isExpanded && (
                   <div className="space-y-2">
-                    {/* Column headers - different layout for stablecoin category */}
-                    {category === 'stablecoin' ? (
-                      /* Stablecoin column headers: Symbol, Price, Tokens, Value, Actions only */
-                      sortedHoldings.length > 0 && (
-                        <div className="flex items-center justify-between px-1 mt-2 mb-1">
-                          <div className="grid w-full grid-cols-[2fr_1.2fr_1.2fr_1.4fr_auto] text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">
-                            <span className="pl-10">Symbol</span>
-                            <span>Price</span>
-                            <span>Tokens</span>
-                            <span>Value</span>
-                            <span className="text-right pr-2">Actions</span>
-                          </div>
+                    {/* For Cash & Stablecoins: always render cash row first */}
+                    {isCashCategory && renderCashBalanceRow()}
+                    
+                    {/* Column headers: only show if there are stablecoin assets (below cash row) */}
+                    {isCashCategory && hasStablecoinAssets && (
+                      <div className="flex items-center justify-between px-1 mt-3 mb-1">
+                        <div className="grid w-full grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto] text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">
+                          <span className="pl-10">Symbol</span>
+                          {!isColumnHidden('price') && <span>Price</span>}
+                          {!isColumnHidden('tokens') && <span>Tokens</span>}
+                          {!isColumnHidden('value') && <span>Value</span>}
+                          {!isColumnHidden('avgCost') && <span>Avg Cost</span>}
+                          {!isColumnHidden('%change') && <span>24h</span>}
+                          {!isColumnHidden('ladder') && <span>Exit Ladder</span>}
+                          <span className="text-right">
+                            {!isColumnHidden('actions') && <span>Actions</span>}
+                          </span>
                         </div>
-                      )
-                    ) : (
-                      /* Standard column headers for other categories */
+                      </div>
+                    )}
+                    
+                    {/* For non-stablecoin categories: always show headers */}
+                    {!isCashCategory && (
                       <div className="flex items-center justify-between px-1 mt-2 mb-1">
                         <div className="grid w-full grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto] text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">
                           <span className="pl-10">Symbol</span>
@@ -1179,87 +1122,10 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
                         </div>
                       </div>
                     )}
-                    {/* Cash Balance Row - Custom layout (NOT standard columns) */}
-                    {category === 'stablecoin' && (
-                      <div 
-                        className="mx-1 flex items-center justify-between rounded-xl border border-teal-500/20 px-4 py-3"
-                        style={{
-                          background: 'linear-gradient(135deg, rgba(20, 184, 166, 0.06) 0%, rgba(15, 118, 110, 0.04) 100%)',
-                        }}
-                      >
-                        {/* Left: Icon + Label + Badge */}
-                        <div className="flex items-center gap-3">
-                          <div 
-                            className="flex h-9 w-9 items-center justify-center rounded-full shadow-lg"
-                            style={{
-                              background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)',
-                              boxShadow: '0 4px 12px rgba(20, 184, 166, 0.3)',
-                            }}
-                          >
-                            <DollarSign className="h-5 w-5 text-white" />
-                          </div>
-                          <div className="flex flex-col">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-semibold text-foreground/90">Cash Balance</span>
-                              <span 
-                                className="rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider"
-                                style={{
-                                  background: 'rgba(20, 184, 166, 0.15)',
-                                  color: '#2dd4bf',
-                                  border: '1px solid rgba(20, 184, 166, 0.25)',
-                                }}
-                              >
-                                Manual
-                              </span>
-                            </div>
-                            <span className="text-[10px] text-muted-foreground/60">Dry powder • Stablecoins</span>
-                          </div>
-                        </div>
-
-                        {/* Right: Editable Amount with inline edit */}
-                        <div className="flex items-center gap-2">
-                          {isEditingCash ? (
-                            <div className="flex items-center">
-                              <span className="text-lg font-semibold text-teal-400 mr-0.5">$</span>
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                value={cashInput}
-                                onChange={(e) => setCashInput(e.target.value)}
-                                onKeyDown={handleCashKeyDown}
-                                onBlur={handleCashBlur}
-                                autoFocus
-                                className="w-28 bg-transparent text-lg font-semibold text-teal-400 text-right outline-none border-b border-teal-400/50 focus:border-teal-400 transition-colors"
-                                placeholder="0"
-                              />
-                            </div>
-                          ) : (
-                            <button
-                              onClick={startCashEdit}
-                              className="group flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-white/5 transition-colors cursor-text"
-                            >
-                              <span className="text-xl font-semibold" style={{ color: '#2dd4bf' }}>
-                                {formatCashDisplay(cash)}
-                              </span>
-                              <Pencil className="h-3.5 w-3.5 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            </button>
-                          )}
-                          
-                          {/* Save status indicator */}
-                          {cashSaveStatus === 'saving' && (
-                            <Loader2 className="h-4 w-4 text-teal-400 animate-spin" />
-                          )}
-                          {cashSaveStatus === 'saved' && (
-                            <div className="flex items-center gap-1 text-teal-400 animate-in fade-in duration-200">
-                              <Check className="h-4 w-4" />
-                              <span className="text-[10px] font-medium">Saved</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
+                    
+                    {/* Render asset rows */}
                     {sortedHoldings.map(holding => 
-                      category === 'stablecoin' 
+                      isCashCategory 
                         ? renderStablecoinRow(holding) 
                         : renderHoldingRow(holding, category)
                     )}

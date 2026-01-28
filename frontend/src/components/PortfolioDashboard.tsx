@@ -303,6 +303,8 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
                   allocations={totals.byCategory}
                   onSliceClick={handleSliceClick}
                   selectedCategory={selectedCategory}
+                  cashValue={store.cash}
+                  stablecoinsOnlyValue={totals.byCategory['stablecoin'] - store.cash}
                 />
 
                 {/* CategoryTrendCharts hidden - shows incorrect/stale snapshot data 
