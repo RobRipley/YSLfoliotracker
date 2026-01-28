@@ -3929,3 +3929,46 @@ open http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
 ```
 
 ---
+
+
+---
+
+## Session 15 (continued) - January 28, 2026
+
+### Exit Strategy Sorting by Position Value ✅
+
+**Task:** Order exit strategies by position value (same order as Portfolio page)
+
+**Implementation:**
+Added sorting to the `groupedHoldings` useMemo in `ExitStrategy.tsx`:
+- Each category's holdings are now sorted by position value (tokens × current price)
+- Highest value positions appear first within each category
+- Matches the order displayed on the Portfolio page
+
+**Code Change:**
+```typescript
+// Sort each category by position value (tokens * current price), highest first
+Object.keys(groups).forEach(cat => {
+  const category = cat as Category;
+  groups[category].sort((a, b) => {
+    const priceA = prices[a.symbol]?.priceUsd ?? 0;
+    const priceB = prices[b.symbol]?.priceUsd ?? 0;
+    const valueA = a.tokensOwned * priceA;
+    const valueB = b.tokensOwned * priceB;
+    return valueB - valueA; // Descending order (highest value first)
+  });
+});
+```
+
+**Verification:**
+- Blue Chip: BTC ($18,707) → SOL ($6,350) ✅
+- Mid Cap: SUI ($1,430) → ICP ($652) ✅
+- Low Cap: KMNO ($979) first ✅
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `frontend/src/pages/ExitStrategy.tsx` | Added position value sorting to `groupedHoldings` useMemo |
+
+---

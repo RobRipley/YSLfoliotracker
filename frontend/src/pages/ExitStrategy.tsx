@@ -713,6 +713,18 @@ export function ExitStrategy() {
       }
     });
 
+    // Sort each category by position value (tokens * current price), highest first
+    Object.keys(groups).forEach(cat => {
+      const category = cat as Category;
+      groups[category].sort((a, b) => {
+        const priceA = prices[a.symbol]?.priceUsd ?? 0;
+        const priceB = prices[b.symbol]?.priceUsd ?? 0;
+        const valueA = a.tokensOwned * priceA;
+        const valueB = b.tokensOwned * priceB;
+        return valueB - valueA; // Descending order (highest value first)
+      });
+    });
+
     return groups;
   }, [prices]);
 
