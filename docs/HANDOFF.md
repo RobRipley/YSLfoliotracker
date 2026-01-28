@@ -2744,3 +2744,39 @@ The store already has `cash: 0` property, which will help with Task A (Cash and 
 
 ---
 
+
+## Session 9 Progress - January 27, 2026
+
+### Task C: Hide Category Trend Badges ✅ DONE
+- Commented out `<CategoryTrendCharts>` component
+- Removed misleading values ($41,550, $22,664, $7,555 with +5.0% 30d)
+- Donut chart + legend still show accurate current values
+
+### Task B: Fix Info Popover ✅ DONE
+- Fixed Popover component to close on click-outside
+- Added escape key handler to close popover
+- Added proper `asChild` support for PopoverTrigger
+- Info icon was already just icon (no text) - previously done
+- Add Asset button was already between info and Columns - previously done
+
+**Files Modified:**
+- `/frontend/src/components/ui/popover.tsx` - Added click-outside and escape handlers
+- `/frontend/src/components/CompactHoldingsTable.tsx` - Removed controlled state
+- `/frontend/src/components/PortfolioDashboard.tsx` - Commented out CategoryTrendCharts
+
+**Git Commits:**
+- `1420637` - Fix popover click-outside and escape key behavior
+
+---
+
+### Next Up: Task A - Cash and Stablecoins Category
+
+**Requirements:**
+1. Add new category above Blue Chips called "Cash and Stablecoins"
+2. When expanded, show a "Cash" line with editable input (default 0) + "Update" button
+3. Cash amount reflects in category value, donut chart, legend, portfolio total
+4. Auto-detect stablecoins from known list
+5. Add manual "Add to Stablecoins" button for edge cases (sUSDe, sUSDS, etc.)
+
+---
+

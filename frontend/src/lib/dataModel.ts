@@ -17,6 +17,29 @@ export type Category =
   | 'stablecoin'
   | 'defi';
 
+// Known stablecoins - will be auto-categorized regardless of market cap
+// Includes major stablecoins and their staked/yield-bearing variants
+export const KNOWN_STABLECOINS = new Set([
+  // Major USD stablecoins
+  'USDT', 'USDC', 'DAI', 'BUSD', 'TUSD', 'USDP', 'GUSD', 'FRAX', 'LUSD', 'USDD',
+  'PYUSD', 'FDUSD', 'CUSD', 'EUSD', 'USDE', 'USDS', 'UST', 'MIM', 'DOLA', 'USDX',
+  'SUSD', 'HUSD', 'USDJ', 'USDN', 'RSV', 'OUSD', 'MUSD', 'CRVUSD', 'GHUSD', 'USDM',
+  // Staked/yield-bearing variants
+  'SUSDT', 'SUSDC', 'SDAI', 'SUSDE', 'SUSDS', 'SFRAX', 'SFLUSD',
+  'AUSDT', 'AUSDC', 'ADAI', // Aave variants
+  'CUSDT', 'CUSDC', 'CDAI', // Compound variants
+  // Other regional stablecoins
+  'EURS', 'EURT', 'EUROC', 'AGEUR', // Euro stablecoins
+  'XSGD', 'XIDR', 'XAUD', 'GYEN', 'JPYC', // Other fiat stablecoins
+]);
+
+/**
+ * Check if a symbol is a known stablecoin
+ */
+export function isStablecoin(symbol: string): boolean {
+  return KNOWN_STABLECOINS.has(symbol.toUpperCase());
+}
+
 export interface AssetMeta {
   symbol: string;
   name: string;
@@ -606,6 +629,12 @@ export function getCategoryForHolding(
     return holding.lockedCategory;
   }
 
+  // Check if it's a known stablecoin - these always go in stablecoin category
+  if (isStablecoin(holding.symbol)) {
+    console.log(`[GetCategory] ${holding.symbol}: Stablecoin (auto-detected)`);
+    return 'stablecoin';
+  }
+
   const prevRecord = store.lastSeenCategories[holding.symbol];
   const result = stableCategorize(
     prevRecord?.category || null,
@@ -627,6 +656,21 @@ export function getCategoryForHolding(
 
 export function getStore(): Store {
   return store;
+}
+
+/**
+ * Update cash amount in portfolio
+ */
+export function updateCash(amount: number): void {
+  store.cash = Math.max(0, amount);
+  console.log(`[Store] Cash updated to $${store.cash.toFixed(2)}`);
+}
+
+/**
+ * Get current cash amount
+ */
+export function getCash(): number {
+  return store.cash;
 }
 
 export function resetStore(): void {

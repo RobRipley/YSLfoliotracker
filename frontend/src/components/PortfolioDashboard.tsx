@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { usePortfolioStore } from '@/lib/store';
 import { CompactHoldingsTable } from './CompactHoldingsTable';
 import { ExitPlanSummary } from './ExitPlanSummary';
-import { type Category, type Holding, getCategoryForHolding } from '@/lib/dataModel';
+import { type Category, type Holding, getCategoryForHolding, updateCash } from '@/lib/dataModel';
 import { getPriceAggregator, type ExtendedPriceQuote } from '@/lib/priceService';
 import { usePortfolioSnapshots } from '@/hooks/usePortfolioSnapshots';
 import { AllocationDonutChart } from './AllocationDonutChart';
@@ -91,14 +91,14 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     const totalValue = store.holdings.reduce((sum, holding) => {
       const price = prices[holding.symbol.toUpperCase()]?.priceUsd ?? holding.avgCost ?? 0;
       return sum + holding.tokensOwned * price;
-    }, 0);
+    }, 0) + store.cash; // Add cash to total
 
     const byCategory: Record<Category, number> = {
       'blue-chip': 0,
       'mid-cap': 0,
       'low-cap': 0,
       'micro-cap': 0,
-      stablecoin: 0,
+      stablecoin: store.cash, // Initialize with cash amount
       defi: 0
     };
 
@@ -112,7 +112,7 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     }
 
     return { totalValue, byCategory };
-  }, [store.holdings, prices]);
+  }, [store.holdings, prices, store.cash]);
 
   const groups = useMemo(() => {
     const result: Record<Category, Holding[]> = {
@@ -197,7 +197,8 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
 
   const displayedCategories = useMemo(() => {
     if (selectedCategory === 'all') {
-      return ['blue-chip', 'mid-cap', 'low-cap', 'micro-cap', 'stablecoin', 'defi'] as Category[];
+      // Cash & Stablecoins at top, then by market cap descending
+      return ['stablecoin', 'blue-chip', 'mid-cap', 'low-cap', 'micro-cap', 'defi'] as Category[];
     }
     return [selectedCategory];
   }, [selectedCategory]);
@@ -277,6 +278,8 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
               selectedCategory={selectedCategory}
               displayedCategories={displayedCategories}
               exitPlans={exitPlans}
+              cash={store.cash}
+              onUpdateCash={updateCash}
             />
           </div>
 

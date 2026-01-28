@@ -7,7 +7,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
   'mid-cap': 'Mid Cap',
   'low-cap': 'Low Cap',
   'micro-cap': 'Micro Cap',
-  'stablecoin': 'Stablecoin',
+  'stablecoin': 'Cash & Stablecoins',
   'defi': 'DeFi'
 };
 
