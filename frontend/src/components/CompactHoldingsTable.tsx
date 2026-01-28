@@ -874,18 +874,18 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
   };
 
 
-  // Cash Balance Row - skinny, single-line label, big green value, share to the right
+  // Cash Balance Row - skinny, grid-aligned, big green value in VALUE column
   const renderCashBalanceRow = () => {
     const cashShareValue = cashShare;
 
     return (
       <div 
-        className="flex items-center justify-between rounded-lg border border-teal-500/20 px-3 py-2"
+        className="grid grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto] items-center gap-3 rounded-lg border border-teal-500/20 px-3 py-2"
         style={{
           background: 'linear-gradient(135deg, rgba(20, 184, 166, 0.06) 0%, rgba(15, 118, 110, 0.02) 100%)',
         }}
       >
-        {/* Left side: Icon + Label + Badge + Subtitle */}
+        {/* Column 1: Symbol - Cash Balance label */}
         <div className="flex items-center gap-3">
           <div 
             className="flex h-7 w-7 items-center justify-center rounded-full shadow-md"
@@ -914,8 +914,14 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           </div>
         </div>
 
-        {/* Right side: Editable value + share % */}
-        <div className="flex items-center gap-3">
+        {/* Column 2: Price - blank */}
+        <div></div>
+
+        {/* Column 3: Tokens - blank */}
+        <div></div>
+
+        {/* Column 4: Value - editable inline + share % */}
+        <div className="flex items-center gap-2">
           {isEditingCash ? (
             <div className="flex items-center">
               <span className="text-lg font-bold text-emerald-400 mr-0.5">$</span>
@@ -927,31 +933,43 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
                 onKeyDown={handleCashKeyDown}
                 onBlur={handleCashBlur}
                 autoFocus
-                className="w-28 bg-transparent text-lg font-bold text-emerald-400 outline-none border-b-2 border-emerald-400/50 focus:border-emerald-400 transition-colors"
+                className="w-24 bg-transparent text-lg font-bold text-emerald-400 outline-none border-b-2 border-emerald-400/50 focus:border-emerald-400 transition-colors"
                 placeholder="0"
               />
               {cashSaveStatus === 'saving' && (
-                <Loader2 className="ml-2 h-4 w-4 text-emerald-400 animate-spin" />
+                <Loader2 className="ml-1 h-4 w-4 text-emerald-400 animate-spin" />
               )}
               {cashSaveStatus === 'saved' && (
-                <Check className="ml-2 h-4 w-4 text-emerald-400" />
+                <Check className="ml-1 h-4 w-4 text-emerald-400" />
               )}
             </div>
           ) : (
             <button
               onClick={startCashEdit}
-              className="group flex items-center gap-2 rounded-md px-2 py-1 hover:bg-white/5 transition-colors cursor-text"
+              className="group flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-white/5 transition-colors cursor-text"
             >
               <span className="text-lg font-bold text-emerald-400 group-hover:underline group-hover:decoration-emerald-400/40 group-hover:underline-offset-2 transition-all">
                 {formatCashDisplay(cash)}
               </span>
-              <Pencil className="h-3.5 w-3.5 text-emerald-400/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <Pencil className="h-3 w-3 text-emerald-400/40 opacity-0 group-hover:opacity-100 transition-opacity" />
             </button>
           )}
-          <span className="text-xs text-muted-foreground/60 whitespace-nowrap">
+          <span className="text-[11px] text-muted-foreground/60 whitespace-nowrap">
             {formatPercent(cashShareValue, 1)} of portfolio
           </span>
         </div>
+
+        {/* Column 5: Avg Cost - blank */}
+        <div></div>
+
+        {/* Column 6: 24H - blank */}
+        <div></div>
+
+        {/* Column 7: Exit Ladder - blank */}
+        <div></div>
+
+        {/* Column 8: Actions - blank */}
+        <div></div>
       </div>
     );
   };
@@ -1039,12 +1057,12 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
             </PopoverContent>
           </Popover>
 
-          {/* Add Asset CTA - Strong purple button */}
+          {/* Add Asset CTA - Purple filled pill button */}
           {onAddAsset && (
             <button
               type="button"
               onClick={onAddAsset}
-              className="flex h-9 items-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 via-purple-500 to-violet-500 px-4 text-sm font-semibold text-white shadow-lg shadow-purple-500/40 transition-all hover:shadow-xl hover:shadow-purple-500/50 hover:scale-[1.02] active:scale-[0.98]"
+              className="flex h-10 items-center gap-2 rounded-full bg-[#6366f1] px-5 text-sm font-medium text-white transition-all hover:bg-[#5558e3] active:scale-[0.98]"
             >
               <Plus className="h-4 w-4" />
               <span>Add Asset</span>
