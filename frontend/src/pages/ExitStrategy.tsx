@@ -3,11 +3,12 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { store, getCategoryForHolding, type Holding, type Category } from '@/lib/dataModel';
 import { getPriceAggregator, type ExtendedPriceQuote } from '@/lib/priceService';
 import { toast } from 'sonner';
 import { ChevronDown, ChevronRight, Info, Loader2 } from 'lucide-react';
-import { formatPrice, formatTokens } from '@/lib/formatting';
+import { formatPrice } from '@/lib/formatting';
 
 const EXIT_PLANS_STORAGE_KEY = 'ysl-exit-plans';
 
@@ -109,6 +110,38 @@ function saveExitPlans(plans: Record<string, ExitPlan>): void {
   }
 }
 
+/**
+ * Format tokens with smart decimal display
+ * - Trims trailing zeros
+ * - Shows no decimal point if all zeros
+ * - Respects maximum precision for assets that need it
+ */
+function formatTokensSmart(value: number, maxPrecision: number = 8): string {
+  if (value === 0) return '0';
+  
+  // For very small numbers, use more precision
+  const absValue = Math.abs(value);
+  let precision = maxPrecision;
+  
+  if (absValue >= 1000) {
+    precision = 2;
+  } else if (absValue >= 1) {
+    precision = 4;
+  } else if (absValue >= 0.0001) {
+    precision = 6;
+  }
+  
+  // Format with precision, then trim trailing zeros
+  const formatted = value.toFixed(precision);
+  
+  // Remove trailing zeros after decimal point
+  if (formatted.includes('.')) {
+    return formatted.replace(/\.?0+$/, '');
+  }
+  
+  return formatted;
+}
+
 // Create default exit plan for a holding
 function createDefaultExitPlan(
   holding: Holding,
@@ -150,9 +183,7 @@ interface AssetRowProps {
   price: ExtendedPriceQuote | undefined;
   category: Category;
   plan: ExitPlan | undefined;
-  onPresetConservative: () => void;
-  onPresetAggressive: () => void;
-  onPresetCustom: () => void;
+  onPresetChange: (preset: PresetType) => void;
   onUpdateRung: (rungIndex: number, field: 'percent' | 'multiplier', value: number) => void;
   onToggleBase: (useBase: boolean) => void;
 }
@@ -162,9 +193,7 @@ const AssetRow = memo(({
   price, 
   category, 
   plan, 
-  onPresetConservative,
-  onPresetAggressive,
-  onPresetCustom,
+  onPresetChange,
   onUpdateRung,
   onToggleBase
 }: AssetRowProps) => {
@@ -172,10 +201,20 @@ const AssetRow = memo(({
 
   // Calculate values - guard against undefined/NaN
   const avgCost = holding.avgCost || 0;
-  const base = plan?.useBase ? avgCost * 1.1 : avgCost;
+  const planBasis = plan?.useBase ? avgCost * 1.1 : avgCost;
   const currentPrice = price?.priceUsd ?? 0;
-  const totalValue = holding.tokensOwned * currentPrice;
+  
+  // Position Value = current value (tokens * current price) - PRIMARY
+  const positionValue = holding.tokensOwned * currentPrice;
+  
+  // Total Cost = cost basis (tokens * avg cost) - SECONDARY
   const totalCost = holding.tokensOwned * avgCost;
+  
+  // Unrealized PnL = Value - Cost
+  const unrealizedPnL = positionValue - totalCost;
+  
+  // Unrealized Return % = PnL / Cost
+  const unrealizedReturn = totalCost > 0 ? (unrealizedPnL / totalCost) * 100 : 0;
 
   // Calculate expected profit and proceeds - with NaN guards
   const { expectedProfit, totalProceeds } = useMemo(() => {
@@ -207,17 +246,22 @@ const AssetRow = memo(({
 
   // Determine if editing is locked (locked for conservative and aggressive presets)
   const isLocked = plan.preset !== 'custom';
+  
+  // Get available strategies based on category
+  const strategyOptions = category === 'blue-chip' 
+    ? [{ value: 'conservative', label: 'Conservative' }, { value: 'custom', label: 'Custom' }]
+    : [{ value: 'conservative', label: 'Conservative' }, { value: 'aggressive', label: 'Aggressive' }, { value: 'custom', label: 'Custom' }];
 
   return (
     <div className="border-b border-divide-lighter/10 last:border-0">
       {/* Collapsed Summary Row */}
-      <div className="p-4 hover:bg-secondary/4 transition-colors duration-150">
-        <div className="flex items-center justify-between gap-4">
+      <div className="px-4 py-3 hover:bg-secondary/4 transition-colors duration-150">
+        <div className="flex items-center gap-6">
           {/* Left Section: Expand Button + Asset Info */}
-          <div className="flex items-center gap-4 flex-1 min-w-0">
+          <div className="flex items-center gap-3 flex-shrink-0">
             <button
               onClick={() => setIsExpanded(!isExpanded)}
-              className="p-1 hover:bg-secondary/10 rounded transition-colors duration-150"
+              className="p-1.5 hover:bg-secondary/10 rounded-md transition-colors duration-150"
               aria-label={isExpanded ? 'Collapse' : 'Expand'}
             >
               {isExpanded ? (
@@ -227,101 +271,98 @@ const AssetRow = memo(({
               )}
             </button>
 
-            <div className="flex items-center gap-6 flex-1 min-w-0">
-              <div className="font-semibold font-heading text-base min-w-[60px]">
-                {holding.symbol}
+            {/* Symbol - prominent */}
+            <div className="font-semibold font-heading text-base w-16">
+              {holding.symbol}
+            </div>
+            
+            {/* Tokens */}
+            <div className="text-sm text-muted-foreground/80 w-28">
+              {formatTokensSmart(holding.tokensOwned)} tokens
+            </div>
+          </div>
+
+          {/* Position Value (PRIMARY) + Total Cost (SECONDARY) */}
+          <div className="flex items-center gap-6 flex-shrink-0">
+            {/* Position Value - visually primary */}
+            <div className="text-left w-28">
+              <div className="font-semibold text-foreground">{formatPrice(positionValue)}</div>
+              <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">Position Value</div>
+            </div>
+            
+            {/* Total Cost - visually secondary */}
+            <div className="text-left w-24">
+              <div className="text-sm text-foreground/70">{formatPrice(totalCost)}</div>
+              <div className="text-[10px] text-muted-foreground/50 uppercase tracking-wider">Total Cost</div>
+            </div>
+            
+            {/* Unrealized PnL & Return */}
+            <div className="text-left w-28">
+              <div className={`text-sm font-medium ${unrealizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
+                {unrealizedPnL >= 0 ? '+' : ''}{formatPrice(unrealizedPnL)}
               </div>
-              <div className="text-sm text-muted-foreground min-w-[100px]">
-                {formatTokens(holding.tokensOwned)} tokens
-              </div>
-              <div className="text-sm text-muted-foreground min-w-[80px]">
-                Avg: {formatPrice(avgCost)}
-              </div>
-              <div className="text-sm text-muted-foreground min-w-[80px]">
-                Base: {formatPrice(base)}
-              </div>
-              <div className="font-semibold min-w-[100px]">
-                {formatPrice(totalValue)}
+              <div className={`text-[10px] ${unrealizedReturn >= 0 ? 'text-success/70' : 'text-danger/70'}`}>
+                {unrealizedReturn >= 0 ? '+' : ''}{unrealizedReturn.toFixed(1)}% unrealized
               </div>
             </div>
           </div>
 
-          {/* Right Section: Expected Profit, % Gain, Base Checkbox, Preset Buttons */}
-          <div className="flex items-center gap-4">
-            <div className="text-right min-w-[120px]">
-              <div className={`font-semibold ${expectedProfit >= 0 ? 'text-success' : 'text-danger'}`}>
-                {formatPrice(expectedProfit)}
-              </div>
-              <div className="text-xs text-muted-foreground">Expected Profit</div>
+          {/* Plan Basis with Cushion Toggle */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/5 border border-divide-lighter/10 flex-shrink-0">
+            <div className="text-left">
+              <div className="text-xs text-muted-foreground/60 uppercase tracking-wider">Plan basis</div>
+              <div className="text-sm font-medium text-foreground/90">{formatPrice(planBasis)}</div>
             </div>
-
-            <div className="text-right min-w-[80px]">
-              <div className={`font-semibold ${percentGain >= 0 ? 'text-success' : 'text-danger'}`}>
-                {percentGain >= 0 ? '+' : ''}{percentGain.toFixed(1)}%
-              </div>
-              <div className="text-xs text-muted-foreground">% Gain</div>
-            </div>
-
-            <div className="flex items-center gap-2 min-w-[80px]">
+            <div className="flex items-center gap-1.5 ml-2">
               <Checkbox
                 id={`base-${holding.id}`}
                 checked={plan.useBase}
                 onCheckedChange={(checked) => onToggleBase(checked === true)}
+                className="h-3.5 w-3.5"
               />
               <label
                 htmlFor={`base-${holding.id}`}
-                className="text-sm text-muted-foreground cursor-pointer flex items-center gap-1"
+                className="text-[10px] text-muted-foreground/70 cursor-pointer whitespace-nowrap"
               >
-                Base
-                <div className="group relative">
-                  <Info className="w-3 h-3 text-muted-foreground/60 hover:text-muted-foreground transition-colors" />
-                  <div className="absolute bottom-full right-0 mb-2 w-64 p-2 bg-secondary/95 backdrop-blur-sm border border-divide-lighter/30 rounded-lg text-xs text-muted-foreground opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-10 shadow-lg">
-                    When enabled, calculates exit points from 10% above average purchase price.
-                  </div>
-                </div>
+                +10% cushion
               </label>
             </div>
+            <div className="group relative ml-1">
+              <Info className="w-3 h-3 text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors cursor-help" />
+              <div className="absolute bottom-full right-0 mb-2 w-56 p-2 bg-secondary/95 backdrop-blur-sm border border-divide-lighter/30 rounded-lg text-[10px] text-muted-foreground opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-10 shadow-lg">
+                Targets use plan basis. When cushion is enabled, target prices are calculated from 10% above your average cost.
+              </div>
+            </div>
+          </div>
 
-            <button
-              onClick={onPresetConservative}
-              className={`gradient-outline-btn text-xs px-3 py-1.5 whitespace-nowrap transition-all duration-150 ${
-                plan.preset === 'conservative' 
-                  ? 'ring-2 ring-[#06b6d4]/40 shadow-[0_0_12px_rgba(6,182,212,0.3)]' 
-                  : ''
-              }`}
+          {/* Strategy Dropdown */}
+          <div className="flex items-center gap-2 flex-shrink-0 relative">
+            <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">Strategy</span>
+            <Select
+              value={plan.preset}
+              onValueChange={(value) => onPresetChange(value as PresetType)}
             >
-              <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-semibold">
-                Conservative
-              </span>
-            </button>
+              <SelectTrigger className="w-32 h-8 text-xs bg-secondary/10 border-divide-lighter/20 hover:border-divide-lighter/40 transition-colors">
+                <SelectValue placeholder="Select..." />
+              </SelectTrigger>
+              <SelectContent className="z-50">
+                {strategyOptions.map(opt => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-            {category !== 'blue-chip' && (
-              <button
-                onClick={onPresetAggressive}
-                className={`gradient-outline-btn text-xs px-3 py-1.5 whitespace-nowrap transition-all duration-150 ${
-                  plan.preset === 'aggressive' 
-                    ? 'ring-2 ring-[#06b6d4]/40 shadow-[0_0_12px_rgba(6,182,212,0.3)]' 
-                    : ''
-                }`}
-              >
-                <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-semibold">
-                  Aggressive
-                </span>
-              </button>
-            )}
-
-            <button
-              onClick={onPresetCustom}
-              className={`gradient-outline-btn text-xs px-3 py-1.5 whitespace-nowrap transition-all duration-150 ${
-                plan.preset === 'custom' 
-                  ? 'ring-2 ring-[#7c3aed]/40 shadow-[0_0_12px_rgba(124,58,237,0.3)]' 
-                  : ''
-              }`}
-            >
-              <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-semibold">
-                Custom
-              </span>
-            </button>
+          {/* Expected Profit + % Gain (consolidated) */}
+          <div className="text-right ml-auto flex-shrink-0 w-28">
+            <div className={`font-semibold ${expectedProfit >= 0 ? 'text-success' : 'text-danger'}`}>
+              {formatPrice(expectedProfit)}
+            </div>
+            <div className={`text-xs ${percentGain >= 0 ? 'text-success/60' : 'text-danger/60'}`}>
+              {percentGain >= 0 ? '+' : ''}{percentGain.toFixed(1)}% gain
+            </div>
           </div>
         </div>
       </div>
@@ -334,17 +375,22 @@ const AssetRow = memo(({
             animation: 'expandRow 180ms ease-out'
           }}
         >
+          {/* Helper text */}
+          <div className="text-xs text-muted-foreground/60 mb-3 pl-1">
+            These targets are based on your plan basis ({plan.useBase ? 'avg cost +10%' : 'avg cost'}).
+          </div>
+          
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-divide-lighter/15">
-                  <th className="text-left py-2 px-3 font-medium text-muted-foreground">Exit Point</th>
-                  <th className="text-right py-2 px-3 font-medium text-muted-foreground">Percent</th>
-                  <th className="text-right py-2 px-3 font-medium text-muted-foreground">Multiplier</th>
-                  <th className="text-right py-2 px-3 font-medium text-muted-foreground">Tokens to Sell</th>
-                  <th className="text-right py-2 px-3 font-medium text-muted-foreground">Target Price</th>
-                  <th className="text-right py-2 px-3 font-medium text-muted-foreground">Proceeds</th>
-                  <th className="text-right py-2 px-3 font-medium text-muted-foreground">Profit from Sale</th>
+                <tr className="border-b border-divide-lighter/10">
+                  <th className="text-left py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Exit Point</th>
+                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Sell % of position</th>
+                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Target multiple</th>
+                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Tokens to sell</th>
+                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Target price</th>
+                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Proceeds</th>
+                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Profit from rung</th>
                 </tr>
               </thead>
               <tbody>
@@ -354,51 +400,55 @@ const AssetRow = memo(({
                   const isRemaining = idx === plan.rungs.length - 1;
                   
                   return (
-                    <tr key={idx} className="border-b border-divide-lighter/8 last:border-0 hover:bg-secondary/4 transition-colors duration-150">
-                      <td className="py-2 px-3">
+                    <tr key={idx} className="border-b border-divide-lighter/5 last:border-0 hover:bg-secondary/3 transition-colors duration-150">
+                      <td className="py-3 px-3 text-sm text-foreground/80">
                         {isRemaining ? 'Remaining' : `Exit ${idx + 1}`}
                       </td>
-                      <td className="py-2 px-3 text-right">
+                      <td className="py-3 px-3 text-right">
                         {isRemaining ? (
-                          <div className="text-muted-foreground">{(rung.percent ?? 0).toFixed(1)}%</div>
+                          <div className="text-sm text-foreground/60 tabular-nums">{(rung.percent ?? 0).toFixed(1)}%</div>
                         ) : (
                           <Input
                             type="number"
                             value={rung.percent ?? 0}
                             onChange={(e) => onUpdateRung(idx, 'percent', parseFloat(e.target.value) || 0)}
-                            className="w-20 h-8 text-right text-sm ml-auto"
+                            className="w-20 h-7 text-right text-sm ml-auto tabular-nums"
                             min="0"
                             max="100"
                             disabled={isLocked}
                           />
                         )}
                       </td>
-                      <td className="py-2 px-3 text-right">
-                        <Input
-                          type="number"
-                          value={rung.multiplier ?? 0}
-                          onChange={(e) => onUpdateRung(idx, 'multiplier', parseFloat(e.target.value) || 0)}
-                          className="w-20 h-8 text-right text-sm ml-auto"
-                          min="0"
-                          step="0.1"
-                          disabled={isLocked}
-                        />
+                      <td className="py-3 px-3 text-right">
+                        {isRemaining ? (
+                          <div className="text-sm text-foreground/60">—</div>
+                        ) : (
+                          <Input
+                            type="number"
+                            value={rung.multiplier ?? 0}
+                            onChange={(e) => onUpdateRung(idx, 'multiplier', parseFloat(e.target.value) || 0)}
+                            className="w-20 h-7 text-right text-sm ml-auto tabular-nums"
+                            min="0"
+                            step="0.1"
+                            disabled={isLocked}
+                          />
+                        )}
                       </td>
-                      <td className="py-2 px-3 text-right">
-                        {formatTokens(rung.tokensToSell ?? 0)}
+                      <td className="py-3 px-3 text-right text-sm text-foreground/70 tabular-nums">
+                        {formatTokensSmart(rung.tokensToSell ?? 0)}
                       </td>
-                      <td className="py-2 px-3 text-right font-semibold">
+                      <td className="py-3 px-3 text-right text-sm font-medium text-foreground/90 tabular-nums">
                         {(rung.multiplier ?? 0) === 0 ? '—' : formatPrice(rung.targetPrice ?? 0)}
                       </td>
-                      <td className="py-2 px-3 text-right font-semibold">
+                      <td className="py-3 px-3 text-right text-sm text-foreground/70 tabular-nums">
                         {(rung.multiplier ?? 0) === 0 ? '—' : formatPrice(proceeds)}
                       </td>
-                      <td className="py-2 px-3 text-right">
+                      <td className="py-3 px-3 text-right">
                         {(rung.multiplier ?? 0) === 0 ? (
-                          '—'
+                          <span className="text-sm text-foreground/60">—</span>
                         ) : (
-                          <span className={profitFromSale >= 0 ? 'text-success' : 'text-danger'}>
-                            {formatPrice(profitFromSale)}
+                          <span className={`text-sm font-medium tabular-nums ${profitFromSale >= 0 ? 'text-success' : 'text-danger'}`}>
+                            {profitFromSale >= 0 ? '+' : ''}{formatPrice(profitFromSale)}
                           </span>
                         )}
                       </td>
@@ -519,7 +569,7 @@ export function ExitStrategy() {
     window.dispatchEvent(event);
   }, [exitPlans]);
 
-  const handlePresetConservative = useCallback((holdingId: string, category: Category) => {
+  const handlePresetChange = useCallback((holdingId: string, category: Category, preset: PresetType) => {
     const holding = store.holdings.find(h => h.id === holdingId);
     if (!holding?.avgCost) return;
     
@@ -529,8 +579,21 @@ export function ExitStrategy() {
       const currentPlan = prev[holdingId];
       const useBase = currentPlan?.useBase ?? true;
       const base = useBase ? avgCost * 1.1 : avgCost;
-      const template = category === 'blue-chip' ? BLUE_CHIP_CONSERVATIVE : 
-                       category === 'mid-cap' ? MID_CAP_CONSERVATIVE : LOW_CAP_CONSERVATIVE;
+      
+      // Get the appropriate template
+      let template;
+      if (preset === 'custom') {
+        // Keep current rungs when switching to custom
+        return {
+          ...prev,
+          [holdingId]: { ...currentPlan, preset: 'custom' }
+        };
+      } else if (preset === 'conservative') {
+        template = category === 'blue-chip' ? BLUE_CHIP_CONSERVATIVE : 
+                   category === 'mid-cap' ? MID_CAP_CONSERVATIVE : LOW_CAP_CONSERVATIVE;
+      } else {
+        template = category === 'mid-cap' ? MID_CAP_AGGRESSIVE : LOW_CAP_AGGRESSIVE;
+      }
       
       const rungs = template.map((t, idx) => {
         const isRemaining = idx === template.length - 1;
@@ -544,56 +607,15 @@ export function ExitStrategy() {
       
       return {
         ...prev,
-        [holdingId]: { holdingId, useBase, preset: 'conservative', rungs }
+        [holdingId]: { holdingId, useBase, preset, rungs }
       };
     });
     
-    toast.success('Applied Conservative preset');
-  }, []);
-
-  const handlePresetAggressive = useCallback((holdingId: string, category: Category) => {
-    const holding = store.holdings.find(h => h.id === holdingId);
-    if (!holding?.avgCost) return;
-    
-    const avgCost = holding.avgCost;
-    
-    setExitPlans(prev => {
-      const currentPlan = prev[holdingId];
-      const useBase = currentPlan?.useBase ?? true;
-      const base = useBase ? avgCost * 1.1 : avgCost;
-      const template = category === 'mid-cap' ? MID_CAP_AGGRESSIVE : LOW_CAP_AGGRESSIVE;
-      
-      const rungs = template.map((t, idx) => {
-        const isRemaining = idx === template.length - 1;
-        return {
-          percent: t.percent,
-          multiplier: t.multiplier,
-          targetPrice: isRemaining || t.multiplier === 0 ? 0 : base * t.multiplier,
-          tokensToSell: (holding.tokensOwned * t.percent) / 100
-        };
-      });
-      
-      return {
-        ...prev,
-        [holdingId]: { holdingId, useBase, preset: 'aggressive', rungs }
-      };
-    });
-    
-    toast.success('Applied Aggressive preset');
-  }, []);
-
-  const handlePresetCustom = useCallback((holdingId: string) => {
-    setExitPlans(prev => {
-      const plan = prev[holdingId];
-      if (!plan) return prev;
-      
-      return {
-        ...prev,
-        [holdingId]: { ...plan, preset: 'custom' }
-      };
-    });
-    
-    toast.success('Custom mode enabled - you can now edit percentages and multipliers');
+    if (preset === 'custom') {
+      toast.success('Custom mode enabled - you can now edit percentages and multipliers');
+    } else {
+      toast.success(`Applied ${preset.charAt(0).toUpperCase() + preset.slice(1)} preset`);
+    }
   }, []);
 
   const handleUpdateRung = useCallback((holdingId: string, rungIndex: number, field: 'percent' | 'multiplier', value: number) => {
@@ -735,16 +757,16 @@ export function ExitStrategy() {
 
           return (
             <Card key={category} className="overflow-hidden border-divide-lighter/30 glass-panel shadow-minimal">
-              <div className="p-4 border-b border-divide-lighter/20 flex items-center gap-3">
+              <div className="px-4 py-3 border-b border-divide-lighter/15 flex items-center gap-3">
                 <div 
-                  className="w-3 h-3 rounded-full" 
+                  className="w-2.5 h-2.5 rounded-full" 
                   style={{ 
                     backgroundColor: CATEGORY_COLORS[category],
-                    boxShadow: `0 0 8px ${CATEGORY_COLORS[category]}60`
+                    boxShadow: `0 0 6px ${CATEGORY_COLORS[category]}50`
                   }}
                 />
-                <h2 className="text-lg font-semibold font-heading">{CATEGORY_LABELS[category]}</h2>
-                <Badge variant="secondary" className="text-xs">{holdings.length}</Badge>
+                <h2 className="text-base font-semibold font-heading">{CATEGORY_LABELS[category]}</h2>
+                <Badge variant="secondary" className="text-[10px] px-2 py-0.5">{holdings.length}</Badge>
               </div>
 
               <div className="overflow-x-auto">
@@ -759,9 +781,7 @@ export function ExitStrategy() {
                       price={price}
                       category={category}
                       plan={plan}
-                      onPresetConservative={() => handlePresetConservative(holding.id, category)}
-                      onPresetAggressive={() => handlePresetAggressive(holding.id, category)}
-                      onPresetCustom={() => handlePresetCustom(holding.id)}
+                      onPresetChange={(preset) => handlePresetChange(holding.id, category, preset)}
                       onUpdateRung={(rungIndex, field, value) => handleUpdateRung(holding.id, rungIndex, field, value)}
                       onToggleBase={(useBase) => handleToggleBase(holding.id, useBase)}
                     />

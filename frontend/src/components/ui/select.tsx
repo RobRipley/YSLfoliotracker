@@ -1,4 +1,5 @@
 import * as React from "react";
+import { ChevronDown } from "lucide-react";
 
 type SelectContextType = {
   value: string | undefined;
@@ -29,6 +30,7 @@ export const Select: React.FC<SelectProps> = ({
     defaultValue
   );
   const [open, setOpen] = React.useState(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
 
   const actualValue = value !== undefined ? value : internalValue;
 
@@ -39,11 +41,36 @@ export const Select: React.FC<SelectProps> = ({
     onValueChange?.(next);
   };
 
+  // Close on click outside
+  React.useEffect(() => {
+    if (!open) return;
+    
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [open]);
+
   return (
     <SelectContext.Provider
       value={{ value: actualValue, setValue, open, setOpen, placeholder: undefined }}
     >
-      <div className={className}>{children}</div>
+      <div ref={containerRef} className={`relative ${className}`}>{children}</div>
     </SelectContext.Provider>
   );
 };
@@ -63,13 +90,15 @@ export const SelectTrigger: React.FC<SelectTriggerProps> = ({
       type="button"
       onClick={() => ctx.setOpen(!ctx.open)}
       className={
-        "flex h-9 w-full items-center justify-between rounded-xl border border-slate-700 bg-slate-900 px-3 text-xs text-slate-100 shadow-sm " +
-        "focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 " +
+        "flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-divide-lighter/30 bg-secondary/10 px-3 text-xs text-foreground/90 " +
+        "hover:border-divide-lighter/50 hover:bg-secondary/15 transition-colors duration-150 " +
+        "focus:border-primary/50 focus:ring-1 focus:ring-primary/30 focus:outline-none " +
         className
       }
       {...props}
     >
       {children}
+      <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground/60 transition-transform duration-150 ${ctx.open ? 'rotate-180' : ''}`} />
     </button>
   );
 };
@@ -86,10 +115,12 @@ export const SelectValue: React.FC<SelectValueProps> = ({
   const ctx = React.useContext<SelectContextType | null>(SelectContext);
   if (!ctx) throw new Error("SelectValue must be used within Select");
 
-  const text = ctx.value || placeholder || "Select";
+  const text = ctx.value 
+    ? ctx.value.charAt(0).toUpperCase() + ctx.value.slice(1) 
+    : placeholder || "Select";
 
   return (
-    <span className={"text-xs text-slate-200 " + className}>{text}</span>
+    <span className={"text-xs text-foreground/90 " + className}>{text}</span>
   );
 };
 
@@ -108,7 +139,8 @@ export const SelectContent: React.FC<SelectContentProps> = ({
   return (
     <div
       className={
-        "mt-1 max-h-64 w-full overflow-auto rounded-xl border border-slate-700 bg-slate-900 p-1 text-xs shadow-lg " +
+        "absolute top-full left-0 mt-1 min-w-full max-h-64 overflow-auto rounded-lg border border-divide-lighter/30 bg-background/95 backdrop-blur-sm p-1 text-xs shadow-lg z-50 " +
+        "animate-in fade-in-0 zoom-in-95 duration-100 " +
         className
       }
       {...props}
@@ -142,8 +174,10 @@ export const SelectItem: React.FC<SelectItemProps> = ({
         ctx.setOpen(false);
       }}
       className={
-        "flex w-full cursor-pointer items-center rounded-lg px-2 py-1 text-left text-xs " +
-        (active ? "bg-indigo-500 text-white" : "text-slate-200 hover:bg-slate-800") +
+        "flex w-full cursor-pointer items-center rounded-md px-2 py-1.5 text-left text-xs transition-colors duration-100 " +
+        (active 
+          ? "bg-primary/20 text-foreground font-medium" 
+          : "text-foreground/80 hover:bg-secondary/30 hover:text-foreground") +
         " " +
         className
       }
