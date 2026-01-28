@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { usePortfolioStore } from '@/lib/store';
+import { useInternetIdentity } from '@/hooks/useInternetIdentity';
 import { CompactHoldingsTable } from './CompactHoldingsTable';
 import { NearestExits } from './NearestExits';
 import { type Category, type Holding, getCategoryForHolding, updateCash } from '@/lib/dataModel';
@@ -21,7 +22,8 @@ import { cn } from '@/lib/utils';
 const aggregator = getPriceAggregator();
 
 export const PortfolioDashboard = memo(function PortfolioDashboard() {
-  const store = usePortfolioStore();
+  const { principal } = useInternetIdentity();
+  const store = usePortfolioStore(principal);
   const [prices, setPrices] = useState<Record<string, ExtendedPriceQuote>>({});
   const [logos, setLogos] = useState<Record<string, string>>({});
   const [selectedPreset, setSelectedPreset] = useState<'n4' | 'custom'>('n4');

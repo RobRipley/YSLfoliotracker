@@ -1,18 +1,49 @@
 /**
  * Data Persistence Module
  * 
- * Handles localStorage persistence with schema versioning and migration
+ * Handles localStorage persistence with schema versioning and migration.
+ * Supports principal-aware storage for multi-user scenarios.
  */
 
 import { type Store } from './dataModel';
 
-const STORAGE_KEY = 'crypto-portfolio-store';
+const STORAGE_KEY_PREFIX = 'crypto-portfolio-store';
 const SCHEMA_VERSION = 1;
+
+// Current principal for storage isolation
+let currentPrincipal: string | null = null;
 
 interface PersistedData {
   version: number;
   timestamp: number;
+  principal?: string; // Track which principal this data belongs to
   store: Store;
+}
+
+/**
+ * Set the current principal for storage isolation
+ */
+export function setPrincipal(principal: string | null): void {
+  currentPrincipal = principal;
+  console.log('[Persistence] Principal set to:', principal?.slice(0, 8) || 'null');
+}
+
+/**
+ * Get the current principal
+ */
+export function getCurrentPrincipal(): string | null {
+  return currentPrincipal;
+}
+
+/**
+ * Get the storage key for the current principal
+ */
+function getStorageKey(): string {
+  if (currentPrincipal && currentPrincipal !== '2vxsx-fae') {
+    return `${STORAGE_KEY_PREFIX}-${currentPrincipal}`;
+  }
+  // Fallback to generic key for anonymous/dev mode
+  return STORAGE_KEY_PREFIX;
 }
 
 /**
@@ -23,10 +54,13 @@ export function saveStore(store: Store): void {
     const data: PersistedData = {
       version: SCHEMA_VERSION,
       timestamp: Date.now(),
+      principal: currentPrincipal || undefined,
       store,
     };
     
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    const key = getStorageKey();
+    localStorage.setItem(key, JSON.stringify(data));
+    console.log('[Persistence] Store saved to:', key);
   } catch (error) {
     console.error('Failed to save store to localStorage:', error);
     throw new Error('Failed to persist data');
@@ -38,15 +72,19 @@ export function saveStore(store: Store): void {
  */
 export function loadStore(): Store | null {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) return null;
+    const key = getStorageKey();
+    const stored = localStorage.getItem(key);
+    if (!stored) {
+      console.log('[Persistence] No data found for key:', key);
+      return null;
+    }
 
     const data: PersistedData = JSON.parse(stored);
     
     // Validate schema
     if (!validateSchema(data)) {
       console.warn('Invalid schema detected, clearing corrupted data');
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(key);
       return null;
     }
 
@@ -56,6 +94,7 @@ export function loadStore(): Store | null {
       return migrated;
     }
 
+    console.log('[Persistence] Store loaded from:', key, 'with', data.store.holdings?.length || 0, 'holdings');
     return data.store;
   } catch (error) {
     console.error('Failed to load store from localStorage:', error);
@@ -98,23 +137,61 @@ function migrateSchema(oldStore: Store, oldVersion: number, newVersion: number):
 }
 
 /**
- * Clear all persisted data
+ * Clear all persisted data for the current principal
  */
 export function clearPersistedData(): void {
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    const key = getStorageKey();
+    localStorage.removeItem(key);
+    console.log('[Persistence] Cleared data for key:', key);
   } catch (error) {
     console.error('Failed to clear persisted data:', error);
   }
 }
 
 /**
- * Check if persisted data exists
+ * Check if persisted data exists for current principal
  */
 export function hasPersistedData(): boolean {
   try {
-    return localStorage.getItem(STORAGE_KEY) !== null;
+    return localStorage.getItem(getStorageKey()) !== null;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Clear the mock data flag for the current principal
+ */
+export function clearMockDataFlag(): void {
+  if (currentPrincipal && currentPrincipal !== '2vxsx-fae') {
+    localStorage.removeItem(`mock-data-cleared-${currentPrincipal}`);
+  } else {
+    localStorage.removeItem('mock-data-cleared');
+  }
+}
+
+/**
+ * Get mock data cleared flag for current principal
+ */
+export function isMockDataCleared(): boolean {
+  if (currentPrincipal && currentPrincipal !== '2vxsx-fae') {
+    return localStorage.getItem(`mock-data-cleared-${currentPrincipal}`) === 'true';
+  }
+  return localStorage.getItem('mock-data-cleared') === 'true';
+}
+
+/**
+ * Set mock data cleared flag for current principal
+ */
+export function setMockDataCleared(cleared: boolean): void {
+  const key = currentPrincipal && currentPrincipal !== '2vxsx-fae'
+    ? `mock-data-cleared-${currentPrincipal}`
+    : 'mock-data-cleared';
+  
+  if (cleared) {
+    localStorage.setItem(key, 'true');
+  } else {
+    localStorage.removeItem(key);
   }
 }

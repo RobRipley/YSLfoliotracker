@@ -2,10 +2,10 @@
  * Portfolio Store - React State Management
  * 
  * Provides a React hook for accessing and modifying the portfolio store
- * with automatic persistence to localStorage.
+ * with automatic persistence to localStorage per user principal.
  */
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   type Store,
   type Holding,
@@ -26,31 +26,51 @@ import {
   initializeIdCounters,
   calculateWeightedAverage,
 } from './dataModel';
-import { saveStore, loadStore, clearPersistedData, hasPersistedData } from './persistence';
+import { 
+  saveStore, 
+  loadStore, 
+  clearPersistedData, 
+  hasPersistedData,
+  setPrincipal,
+  getCurrentPrincipal,
+  isMockDataCleared,
+  setMockDataCleared,
+} from './persistence';
 
-// Initialize store from localStorage on module load
-function initializeStore(): void {
+// Track if store has been initialized for current session
+let storeInitialized = false;
+
+// Initialize store - called when principal is set
+export function initializeStoreForPrincipal(principal: string | null): void {
+  // Set principal in persistence module
+  setPrincipal(principal);
+  
+  // Reset the global store first
+  resetGlobalStore();
+  
+  // Try to load persisted data for this principal
   const persisted = loadStore();
   if (persisted) {
     Object.assign(globalStore, persisted);
-    console.log('[Store] Loaded persisted data:', globalStore.holdings.length, 'holdings');
+    console.log('[Store] Loaded persisted data for principal:', principal?.slice(0, 8), 'with', globalStore.holdings.length, 'holdings');
     // Initialize ID counters from existing holdings to prevent duplicate IDs
     initializeIdCounters();
   } else {
-    // Load mock data if no persisted data
-    loadMockData();
+    console.log('[Store] New user - starting with blank portfolio for principal:', principal?.slice(0, 8));
+    // New users get a blank portfolio - no mock data loaded by default
   }
+  
+  storeInitialized = true;
 }
 
-// Load mock data for first-time users
-function loadMockData(): void {
-  const mockCleared = localStorage.getItem('mock-data-cleared');
-  if (mockCleared === 'true') {
-    console.log('[Store] Mock data was previously cleared, starting fresh');
+// Load mock data - only called explicitly by user action
+function loadMockDataForUser(): void {
+  if (isMockDataCleared()) {
+    console.log('[Store] Mock data was previously cleared for this user');
     return;
   }
 
-  console.log('[Store] Loading mock data for first-time user');
+  console.log('[Store] Loading mock data (user-initiated)');
   
   // Blue chip assets
   addHoldingToStore('BTC', 0.25, { avgCost: 45000, notes: 'Bitcoin - Store of value' });
@@ -75,8 +95,8 @@ function loadMockData(): void {
   
   for (let i = 365; i >= 0; i -= 7) {
     const timestamp = now - (i * oneDay);
-    const volatility = Math.random() * 0.1 - 0.05; // ±5% weekly change
-    const baseValue = 50000 * (1 + (365 - i) / 365 * 0.5); // Gradual growth over year
+    const volatility = Math.random() * 0.1 - 0.05;
+    const baseValue = 50000 * (1 + (365 - i) / 365 * 0.5);
     const totalValue = baseValue * (1 + volatility);
     
     recordSnapshotInStore(timestamp, {
@@ -92,39 +112,55 @@ function loadMockData(): void {
   saveStore(globalStore);
 }
 
-// Initialize on module load
-initializeStore();
-
 /**
  * Custom hook for accessing and modifying the portfolio store
+ * Now principal-aware - each user gets their own portfolio
  */
-export function usePortfolioStore() {
+export function usePortfolioStore(principal?: string | null) {
   // Force re-render when store changes
-  const [, setVersion] = useState(0);
+  const [version, setVersion] = useState(0);
   const forceUpdate = useCallback(() => setVersion(v => v + 1), []);
+  
+  // Track current principal
+  const lastPrincipal = useRef<string | null | undefined>(undefined);
+
+  // Initialize store when principal changes
+  useEffect(() => {
+    if (lastPrincipal.current !== principal) {
+      console.log('[Store Hook] Principal changed:', lastPrincipal.current?.slice(0, 8), '->', principal?.slice(0, 8));
+      lastPrincipal.current = principal;
+      
+      if (principal && principal !== '2vxsx-fae') {
+        initializeStoreForPrincipal(principal);
+        forceUpdate();
+      } else if (principal === null) {
+        // User logged out - clear store
+        resetGlobalStore();
+        forceUpdate();
+      }
+    }
+  }, [principal, forceUpdate]);
 
   // Get current store state
-  const store = useMemo(() => getStore(), []);
+  const store = useMemo(() => getStore(), [version]);
 
   // Holdings accessor
-  const holdings = useMemo(() => store.holdings, [store.holdings]);
+  const holdings = useMemo(() => store.holdings, [store.holdings, version]);
   
   // Settings accessor
-  const settings = useMemo(() => store.settings, [store.settings]);
+  const settings = useMemo(() => store.settings, [store.settings, version]);
   
   // Cash accessor
-  const cash = useMemo(() => store.cash, [store.cash]);
+  const cash = useMemo(() => store.cash, [store.cash, version]);
   
   // Transactions accessor
-  const transactions = useMemo(() => store.transactions, [store.transactions]);
+  const transactions = useMemo(() => store.transactions, [store.transactions, version]);
   
   // Snapshots accessor
-  const snapshots = useMemo(() => store.portfolioSnapshots, [store.portfolioSnapshots]);
+  const snapshots = useMemo(() => store.portfolioSnapshots, [store.portfolioSnapshots, version]);
 
   // Check if mock data has been cleared
-  const isMockDataCleared = useMemo(() => {
-    return localStorage.getItem('mock-data-cleared') === 'true';
-  }, []);
+  const mockDataCleared = useMemo(() => isMockDataCleared(), [version]);
 
   // Add or merge holding
   const addHolding = useCallback((
@@ -228,8 +264,14 @@ export function usePortfolioStore() {
   // Clear mock data
   const clearMockData = useCallback(() => {
     resetGlobalStore();
-    localStorage.setItem('mock-data-cleared', 'true');
+    setMockDataCleared(true);
     saveStore(globalStore);
+    forceUpdate();
+  }, [forceUpdate]);
+
+  // Load sample data (explicit user action)
+  const loadSampleData = useCallback(() => {
+    loadMockDataForUser();
     forceUpdate();
   }, [forceUpdate]);
 
@@ -237,15 +279,14 @@ export function usePortfolioStore() {
   const resetAll = useCallback(() => {
     resetGlobalStore();
     clearPersistedData();
-    localStorage.removeItem('mock-data-cleared');
-    loadMockData();
+    setMockDataCleared(false);
     forceUpdate();
   }, [forceUpdate]);
 
   // Check if holding exists by symbol
   const findHoldingBySymbol = useCallback((symbol: string): Holding | undefined => {
     return globalStore.holdings.find(h => h.symbol.toUpperCase() === symbol.toUpperCase());
-  }, []);
+  }, [version]);
 
   return {
     // State
@@ -254,7 +295,7 @@ export function usePortfolioStore() {
     cash,
     transactions,
     snapshots,
-    isMockDataCleared,
+    isMockDataCleared: mockDataCleared,
     
     // Actions
     addHolding,
@@ -267,6 +308,7 @@ export function usePortfolioStore() {
     updateSettings,
     getCategory,
     clearMockData,
+    loadSampleData,
     resetAll,
     findHoldingBySymbol,
     

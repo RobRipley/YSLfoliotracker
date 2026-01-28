@@ -1,28 +1,26 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useActor } from './useActor';
+import { useActor, type UserProfile } from './useActor';
+import { useInternetIdentity } from './useInternetIdentity';
 import { getStore, resetStore, addHolding as addHoldingToStore, type Store } from '@/lib/dataModel';
-import { saveStore, loadStore, clearPersistedData } from '@/lib/persistence';
+import { saveStore, loadStore, clearPersistedData, setPrincipal } from '@/lib/persistence';
 import { useEffect } from 'react';
-import type { UserProfile } from '@/backend';
-
-// Initialize store on module load from persisted data only
-const persistedStore = loadStore();
-if (persistedStore) {
-  // Restore persisted data
-  const store = getStore();
-  Object.assign(store, persistedStore);
-}
 
 export function usePortfolioData() {
-  const { actor } = useActor();
+  const { principal } = useInternetIdentity();
+  
+  // Set principal for storage isolation
+  useEffect(() => {
+    setPrincipal(principal);
+  }, [principal]);
 
   return useQuery({
-    queryKey: ['portfolio'],
+    queryKey: ['portfolio', principal],
     queryFn: async () => {
       const store = getStore();
       return store;
     },
     refetchInterval: 5000, // Refetch every 5 seconds for real-time updates
+    enabled: !!principal && principal !== '2vxsx-fae',
   });
 }
 
@@ -33,6 +31,7 @@ export function useIsMockDataActive() {
 
 export function useClearMockData() {
   const queryClient = useQueryClient();
+  const { principal } = useInternetIdentity();
 
   return useMutation({
     mutationFn: async () => {
@@ -41,13 +40,14 @@ export function useClearMockData() {
       saveStore(getStore());
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio', principal] });
     },
   });
 }
 
 export function useAddHolding() {
   const queryClient = useQueryClient();
+  const { principal } = useInternetIdentity();
 
   return useMutation({
     mutationFn: async (data: {
@@ -69,7 +69,7 @@ export function useAddHolding() {
       return holding;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio', principal] });
     },
   });
 }
@@ -77,13 +77,14 @@ export function useAddHolding() {
 // Hook to listen for import events
 export function useImportListener() {
   const queryClient = useQueryClient();
+  const { principal } = useInternetIdentity();
 
   useEffect(() => {
     const handleImportStore = (event: CustomEvent<Store>) => {
       const store = getStore();
       Object.assign(store, event.detail);
       saveStore(store);
-      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio', principal] });
     };
 
     const handleImportHoldings = (event: CustomEvent<any[]>) => {
@@ -97,7 +98,7 @@ export function useImportListener() {
         });
       });
       saveStore(store);
-      queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+      queryClient.invalidateQueries({ queryKey: ['portfolio', principal] });
     };
 
     window.addEventListener('importStore', handleImportStore as EventListener);
@@ -107,7 +108,7 @@ export function useImportListener() {
       window.removeEventListener('importStore', handleImportStore as EventListener);
       window.removeEventListener('importHoldings', handleImportHoldings as EventListener);
     };
-  }, [queryClient]);
+  }, [queryClient, principal]);
 }
 
 // Hook to auto-save on data changes
@@ -129,7 +130,12 @@ export function useGetCallerUserProfile() {
     queryKey: ['currentUserProfile'],
     queryFn: async () => {
       if (!actor) throw new Error('Actor not available');
-      return actor.getCallerUserProfile();
+      const result = await actor.get_profile();
+      // Handle the [] | [UserProfile] response
+      if (result && result.length > 0) {
+        return result[0];
+      }
+      return null;
     },
     enabled: !!actor && !actorFetching,
     retry: false,
@@ -148,20 +154,17 @@ export function useSaveCallerUserProfile() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (profile: { name: string; email?: string }) => {
+    mutationFn: async (profile: { firstName: string; lastName: string }) => {
       if (!actor) throw new Error('Actor not available');
       
-      const userProfile: UserProfile = {
-        name: profile.name,
-        email: profile.email,
-        createdAt: BigInt(Date.now() * 1_000_000), // Convert to nanoseconds
-      };
-      
-      await actor.saveCallerUserProfile(userProfile);
-      return userProfile;
+      const updatedProfile = await actor.upsert_profile(profile.firstName, profile.lastName);
+      return updatedProfile;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['currentUserProfile'] });
     },
   });
 }
+
+// Re-export UserProfile type
+export type { UserProfile };

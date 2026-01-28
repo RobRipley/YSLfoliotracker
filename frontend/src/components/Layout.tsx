@@ -1,7 +1,10 @@
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useState, useCallback } from 'react';
 import { useInternetIdentity } from '@/hooks/useInternetIdentity';
+import { useActor, type UserProfile } from '@/hooks/useActor';
 import { useQueryClient } from '@tanstack/react-query';
-import { Wallet, TrendingUp, Settings, FlaskConical, Heart, Loader2, Target } from 'lucide-react';
+import { Wallet, TrendingUp, Settings, FlaskConical, Loader2, Target, Pencil } from 'lucide-react';
+import { NamePromptModal } from './NamePromptModal';
+import { toast } from 'sonner';
 
 type Tab = 'landing' | 'portfolio' | 'exit-strategy' | 'market' | 'admin' | 'test';
 
@@ -12,10 +15,53 @@ interface LayoutProps {
   onEnterPortfolio: () => void;
 }
 
+// Storage key for tracking if first login prompt was shown
+const FIRST_LOGIN_PROMPTED_KEY = 'ysl-first-login-prompted';
+
 export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: LayoutProps) {
-  const { login, clear, identity, isLoggingIn, loginStatus } = useInternetIdentity();
+  const { login, clear, identity, principal, isLoggingIn, loginStatus } = useInternetIdentity();
+  const { actor, isFetching: actorFetching } = useActor();
   const queryClient = useQueryClient();
-  const isAuthenticated = identity !== null;
+  const isAuthenticated = identity !== null && principal !== null && principal !== '2vxsx-fae';
+
+  // Profile state
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  const [showNamePrompt, setShowNamePrompt] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  // Load profile when actor is ready
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!actor || !isAuthenticated) {
+        setProfile(null);
+        return;
+      }
+
+      setIsLoadingProfile(true);
+      try {
+        const result = await actor.get_profile();
+        if (result && result.length > 0) {
+          setProfile(result[0]);
+          console.log('[Layout] Profile loaded:', result[0]);
+        } else {
+          // No profile exists - check if we should show prompt
+          const wasPrompted = localStorage.getItem(`${FIRST_LOGIN_PROMPTED_KEY}-${principal}`);
+          if (!wasPrompted) {
+            console.log('[Layout] No profile found, showing name prompt');
+            setShowNamePrompt(true);
+          }
+        }
+      } catch (error) {
+        console.error('[Layout] Failed to load profile:', error);
+      } finally {
+        setIsLoadingProfile(false);
+      }
+    };
+
+    loadProfile();
+  }, [actor, isAuthenticated, principal]);
 
   // Watch for successful login and transition to portfolio
   useEffect(() => {
@@ -30,6 +76,7 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
   const handleAuth = async () => {
     if (isAuthenticated) {
       await clear();
+      setProfile(null);
       // Clear all cached data on logout
       queryClient.clear();
       // Navigate to landing
@@ -40,13 +87,64 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
         // Navigation to portfolio happens via useEffect above
       } catch (error: any) {
         console.error('Auth error:', error);
-        if (error.message === 'User is already authenticated') {
-          await clear();
-          setTimeout(() => login(), 300);
-        }
       }
     }
   };
+
+  const handleSaveProfile = useCallback(async (firstName: string, lastName: string) => {
+    if (!actor) return;
+
+    setIsSavingProfile(true);
+    try {
+      const updatedProfile = await actor.upsert_profile(firstName, lastName);
+      setProfile(updatedProfile);
+      setShowNamePrompt(false);
+      setIsEditMode(false);
+      
+      // Mark that we've prompted this user
+      if (principal) {
+        localStorage.setItem(`${FIRST_LOGIN_PROMPTED_KEY}-${principal}`, 'true');
+      }
+      
+      toast.success(firstName || lastName ? 'Name saved!' : 'Profile updated');
+    } catch (error) {
+      console.error('[Layout] Failed to save profile:', error);
+      toast.error('Failed to save name. Please try again.');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  }, [actor, principal]);
+
+  const handleSkipProfile = useCallback(async () => {
+    if (!actor) return;
+
+    setIsSavingProfile(true);
+    try {
+      // Save empty profile to prevent nagging
+      const updatedProfile = await actor.upsert_profile('', '');
+      setProfile(updatedProfile);
+      setShowNamePrompt(false);
+      
+      // Mark that we've prompted this user
+      if (principal) {
+        localStorage.setItem(`${FIRST_LOGIN_PROMPTED_KEY}-${principal}`, 'true');
+      }
+    } catch (error) {
+      console.error('[Layout] Failed to skip profile:', error);
+    } finally {
+      setIsSavingProfile(false);
+    }
+  }, [actor, principal]);
+
+  const handleEditName = () => {
+    setIsEditMode(true);
+    setShowNamePrompt(true);
+  };
+
+  // Get display name
+  const displayName = profile?.firstName || profile?.lastName
+    ? `${profile.firstName} ${profile.lastName}`.trim()
+    : null;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -129,13 +227,24 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
               </nav>
             )}
 
-            {/* Right: Auth Button - Matching Landing page gradient styling */}
+            {/* Right: Name Display + Auth Button */}
             <div className="flex items-center space-x-4">
+              {isAuthenticated && !isLoadingProfile && !actorFetching && (
+                <button
+                  onClick={handleEditName}
+                  className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-smooth group"
+                >
+                  {displayName ? (
+                    <span className="hidden sm:inline">{displayName}</span>
+                  ) : (
+                    <span className="hidden sm:inline text-muted-foreground/70">Add name</span>
+                  )}
+                  <Pencil className="h-3.5 w-3.5 opacity-50 group-hover:opacity-100 transition-opacity" />
+                </button>
+              )}
+              
               {isAuthenticated && identity ? (
                 <div className="flex items-center space-x-3">
-                  <div className="text-sm text-muted-foreground hidden sm:block font-mono">
-                    {identity.getPrincipal().toString().slice(0, 8)}...
-                  </div>
                   <button 
                     onClick={handleAuth} 
                     disabled={isLoggingIn}
@@ -187,22 +296,16 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
         </div>
       </main>
 
-      {/* Footer with refined border */}
-      <footer className="border-t border-divide-lighter/25 mt-12 py-6 glass-panel">
-        <div className="container mx-auto px-6 text-center text-sm text-muted-foreground">
-          <p className="flex items-center justify-center gap-2">
-            © 2025. Built with <Heart className="h-4 w-4 text-neon-danger fill-neon-danger" /> using{' '}
-            <a 
-              href="https://caffeine.ai" 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="underline hover:text-foreground transition-smooth inline-flex items-center gap-1"
-            >
-              caffeine.ai
-            </a>
-          </p>
-        </div>
-      </footer>
+      {/* Name Prompt Modal */}
+      <NamePromptModal
+        open={showNamePrompt}
+        onSave={handleSaveProfile}
+        onSkip={handleSkipProfile}
+        isLoading={isSavingProfile}
+        initialFirstName={profile?.firstName || ''}
+        initialLastName={profile?.lastName || ''}
+        isEditMode={isEditMode}
+      />
     </div>
   );
 }

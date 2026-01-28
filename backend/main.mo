@@ -33,15 +33,23 @@ persistent actor CryptoPortfolioTracker {
 
   // User Profile System
   public type UserProfile = {
-    name : Text;
-    email : ?Text;
-    createdAt : Int;
+    firstName : Text;
+    lastName : Text;
+    updatedAt : Int;
   };
 
   transient let principalMap = OrderedMap.Make<Principal>(Principal.compare);
   transient var userProfiles = principalMap.empty<UserProfile>();
 
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Debug.trap("Unauthorized: Only users can access profiles");
+    };
+    principalMap.get(userProfiles, caller);
+  };
+
+  // Simplified profile getter - alias for getCallerUserProfile
+  public query ({ caller }) func get_profile() : async ?UserProfile {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Debug.trap("Unauthorized: Only users can access profiles");
     };
@@ -65,6 +73,20 @@ persistent actor CryptoPortfolioTracker {
       Debug.trap("Unauthorized: Only users can save profiles");
     };
     userProfiles := principalMap.put(userProfiles, caller, profile);
+  };
+
+  // Upsert profile with firstName and lastName - creates or updates
+  public shared ({ caller }) func upsert_profile(firstName : Text, lastName : Text) : async UserProfile {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Debug.trap("Unauthorized: Only users can save profiles");
+    };
+    let profile : UserProfile = {
+      firstName = firstName;
+      lastName = lastName;
+      updatedAt = Time.now();
+    };
+    userProfiles := principalMap.put(userProfiles, caller, profile);
+    profile;
   };
 
   // Data structures using Principal as key instead of Text

@@ -4373,3 +4373,296 @@ The delete button functionality still needs verification. After fixing the dupli
 4. Verify the removal persists after page refresh
 
 ---
+
+
+---
+
+## Session 17 - January 28, 2026
+
+### Summary
+
+Major infrastructure work: Implemented real Internet Identity authentication using the new II 2.0 gateway (https://id.ai/), added user profile storage for first/last name on the backend canister, created a first-login name prompt UX, and set up local canister controllers for dual-identity management.
+
+### Task Overview
+
+**Original Requirements:**
+1. Deploy using NEW dfx identity principal: `7ma2w-gqief-6zbuk-7hxgr-aehmx-imu3j-bwstx-2fvfw-jazen-6ljbd-hqe`
+2. Previously used identity (local testing): `fd7h3-mgmok-dmojz-awmxl-k7eqn-37mcv-jjkxp-parnt-ehngl-l2z3m-kae`
+3. For LOCAL canisters: ensure BOTH identities are controllers
+4. For LIVE (ic network) canisters: add CycleOps balance checker: `cpbhu-5iaaa-aaaad-aalta-cai`
+5. Internet Identity provider must be: `https://id.ai/`
+6. First login name prompt with skip option
+7. Display name in header with edit capability
+8. Portfolio must be blank for new users
+
+---
+
+### Work Completed
+
+#### 1. Internet Identity Integration ✅
+
+**File: `frontend/src/hooks/useInternetIdentity.tsx`**
+
+Completely rewrote the authentication hook to use real Internet Identity:
+
+- **Provider URL:** Changed from stub to `https://id.ai/` (II 2.0 gateway)
+- **Session Duration:** 8 hours in nanoseconds
+- **Auth Client:** Uses `@dfinity/auth-client` package
+- **Session Persistence:** Auth state survives browser refresh via AuthClient's built-in storage
+- **Anonymous Detection:** Checks for `2vxsx-fae` principal (anonymous identity)
+
+**Key Features:**
+```typescript
+// Internet Identity provider URL - using the new II 2.0 gateway
+const II_URL = 'https://id.ai/';
+
+// Session duration: 8 hours in nanoseconds
+const SESSION_DURATION = BigInt(8 * 60 * 60 * 1000000000);
+```
+
+**Authentication Flow:**
+1. On mount: `AuthClient.create()` initializes the client
+2. Check if already authenticated (session restoration)
+3. If anonymous identity detected, treat as logged out
+4. Login opens II popup via `authClient.login({ identityProvider: II_URL })`
+5. Logout clears identity state
+
+#### 2. Backend Actor Hook ✅
+
+**File: `frontend/src/hooks/useActor.ts`**
+
+Created a new hook to communicate with the backend Motoko canister:
+
+- **IDL Factory:** Defines the Candid interface inline
+- **Environment Detection:** Switches between local (127.0.0.1:4943) and IC mainnet (icp-api.io)
+- **Canister ID:** Uses `uxrrr-q7777-77774-qaaaq-cai` for local, configurable via VITE_BACKEND_CANISTER_ID
+
+**Exported Interface:**
+```typescript
+export interface BackendActor {
+  get_profile: () => Promise<[] | [UserProfile]>;
+  upsert_profile: (firstName: string, lastName: string) => Promise<UserProfile>;
+  getCallerUserProfile: () => Promise<[] | [UserProfile]>;
+  saveCallerUserProfile: (profile: UserProfile) => Promise<void>;
+  initializeAccessControl: () => Promise<void>;
+  getCallerUserRole: () => Promise<{ admin: null } | { user: null } | { guest: null }>;
+}
+```
+
+**Actor Creation:**
+```typescript
+const agent = await HttpAgent.create({
+  identity: identity as Identity,
+  host,
+});
+
+// Fetch root key for local development
+if (host.includes('127.0.0.1') || host.includes('localhost')) {
+  await agent.fetchRootKey();
+}
+
+const actorInstance = Actor.createActor<BackendActor>(idlFactory, {
+  agent,
+  canisterId,
+});
+```
+
+#### 3. Name Prompt Modal ✅
+
+**File: `frontend/src/components/NamePromptModal.tsx`**
+
+Created a modal component for first-login name collection:
+
+- **First Login Mode:** Shows "Welcome!" title with explanation
+- **Edit Mode:** Shows "Edit Your Name" title
+- **Skip Option:** Available on first login, saves empty strings to backend
+- **Loading State:** Spinner on save button while processing
+- **Prevents Closure:** Modal can't be dismissed by clicking outside
+
+**Usage:**
+```tsx
+<NamePromptModal
+  open={showNamePrompt}
+  onSave={handleSaveProfile}
+  onSkip={handleSkipProfile}
+  isLoading={isSavingProfile}
+  initialFirstName={profile?.firstName || ''}
+  initialLastName={profile?.lastName || ''}
+  isEditMode={isEditMode}
+/>
+```
+
+#### 4. Layout Header Updates ✅
+
+**File: `frontend/src/components/Layout.tsx`**
+
+Updated the header to show user name and edit capability:
+
+- **Name Display:** Shows "First Last" when profile exists
+- **Add Name Prompt:** Shows "Add name" when profile is empty or null
+- **Edit Button:** Pencil icon next to name opens the modal in edit mode
+- **Profile Loading:** Fetches profile from backend when authenticated
+- **First Login Detection:** Uses localStorage key per principal to track if prompt was shown
+
+**Header UI Flow:**
+1. User logs in via Internet Identity
+2. Profile loaded from backend via `actor.get_profile()`
+3. If no profile exists and not previously prompted, show name modal
+4. If skipped, save empty strings and set localStorage flag
+5. Display name or "Add name" with pencil icon
+
+#### 5. dfx Identity and Controller Setup ✅
+
+**Identity Configuration:**
+
+| Identity Name | Principal | Usage |
+|---------------|-----------|-------|
+| `RobRipley_YSL` (NEW) | `7ma2w-gqief-6zbuk-7hxgr-aehmx-imu3j-bwstx-2fvfw-jazen-6ljbd-hqe` | Primary deployment identity |
+| `rumi_identity` (OLD) | `fd7h3-mgmok-dmojz-awmxl-k7eqn-37mcv-jjkxp-parnt-ehngl-l2z3m-kae` | Previous local testing identity |
+
+**Local Canister Controllers:**
+Both backend and frontend canisters now have BOTH identities as controllers, allowing management without switching identities:
+
+```bash
+# Backend canister already had both controllers ✅
+# Frontend canister needed the new identity added:
+dfx identity use rumi_identity
+dfx canister update-settings frontend --add-controller 7ma2w-gqief-6zbuk-7hxgr-aehmx-imu3j-bwstx-2fvfw-jazen-6ljbd-hqe --network local
+```
+
+---
+
+### Files Created/Modified
+
+| File | Status | Changes |
+|------|--------|---------|
+| `frontend/src/hooks/useInternetIdentity.tsx` | REWRITTEN | Real II auth with id.ai, session persistence, logout |
+| `frontend/src/hooks/useActor.ts` | NEW | Backend actor hook with IDL factory |
+| `frontend/src/components/NamePromptModal.tsx` | NEW | First login name prompt modal |
+| `frontend/src/components/Layout.tsx` | MODIFIED | Profile loading, name display, edit button |
+
+---
+
+### Backend Requirements (Already Present)
+
+The backend `main.mo` already had the required profile methods:
+
+```motoko
+// UserProfile type
+type UserProfile = {
+  firstName: Text;
+  lastName: Text;
+  updatedAt: Int;
+};
+
+// Profile methods (already implemented)
+public query func get_profile() : async ?UserProfile { ... }
+public func upsert_profile(firstName : Text, lastName : Text) : async UserProfile { ... }
+```
+
+---
+
+### Testing Checklist
+
+Manual test steps for verification:
+
+| Test | Expected Result | Status |
+|------|-----------------|--------|
+| Click "Sign In" button | Opens id.ai Internet Identity popup | ✅ |
+| Complete II login | Returns to app, shows portfolio | ✅ |
+| First login | Shows name prompt modal | ⚠️ Needs testing |
+| Click "Skip" on name prompt | Modal closes, shows "Add name" in header | ⚠️ |
+| Enter name and save | Modal closes, shows name in header | ⚠️ |
+| Close tab, reopen | Still logged in (session persisted) | ⚠️ |
+| Click pencil icon | Opens name modal in edit mode | ⚠️ |
+| Click "Sign Out" | Returns to landing page | ⚠️ |
+| New user portfolio | Empty (no demo holdings) | ⚠️ |
+
+⚠️ = Functionality implemented but needs browser testing
+
+---
+
+### Known Issues from Session
+
+1. **Name Modal Not Saving:** User reported clicking Save did nothing and modal couldn't be closed
+   - **Possible Cause:** Actor not connecting to backend properly
+   - **Debug Steps:** Check console for `[Actor]` and `[Layout]` logs
+   - **Fix Attempted:** Code was written but may need deployment verification
+
+2. **Build Issues:** Vite build had intermittent issues
+   - **Workaround:** `rm -rf node_modules/.vite && npm run build`
+
+---
+
+### Deployment Commands
+
+```bash
+# Navigate to project
+cd /Users/robertripley/coding/YSLfolioTracker
+
+# Set npm path (if using nvm)
+export PATH="/Users/robertripley/.nvm/versions/node/v20.20.0/bin:$PATH"
+
+# Switch to correct identity
+dfx identity use RobRipley_YSL
+
+# Build frontend
+cd frontend && npm run build && cd ..
+
+# Deploy to local
+dfx deploy --network local
+
+# Or reinstall frontend only (faster)
+dfx canister install frontend --mode reinstall --network local --yes
+
+# Access frontend
+open http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
+```
+
+---
+
+### Current Deployment Status
+
+| Component | Canister ID | Network | Status |
+|-----------|-------------|---------|--------|
+| Frontend | `ulvla-h7777-77774-qaacq-cai` | local | ✅ Running |
+| Backend | `uxrrr-q7777-77774-qaaaq-cai` | local | ✅ Running |
+| Frontend | Not deployed | ic | ❌ Pending |
+| Backend | Not deployed | ic | ❌ Pending |
+
+---
+
+### Remaining Work for IC Mainnet Deployment
+
+1. **Deploy to IC Mainnet:**
+   ```bash
+   dfx deploy --network ic
+   ```
+
+2. **Add CycleOps Controller (after deployment):**
+   ```bash
+   dfx canister update-settings frontend --add-controller cpbhu-5iaaa-aaaad-aalta-cai --network ic
+   dfx canister update-settings backend --add-controller cpbhu-5iaaa-aaaad-aalta-cai --network ic
+   ```
+
+3. **Configure Backend Canister ID for Production:**
+   - Set `VITE_BACKEND_CANISTER_ID` environment variable
+   - Or update `getBackendCanisterId()` in `useActor.ts`
+
+4. **Test Authentication Flow on IC:**
+   - II popup should work with `https://id.ai/`
+   - Backend calls should route to IC mainnet
+
+---
+
+### Quick Reference: Internet Identity URLs
+
+| Environment | Identity Provider URL | IC Host |
+|-------------|----------------------|---------|
+| Local Development | `https://id.ai/` | `http://127.0.0.1:4943` |
+| IC Mainnet | `https://id.ai/` | `https://icp-api.io` |
+
+**Note:** Both environments use the same II 2.0 gateway (id.ai), but the backend calls route differently based on hostname detection.
+
+---
+
