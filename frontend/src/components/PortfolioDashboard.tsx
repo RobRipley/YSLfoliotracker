@@ -3,7 +3,7 @@ import { usePortfolioStore } from '@/lib/store';
 import { useInternetIdentity } from '@/hooks/useInternetIdentity';
 import { CompactHoldingsTable } from './CompactHoldingsTable';
 import { NearestExits } from './NearestExits';
-import { type Category, type Holding, getCategoryForHolding, updateCash } from '@/lib/dataModel';
+import { type Category, type Holding, getCategoryForHolding } from '@/lib/dataModel';
 import { getPriceAggregator, type ExtendedPriceQuote } from '@/lib/priceService';
 import { usePortfolioSnapshots } from '@/hooks/usePortfolioSnapshots';
 import { AllocationDonutChart } from './AllocationDonutChart';
@@ -149,7 +149,7 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
   }, [store.holdings, prices]);
 
   const [expandedCategories, setExpandedCategories] = useState<Set<Category>>(
-    () => new Set(['blue-chip', 'mid-cap'])
+    () => new Set(['stablecoin', 'blue-chip', 'mid-cap'])
   );
 
   const toggleCategory = (category: Category) => {
@@ -313,7 +313,7 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
               displayedCategories={displayedCategories}
               exitPlans={exitPlans}
               cash={store.cash}
-              onUpdateCash={updateCash}
+              onUpdateCash={store.setCash}
             />
           </div>
 

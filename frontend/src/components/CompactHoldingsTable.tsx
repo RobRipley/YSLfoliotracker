@@ -1143,9 +1143,9 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
         <div className="space-y-4">
           {displayedCategories.map(category => {
             const holdings = groups[category] || [];
-            // For stablecoin category, show even if no holdings (to display cash row)
+            // For stablecoin category, ALWAYS show (to display cash row)
             // For other categories, hide if no holdings
-            if (!holdings.length && (category !== 'stablecoin' || cash <= 0)) return null;
+            if (!holdings.length && category !== 'stablecoin') return null;
             const isExpanded = expandedCategories.has(category);
             
             // Sort holdings by value (highest first)
