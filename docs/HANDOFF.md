@@ -2506,3 +2506,241 @@ Production deployment should be faster due to better network proximity and cachi
 
 ---
 
+
+## NEW TASKS - HIGH PRIORITY
+
+### Task A: Add "Cash and Stablecoins" Category
+**Requirements:**
+1. Add a new category above Blue Chips called "Cash and Stablecoins"
+2. When expanded, show a "Cash" line by default
+3. Cash should have a simple input field (default 0) with an "Update" button
+4. No price feed needed for cash - user enters amount directly
+5. Cash amount reflects in category value, donut chart, legend, and portfolio total
+
+**Stablecoin Detection Question:**
+Need to research: Does our system automatically detect stablecoins? They should NOT be categorized by market cap - all stablecoins go in this category regardless of market cap.
+
+Options to explore:
+- Maintain a list of known stablecoin symbols (USDT, USDC, DAI, BUSD, etc.)
+- Check if price is ~$1.00 (within tolerance)
+- Use CoinGecko's "stablecoin" category flag if available
+- Manual override in Add Asset modal
+
+---
+
+### Task B: Fix "How This Table Works" Popover
+1. **Bug:** Popover doesn't close when clicking outside or when opening Columns dialog
+2. **UI Change:** Remove text, keep only the info icon (ℹ️)
+3. **UI Change:** Move "Add Asset" button to between info icon and Columns button
+
+---
+
+### Task C: Allocation Overview Category Badges (Research Needed)
+**Current State:** The larger category badges show values like "$41,550", "+5.0% (30d)" with mini chart lines
+
+**Questions to Research:**
+1. Is this dummy data? (Need to verify in code)
+2. How would we calculate 30d % change?
+3. How would we generate the chart line?
+
+**Potential Approaches:**
+- Store daily snapshots of category totals
+- Calculate from transaction history
+- Fetch historical prices and recalculate
+
+**Decision Needed:** Implement properly vs. hide for now and revisit later
+
+---
+
+## Session 8 Final Summary - January 27, 2026
+
+### Completed This Session:
+1. ✅ Verified donut chart working
+2. ✅ Verified Add Asset button opens modal
+3. ✅ Verified Edit/Delete buttons working
+4. ✅ UI cleanup - removed category badge and tagline from asset rows
+5. ✅ Made ticker symbol larger/bolder
+6. ✅ Fixed Add Asset modal submit button (was passing wrong params)
+7. ✅ Redesigned Add Asset modal UI (cleaner, no Advanced Options)
+8. ✅ Default Purchase Date to today
+9. ✅ Sort holdings by value within categories
+
+### Git Commits:
+- `79809f3` - Session 8: Verify and document working features
+- `fbc1e7a` - UI cleanup: remove redundant category badge and tagline
+- `25441a7` - Fix Add Asset modal and improve UX
+
+### Remaining Tasks (Original List):
+- 24h % change data (always 0.00%)
+- Fix popover stacking issues
+- Fix initial load race condition
+- Remove lock button from actions (if desired)
+- Add "Notes" column header when enabled
+
+---
+
+
+## Research Findings - Task C: Allocation Overview Category Badges
+
+### Current State Analysis
+
+**What the badges show:**
+- Blue Chip: $41,550 +5.0% (30d)
+- Mid Cap: $22,664 +5.0% (30d)  
+- Low Cap: $7,555 +5.0% (30d)
+
+**These values don't match actual portfolio:**
+- Actual Blue Chip: $28,606
+- Actual Mid Cap: $666
+- Actual Low Cap: $1,957
+
+### How It Works
+
+The `CategoryTrendCharts` component:
+1. Takes `snapshots` from `store.portfolioSnapshots`
+2. Filters to last 30 days
+3. Calculates % change from first to last snapshot
+4. Renders sparkline chart from snapshot data
+
+**Problem:** `store.portfolioSnapshots` starts as an empty array `[]`. So where is the data coming from?
+
+The values shown must be:
+- Sample/seed data loaded elsewhere, OR
+- Data persisted in localStorage from previous sessions
+
+### Options for Implementation
+
+**Option 1: Hide for Now (RECOMMENDED)**
+- Comment out `<CategoryTrendCharts>` component
+- Remove the badges entirely
+- Keeps the donut chart and legend (which show accurate current values)
+- Time: 5 minutes
+- Revisit when we have proper snapshot recording
+
+**Option 2: Show Current Values Only (No History)**
+- Display current category totals (same as legend)
+- Remove % change and sparkline
+- Shows "$28,606" but no trend data
+- Time: 30 minutes
+
+**Option 3: Full Implementation**
+- Record daily snapshots (need backend or localStorage cron)
+- Store at least 30 days of history
+- Calculate real % changes
+- Time: 2-4 hours
+- Requires: snapshot recording mechanism, either:
+  - Backend cron job
+  - Frontend service worker
+  - Manual trigger on app load (limited)
+
+### Recommendation
+
+**Go with Option 1 (Hide for Now)** because:
+1. Current display is misleading (shows wrong values)
+2. Fast to implement (just remove the component)
+3. Donut chart + legend already show accurate current allocation
+4. Can implement proper history tracking later when there's more time
+
+### Additional Finding: Cash Already Supported!
+
+The store already has `cash: 0` property, which will help with Task A (Cash and Stablecoins category).
+
+---
+
+
+## PRIORITY TASK LIST (Updated)
+
+### Task C: Hide Category Trend Badges - DO FIRST ✅
+**Priority:** Immediate (5 min fix)
+**Action:** Remove/hide `<CategoryTrendCharts>` component from PortfolioDashboard
+**Reason:** Shows misleading/incorrect values that don't match actual portfolio
+
+---
+
+### Task A: Add "Cash and Stablecoins" Category
+**Requirements:**
+1. Add new category above Blue Chips called "Cash and Stablecoins"
+2. When expanded, show a "Cash" line by default with editable input (default 0) + "Update" button
+3. Cash amount reflects in category value, donut chart, legend, and portfolio total
+
+**Stablecoin Detection Strategy:**
+- Use CoinGecko stablecoins list as base (https://www.coingecko.com/en/categories/stablecoins)
+- Known issue: Staked/yield-bearing versions not in list (e.g., sUSDe, sUSDS missing but USDe, USDS present)
+
+**Solution for edge cases:**
+- Add a "Add to Stablecoins" button in the Cash & Stablecoins category header
+- Opens simplified Add Asset modal that forces category to stablecoin
+- Allows manual override for yield-bearing stablecoins like sUSDe, sUSDS, etc.
+
+**Common stablecoins to detect automatically:**
+- USDT, USDC, DAI, BUSD, TUSD, USDP, GUSD, FRAX, LUSD, USDD
+- USDe, USDS, PYUSD, FDUSD, CUSD, UST (if still tracked)
+- Could also check: price within $0.95-$1.05 range as secondary heuristic
+
+---
+
+### Task B: Fix "How This Table Works" Popover
+1. **Bug:** Popover doesn't close when clicking outside or when opening Columns dialog
+2. **UI Change:** Remove "How this table works" text, keep only the info icon (ℹ️)
+3. **UI Change:** Move "Add Asset" button to between info icon and Columns button
+
+---
+
+### Remaining Tasks (Lower Priority):
+- 24h % change data (always 0.00%)
+- Fix initial load race condition
+- Remove lock button from actions (if desired)
+- Add "Notes" column header when enabled
+
+---
+
+
+## PRIORITY TASK LIST (Updated)
+
+### Task C: Hide Category Trend Badges - DO FIRST ✅
+- Remove/hide `<CategoryTrendCharts>` component from PortfolioDashboard
+- Currently shows misleading values ($41,550 instead of actual $28,606)
+- Keep donut chart + legend which show accurate values
+- Time: 5 minutes
+
+---
+
+### Task A: Add "Cash and Stablecoins" Category
+**Requirements:**
+1. Add new category above Blue Chips called "Cash and Stablecoins"
+2. When expanded, show a "Cash" line with editable input field (default 0) + "Update" button
+3. Cash amount reflects in category value, donut chart, legend, and portfolio total
+4. No price feed needed for cash
+
+**Stablecoin Detection Strategy:**
+- Use CoinGecko stablecoins list as primary source
+- **Issue:** Yield-bearing/staked versions not in list (e.g., sUSDe, sUSDS missing while USDe, USDS are listed)
+- **Solution:** Add a manual "Add to Stablecoins" button in the category
+  - User can manually assign any asset to stablecoin category
+  - Handles edge cases like sUSDe, sUSDS, and other yield-bearing stablecoins
+  - Override persists for that asset
+
+**Implementation Plan:**
+1. Maintain hardcoded list of common stablecoins (USDT, USDC, DAI, BUSD, FRAX, TUSD, USDP, GUSD, LUSD, etc.)
+2. Also include known yield-bearing versions (sUSDe, sUSDS, etc.)
+3. Add "Add Asset to Stablecoins" button in category header
+4. When user adds asset via main "Add Asset" button, check if symbol is in stablecoin list
+5. If not in list but user wants it as stablecoin, they can use the manual add button
+
+---
+
+### Task B: Fix "How This Table Works" Popover
+1. **Bug:** Popover doesn't close when clicking outside or when opening Columns dialog
+2. **UI Change:** Remove "How this table works" text, keep only the info icon (ℹ️)
+3. **UI Change:** Move "Add Asset" button to between info icon and Columns button
+
+---
+
+### Remaining Tasks (Lower Priority):
+- 24h % change data (always 0.00%)
+- Fix initial load race condition
+- Remove lock button from actions (if desired)
+- Add "Notes" column header when enabled
+
+---
+

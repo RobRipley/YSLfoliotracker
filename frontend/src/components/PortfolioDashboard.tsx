@@ -237,16 +237,6 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
             A calm view of your holdings, with live prices and exit ladders woven in.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            className="h-9 rounded-full bg-gradient-to-r from-primary to-primary/60 px-4 text-xs font-medium shadow-lg shadow-primary/30 transition-smooth hover:shadow-primary/50"
-            onClick={handleAddAssetClick}
-          >
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            Add Asset
-          </Button>
-        </div>
       </div>
 
       {showEmptyState ? (
@@ -282,6 +272,7 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
               onEditHolding={handleEditHoldingInit}
               onRemoveHolding={handleRemoveHolding}
               onToggleLock={handleToggleLock}
+              onAddAsset={handleAddAssetClick}
               selectedPreset={selectedPreset}
               selectedCategory={selectedCategory}
               displayedCategories={displayedCategories}
@@ -311,7 +302,10 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
                   selectedCategory={selectedCategory}
                 />
 
+                {/* CategoryTrendCharts hidden - shows incorrect/stale snapshot data 
+                    TODO: Implement proper daily snapshot recording before re-enabling
                 <CategoryTrendCharts snapshots={store.snapshots} />
+                */}
               </div>
             </Card>
 

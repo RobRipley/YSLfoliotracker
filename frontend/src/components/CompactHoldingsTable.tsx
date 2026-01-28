@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { ChevronDown, ChevronRight, Edit, Trash2, Lock, Unlock, Info, Settings, Target } from 'lucide-react';
+import { ChevronDown, ChevronRight, Edit, Trash2, Lock, Unlock, Info, Settings, Target, Plus } from 'lucide-react';
 import { type Holding, type Category, valueUsd, share } from '@/lib/dataModel';
 import { type ExtendedPriceQuote } from '@/lib/priceService';
 import { saveUIPreferences, loadUIPreferences } from '@/lib/uiPreferences';
@@ -129,6 +129,7 @@ interface CompactHoldingsTableProps {
   onEditHolding: (holding: Holding) => void;
   onRemoveHolding: (holding: Holding) => void;
   onToggleLock: (holding: Holding) => void;
+  onAddAsset?: () => void;
   selectedPreset: 'n4' | 'custom';
   selectedCategory: Category | 'all';
   displayedCategories: Category[];
@@ -209,6 +210,7 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
   onEditHolding,
   onRemoveHolding,
   onToggleLock,
+  onAddAsset,
   selectedPreset,
   selectedCategory,
   displayedCategories,
@@ -888,16 +890,17 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
         </div>
         <div className="flex items-center gap-2">
           <Popover>
-            <PopoverTrigger>
+            <PopoverTrigger asChild>
               <button
                 type="button"
-                className="hidden h-7 items-center gap-1 rounded-full border border-divide/80 bg-black/20 px-2.5 text-[11px] text-muted-foreground transition-smooth hover:bg-black/40 hover:text-foreground md:inline-flex"
+                className="flex h-7 w-7 items-center justify-center rounded-full border border-divide/80 bg-black/20 text-muted-foreground transition-smooth hover:bg-black/40 hover:text-foreground"
               >
-                <Info className="h-3 w-3" />
-                <span>How this table works</span>
+                <Info className="h-3.5 w-3.5" />
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-80 glass-panel border-divide/60 text-xs">
+            <PopoverContent 
+              className="w-80 glass-panel border-divide/60 text-xs"
+            >
               <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                 Portfolio view
               </div>
@@ -910,6 +913,17 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
               </p>
             </PopoverContent>
           </Popover>
+
+          {onAddAsset && (
+            <button
+              type="button"
+              onClick={onAddAsset}
+              className="flex h-7 items-center gap-1.5 rounded-full bg-gradient-to-r from-primary to-primary/60 px-3 text-[11px] font-medium text-primary-foreground shadow-lg shadow-primary/30 transition-smooth hover:shadow-primary/50"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Add Asset</span>
+            </button>
+          )}
 
           <ColumnToggleMenu />
         </div>
