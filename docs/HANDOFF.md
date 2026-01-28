@@ -5564,3 +5564,70 @@ open http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
 
 ---
 
+
+
+---
+
+## Session 12 (continued) - Cash Balance Persistence Fix
+
+### Summary
+
+Fixed the cash balance persistence issue and ensured the Cash & Stablecoins category always displays by default.
+
+**Note:** The chat transcript for this fix was lost, but the changes were recovered from uncommitted git changes.
+
+### Changes Made
+
+#### 1. CompactHoldingsTable.tsx
+
+Changed the category display condition so Cash & Stablecoins **always shows**, even when cash is $0:
+
+```typescript
+// Before
+if (!holdings.length && (category !== 'stablecoin' || cash <= 0)) return null;
+
+// After  
+if (!holdings.length && category !== 'stablecoin') return null;
+```
+
+#### 2. PortfolioDashboard.tsx
+
+**Default expanded categories now includes stablecoin:**
+
+```typescript
+// Before
+const [expandedCategories, setExpandedCategories] = useState<Set<Category>>(
+  () => new Set(['blue-chip', 'mid-cap'])
+);
+
+// After
+const [expandedCategories, setExpandedCategories] = useState<Set<Category>>(
+  () => new Set(['stablecoin', 'blue-chip', 'mid-cap'])
+);
+```
+
+**Fixed cash persistence - use store.setCash instead of updateCash:**
+
+```typescript
+// Before
+onUpdateCash={updateCash}
+
+// After
+onUpdateCash={store.setCash}
+```
+
+The key fix was changing from `updateCash` (which didn't persist) to `store.setCash` (which calls `saveStore(globalStore)` to persist to localStorage).
+
+### Result
+
+- Cash & Stablecoins category now **always appears** in new portfolios
+- Cash Balance line is **always visible** within the category  
+- User-entered cash values **persist across page refreshes**
+- Cash is stored per-user via the principal-keyed localStorage
+
+### Git Commit
+
+`d6d864d` - Fix cash balance persistence + always show Cash & Stablecoins category
+
+---
+
