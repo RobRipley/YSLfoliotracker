@@ -112,18 +112,24 @@ function saveExitPlans(plans: Record<string, ExitPlan>): void {
 
 /**
  * Format tokens with smart decimal display
- * - Trims trailing zeros
- * - Shows no decimal point if all zeros
- * - Respects maximum precision for assets that need it
+ * - Only shows as many decimals as needed
+ * - Trims trailing zeros after decimal
+ * - Shows no decimal point if all decimals are zero
+ * - Respects maximum precision setting for assets that truly need 8 decimals
  */
 function formatTokensSmart(value: number, maxPrecision: number = 8): string {
   if (value === 0) return '0';
+  if (isNaN(value) || !isFinite(value)) return '0';
   
   // For very small numbers, use more precision
   const absValue = Math.abs(value);
   let precision = maxPrecision;
   
-  if (absValue >= 1000) {
+  if (absValue >= 10000) {
+    precision = 0;  // No decimals for large numbers
+  } else if (absValue >= 1000) {
+    precision = 1;
+  } else if (absValue >= 100) {
     precision = 2;
   } else if (absValue >= 1) {
     precision = 4;
@@ -131,12 +137,13 @@ function formatTokensSmart(value: number, maxPrecision: number = 8): string {
     precision = 6;
   }
   
-  // Format with precision, then trim trailing zeros
+  // Format with precision
   const formatted = value.toFixed(precision);
   
-  // Remove trailing zeros after decimal point
+  // Remove trailing zeros after decimal point and unnecessary decimal point
   if (formatted.includes('.')) {
-    return formatted.replace(/\.?0+$/, '');
+    const trimmed = formatted.replace(/\.?0+$/, '');
+    return trimmed === '' ? '0' : trimmed;
   }
   
   return formatted;
