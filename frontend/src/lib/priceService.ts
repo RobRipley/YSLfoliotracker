@@ -10,6 +10,12 @@
  */
 
 import { PriceQuote } from './dataModel';
+import { 
+  isWorkerCacheConfigured, 
+  fetchFromWorkerCache, 
+  fetchLogosFromWorkerCache,
+  getWorkerCacheStatus 
+} from './workerCacheProvider';
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -716,6 +722,7 @@ export class PriceAggregator {
 
   /**
    * Get prices with multi-tier fallback:
+   * 0. Try Worker Cache first (if configured)
    * 1. Try CryptoRates.ai for all symbols (has market cap)
    * 2. For missing symbols, try CryptoPrices.cc (price only)
    * 3. For symbols with price but no market cap, supplement from CoinGecko
@@ -726,6 +733,37 @@ export class PriceAggregator {
     const normalizedSymbols = symbols.map(s => s.toUpperCase());
     const results: Map<string, ExtendedPriceQuote> = new Map();
     let missingSymbols: string[] = [...normalizedSymbols];
+
+    // Step 0: Try Worker Cache first (if configured)
+    if (isWorkerCacheConfigured()) {
+      try {
+        console.log('[Aggregator] Trying Worker cache first...');
+        const workerQuotes = await fetchFromWorkerCache(normalizedSymbols);
+        
+        workerQuotes.forEach((quote, index) => {
+          if (quote && quote.priceUsd > 0) {
+            results.set(normalizedSymbols[index], quote);
+          }
+        });
+        
+        missingSymbols = normalizedSymbols.filter(s => !results.has(s));
+        
+        if (results.size > 0) {
+          console.log(`[Aggregator] Got ${results.size} prices from Worker cache`);
+        }
+        
+        if (missingSymbols.length === 0) {
+          // Worker cache had all symbols, skip other providers
+          return this.finalizeResults(normalizedSymbols, results);
+        }
+        
+        if (missingSymbols.length > 0) {
+          console.log('[Aggregator] Missing from Worker cache:', missingSymbols.join(', '));
+        }
+      } catch (workerError) {
+        console.warn('[Aggregator] Worker cache failed:', workerError);
+      }
+    }
 
     // Step 1: Try primary provider (CryptoRates.ai)
     try {
@@ -836,6 +874,13 @@ export class PriceAggregator {
       }
     }
 
+    return this.finalizeResults(normalizedSymbols, results);
+  }
+
+  /**
+   * Finalize results: check for changes, update cache, and return quotes
+   */
+  private finalizeResults(normalizedSymbols: string[], results: Map<string, ExtendedPriceQuote>): ExtendedPriceQuote[] {
     // Check for significant changes and update cache
     const finalQuotes = normalizedSymbols.map(symbol => {
       const quote = results.get(symbol)!;
@@ -861,10 +906,24 @@ export class PriceAggregator {
   }
 
   /**
-   * Fetch logos for given symbols using CoinGecko /coins/markets endpoint
-   * Returns a map of UPPERCASE symbol -> logo URL
+   * Fetch logos for given symbols
+   * Tries Worker cache first (if configured), falls back to CoinGecko
    */
   async getLogos(symbols: string[]): Promise<Record<string, string>> {
+    // Try Worker cache first if configured
+    if (isWorkerCacheConfigured()) {
+      try {
+        const workerLogos = await fetchLogosFromWorkerCache(symbols);
+        if (Object.keys(workerLogos).length > 0) {
+          console.log(`[Aggregator] Got ${Object.keys(workerLogos).length} logos from Worker cache`);
+          return workerLogos;
+        }
+      } catch (error) {
+        console.warn('[Aggregator] Worker cache logos failed:', error);
+      }
+    }
+    
+    // Fall back to CoinGecko
     return this.fallbackProvider.getLogos(symbols);
   }
 }

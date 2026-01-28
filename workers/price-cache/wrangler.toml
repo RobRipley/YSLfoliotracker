@@ -5,21 +5,21 @@ compatibility_date = "2024-01-01"
 # KV namespace for fast reads
 [[kv_namespaces]]
 binding = "PRICE_KV"
-id = "YOUR_KV_NAMESPACE_ID"  # Replace after creating: wrangler kv:namespace create PRICE_KV
+id = "947dc235f7fc41ada662d7d5318bad2a"
 
-# R2 bucket for historical snapshots
-[[r2_buckets]]
-binding = "PRICE_R2"
-bucket_name = "ysl-price-snapshots"
+# R2 bucket for historical snapshots (OPTIONAL - uncomment if R2 is enabled)
+# [[r2_buckets]]
+# binding = "PRICE_R2"
+# bucket_name = "ysl-price-snapshots"
 
 # Cron triggers
 [triggers]
 crons = [
   "*/5 * * * *",  # Every 5 minutes - refresh prices
-  "0 9 * * *"     # Daily at 09:00 UTC - write snapshots and refresh registry
+  "0 9 * * *"     # Daily at 09:00 UTC - refresh registry
 ]
 
-# Environment variables (optional, for API keys if needed)
+# Environment variables
 [vars]
 COINGECKO_API_URL = "https://api.coingecko.com/api/v3"
 CRYPTORATES_API_URL = "https://cryptorates.ai/v1"

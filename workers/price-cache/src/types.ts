@@ -5,7 +5,7 @@
 // Cloudflare Worker Environment bindings
 export interface Env {
   PRICE_KV: KVNamespace;
-  PRICE_R2: R2Bucket;
+  PRICE_R2?: R2Bucket;  // Optional - only if R2 is enabled
   COINGECKO_API_URL: string;
   CRYPTORATES_API_URL: string;
 }

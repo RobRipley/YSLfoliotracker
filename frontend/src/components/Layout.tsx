@@ -375,6 +375,21 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
         </div>
       </main>
 
+      {/* Footer with attribution */}
+      <footer className="border-t border-border/10 py-3 text-center">
+        <p className="text-xs text-muted-foreground/60">
+          Prices powered by{' '}
+          <a 
+            href="https://cryptorates.ai" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-muted-foreground/80 hover:text-foreground transition-colors"
+          >
+            cryptorates.ai
+          </a>
+        </p>
+      </footer>
+
       {/* Name Prompt Modal */}
       <NamePromptModal
         open={showNamePrompt}

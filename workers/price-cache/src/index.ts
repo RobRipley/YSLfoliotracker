@@ -59,6 +59,27 @@ export default {
         return await handleRegistryRequest(env, corsHeaders);
       }
 
+      // Manual refresh endpoint (for initial population or testing)
+      if (path === '/admin/refresh-prices') {
+        ctx.waitUntil(refreshPrices(env));
+        return new Response(JSON.stringify({
+          status: 'started',
+          message: 'Price refresh initiated'
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      if (path === '/admin/refresh-registry') {
+        ctx.waitUntil(refreshRegistry(env));
+        return new Response(JSON.stringify({
+          status: 'started',
+          message: 'Registry refresh initiated'
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
       // Health check
       if (path === '/health' || path === '/') {
         return new Response(JSON.stringify({
@@ -152,9 +173,15 @@ async function refreshPrices(env: Env): Promise<void> {
 }
 
 /**
- * Write daily price snapshot to R2
+ * Write daily price snapshot to R2 (if R2 is enabled)
  */
 async function writeDailySnapshot(env: Env): Promise<void> {
+  // Skip if R2 is not configured
+  if (!env.PRICE_R2) {
+    console.log('[Snapshot] R2 not configured, skipping daily snapshot');
+    return;
+  }
+  
   console.log('[Snapshot] Writing daily price snapshot...');
   
   // Get current prices from KV
@@ -191,15 +218,27 @@ async function refreshRegistry(env: Env): Promise<void> {
 
     console.log(`[Registry] Fetched ${allCoins.length} coins from CoinGecko`);
 
-    // Load existing registry from R2 (for append-only behavior)
+    // Load existing registry from R2 (for append-only behavior) - only if R2 is enabled
     let existingRegistry: Registry | null = null;
-    try {
-      const existing = await env.PRICE_R2.get(R2_REGISTRY_FILE);
-      if (existing) {
-        existingRegistry = await existing.json() as Registry;
+    if (env.PRICE_R2) {
+      try {
+        const existing = await env.PRICE_R2.get(R2_REGISTRY_FILE);
+        if (existing) {
+          existingRegistry = await existing.json() as Registry;
+        }
+      } catch (e) {
+        console.warn('[Registry] No existing registry found, creating new one');
       }
-    } catch (e) {
-      console.warn('[Registry] No existing registry found, creating new one');
+    } else {
+      // Try to load from KV if R2 is not available
+      try {
+        const existingKv = await env.PRICE_KV.get(KV_REGISTRY_LATEST);
+        if (existingKv) {
+          existingRegistry = JSON.parse(existingKv) as Registry;
+        }
+      } catch (e) {
+        console.warn('[Registry] No existing registry in KV, creating new one');
+      }
     }
 
     // Build new registry data
@@ -210,33 +249,37 @@ async function refreshRegistry(env: Env): Promise<void> {
       ? mergeRegistry(existingRegistry, newRegistry)
       : newRegistry;
 
-    // Write merged registry to R2
-    await env.PRICE_R2.put(R2_REGISTRY_FILE, JSON.stringify(mergedRegistry), {
-      httpMetadata: {
-        contentType: 'application/json'
-      }
-    });
+    // Write merged registry to R2 (if available)
+    if (env.PRICE_R2) {
+      await env.PRICE_R2.put(R2_REGISTRY_FILE, JSON.stringify(mergedRegistry), {
+        httpMetadata: {
+          contentType: 'application/json'
+        }
+      });
+    }
 
     // Also write to KV for fast reads
     await env.PRICE_KV.put(KV_REGISTRY_LATEST, JSON.stringify(mergedRegistry));
     await env.PRICE_KV.put(KV_REGISTRY_UPDATED, new Date().toISOString());
 
-    // Write daily snapshot of top 500 composition
-    const today = new Date().toISOString().split('T')[0];
-    const snapshotKey = `${R2_SNAPSHOT_PREFIX}/${today}.json`;
-    const snapshot = {
-      date: today,
-      ids: allCoins.map((coin, idx) => ({
-        id: coin.id,
-        symbol: coin.symbol.toUpperCase(),
-        rank: idx + 1
-      }))
-    };
-    await env.PRICE_R2.put(snapshotKey, JSON.stringify(snapshot), {
-      httpMetadata: {
-        contentType: 'application/json'
-      }
-    });
+    // Write daily snapshot of top 500 composition (only if R2 is available)
+    if (env.PRICE_R2) {
+      const today = new Date().toISOString().split('T')[0];
+      const snapshotKey = `${R2_SNAPSHOT_PREFIX}/${today}.json`;
+      const snapshot = {
+        date: today,
+        ids: allCoins.map((coin, idx) => ({
+          id: coin.id,
+          symbol: coin.symbol.toUpperCase(),
+          rank: idx + 1
+        }))
+      };
+      await env.PRICE_R2.put(snapshotKey, JSON.stringify(snapshot), {
+        httpMetadata: {
+          contentType: 'application/json'
+        }
+      });
+    }
 
     console.log(`[Registry] Successfully updated registry with ${mergedRegistry.count} entries`);
   } catch (error) {
@@ -311,8 +354,8 @@ async function handleRegistryRequest(env: Env, corsHeaders: Record<string, strin
   // Try KV first for fast reads
   let registryJson = await env.PRICE_KV.get(KV_REGISTRY_LATEST);
   
-  // Fall back to R2 if not in KV
-  if (!registryJson) {
+  // Fall back to R2 if not in KV and R2 is available
+  if (!registryJson && env.PRICE_R2) {
     try {
       const r2Object = await env.PRICE_R2.get(R2_REGISTRY_FILE);
       if (r2Object) {
@@ -328,7 +371,7 @@ async function handleRegistryRequest(env: Env, corsHeaders: Record<string, strin
   if (!registryJson) {
     return new Response(JSON.stringify({
       error: 'No registry data available',
-      message: 'Registry has not been populated yet'
+      message: 'Registry has not been populated yet. It will be populated on the next daily cron run.'
     }), {
       status: 503,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
