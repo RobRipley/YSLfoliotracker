@@ -3054,3 +3054,127 @@ open http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
 
 ---
 
+
+
+---
+
+## Session 12 - January 27, 2026
+
+### Summary
+
+Refined the Cash Balance row UI and Allocation Overview legend based on a new spec document. Made the cash row skinnier, added big green value display, moved share% to the right, and reorganized the allocation legend.
+
+### Changes Made
+
+#### 1. Cash Balance Row - CompactHoldingsTable.tsx
+
+**Before:**
+- Grid-based layout (8 columns like other rows)
+- Value was normal size, only colored during edit
+- Share % was below the value
+- Row was taller/thicker
+
+**After:**
+- Flexbox layout (left side: label, right side: value+share)
+- Value is **big and emerald green** at rest (`text-lg font-bold text-emerald-400`)
+- Share % is to the **right** of the value on the same line
+- Row is **skinnier** (`py-2` instead of `py-3`)
+- On hover: **pencil icon** appears + **underline** on value
+- Edit mode uses larger input with underline
+
+**Key CSS changes:**
+```jsx
+// Container: flexbox instead of 8-column grid
+className="flex items-center justify-between rounded-lg border border-teal-500/20 px-3 py-2"
+
+// Value at rest: big, green, with hover effects
+className="text-lg font-bold text-emerald-400 group-hover:underline group-hover:decoration-emerald-400/40"
+
+// Pencil icon: shows on hover
+className="h-3.5 w-3.5 text-emerald-400/40 opacity-0 group-hover:opacity-100 transition-opacity"
+```
+
+#### 2. Allocation Overview Legend - AllocationDonutChart.tsx
+
+**Before:**
+- Legend said "Cash (Manual)"
+- Order was arbitrary (based on allocation object keys)
+
+**After:**
+- Legend says "Cash" with a **teal MANUAL badge**
+- Order is fixed: Cash → Stablecoins → Blue Chip → Mid Cap → Low Cap → Micro Cap
+
+**Key changes:**
+```typescript
+// Changed label
+'cash': 'Cash'  // was 'Cash (Manual)'
+
+// Added sort order
+const LEGEND_ORDER: Array<Category | 'cash'> = [
+  'cash', 'stablecoin', 'blue-chip', 'mid-cap', 'low-cap', 'micro-cap', 'defi'
+];
+
+// Sort legend items
+const sortedLegendItems = [...legendItems].sort((a, b) => {
+  const indexA = LEGEND_ORDER.indexOf(a.category);
+  const indexB = LEGEND_ORDER.indexOf(b.category);
+  return indexA - indexB;
+});
+
+// Added MANUAL badge for cash in legend
+{item.category === 'cash' && (
+  <span className="rounded-full px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-wider"
+    style={{ background: 'rgba(20, 184, 166, 0.15)', color: '#2dd4bf', border: '1px solid rgba(20, 184, 166, 0.25)' }}>
+    Manual
+  </span>
+)}
+```
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `frontend/src/components/CompactHoldingsTable.tsx` | Rewrote `renderCashBalanceRow()` with flexbox layout, big green value, share% on right |
+| `frontend/src/components/AllocationDonutChart.tsx` | Changed "Cash (Manual)" to "Cash" + badge, added `LEGEND_ORDER`, sorted legend |
+
+### Git Commit
+
+`98bf8ee` - Refine Cash Balance row UI and Allocation Overview
+
+### Verification Checklist ✅
+
+**Part 1: Cash Balance row**
+- ✅ Single-line "Cash Balance" label
+- ✅ Skinny row (similar height to other rows)
+- ✅ Big green value at rest (`$5,000` in emerald-400)
+- ✅ On hover: pencil icon + underline appear
+- ✅ Share % to the right of value (same line): "13.1% of portfolio"
+- ✅ "Dry powder" subtitle
+- ✅ MANUAL badge
+
+**Part 2: Stablecoin rows**
+- ✅ USDC uses standard full-column layout
+- ✅ Shows "—" for Avg Cost and 24H
+
+**Part 3: Conditional headers**
+- ✅ Headers appear below cash row when stablecoins exist
+
+**Part 4: Allocation Overview**
+- ✅ "Cash" label (not "Cash (Manual)")
+- ✅ MANUAL badge in teal next to Cash
+- ✅ Legend order: Cash, Stablecoins, Blue Chip, Mid Cap, Low Cap, Micro Cap
+
+**Part 5: Add Asset button**
+- ✅ Purple CTA button (already styled from previous session)
+
+### Current Deployment
+
+| Component | Canister ID | Status |
+|-----------|-------------|--------|
+| Frontend | `ulvla-h7777-77774-qaacq-cai` | ✅ Running |
+| Backend | `uxrrr-q7777-77774-qaaaq-cai` | ✅ Running |
+
+**Frontend URL:** http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
+
+---
+
