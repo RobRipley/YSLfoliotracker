@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { ChevronDown, ChevronRight, Edit, Trash2, Lock, Unlock, Info, Settings, Target, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, Edit, Trash2, Lock, Unlock, Info, Settings, Target, Plus, Pencil, Check, Loader2, DollarSign } from 'lucide-react';
 import { type Holding, type Category, valueUsd, share } from '@/lib/dataModel';
 import { type ExtendedPriceQuote } from '@/lib/priceService';
 import { saveUIPreferences, loadUIPreferences } from '@/lib/uiPreferences';
@@ -232,34 +232,101 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [cashInput, setCashInput] = useState(cash.toString());
   const [isEditingCash, setIsEditingCash] = useState(false);
+  const [cashSaveStatus, setCashSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [previousCash, setPreviousCash] = useState(cash);
 
   // Sync cash input when external cash changes
   useMemo(() => {
     if (!isEditingCash) {
       setCashInput(cash.toString());
+      setPreviousCash(cash);
     }
   }, [cash, isEditingCash]);
 
-  const handleCashUpdate = () => {
-    const newCash = parseFloat(cashInput) || 0;
-    onUpdateCash(Math.max(0, newCash));
+  const handleCashSave = useCallback(() => {
+    const newCash = parseFloat(cashInput);
+    // Validate: disallow negative or invalid values
+    if (isNaN(newCash) || newCash < 0 || cashInput.trim() === '') {
+      // Revert to previous value
+      setCashInput(previousCash.toString());
+      setIsEditingCash(false);
+      return;
+    }
+    
+    // Only save if value changed
+    if (newCash !== previousCash) {
+      setCashSaveStatus('saving');
+      onUpdateCash(newCash);
+      setPreviousCash(newCash);
+      
+      // Show saved indicator briefly
+      setTimeout(() => {
+        setCashSaveStatus('saved');
+        setTimeout(() => {
+          setCashSaveStatus('idle');
+        }, 1000);
+      }, 200);
+    }
     setIsEditingCash(false);
+  }, [cashInput, previousCash, onUpdateCash]);
+
+  const handleCashCancel = useCallback(() => {
+    setCashInput(previousCash.toString());
+    setIsEditingCash(false);
+  }, [previousCash]);
+
+  const handleCashKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleCashSave();
+    } else if (e.key === 'Escape') {
+      handleCashCancel();
+    }
+  }, [handleCashSave, handleCashCancel]);
+
+  const handleCashBlur = useCallback(() => {
+    // Save on blur if changed
+    handleCashSave();
+  }, [handleCashSave]);
+
+  const startCashEdit = useCallback(() => {
+    setPreviousCash(cash);
+    setIsEditingCash(true);
+  }, [cash]);
+
+  // Format currency with commas, no decimals unless user entered them
+  const formatCashDisplay = (value: number): string => {
+    if (Number.isInteger(value)) {
+      return `$${value.toLocaleString()}`;
+    }
+    return `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const categoryTotals = useMemo(() => {
     const result: Record<Category, { value: number; share: number }> = {} as any;
     for (const category of Object.keys(groups) as Category[]) {
       const holdings = groups[category] || [];
-      const categoryValue = holdings.reduce((total, holding) => {
+      let categoryValue = holdings.reduce((total, holding) => {
         const price = prices[holding.symbol]?.priceUsd ?? holding.avgCost ?? 0;
         return total + valueUsd(holding, price);
       }, 0);
+      // Add cash to stablecoin category value
+      if (category === 'stablecoin') {
+        categoryValue += cash;
+      }
       const totalValue = totals.totalValue || 0;
       const categoryShare = totalValue > 0 ? (categoryValue / totalValue) * 100 : 0;
       result[category] = { value: categoryValue, share: categoryShare };
     }
+    // Ensure stablecoin category exists if there's cash, even with no holdings
+    if (cash > 0 && !result['stablecoin']) {
+      const totalValue = totals.totalValue || 0;
+      result['stablecoin'] = { 
+        value: cash, 
+        share: totalValue > 0 ? (cash / totalValue) * 100 : 0 
+      };
+    }
     return result;
-  }, [groups, prices, totals]);
+  }, [groups, prices, totals, cash]);
 
   const isColumnHidden = useCallback(
     (columnId: string) => hiddenColumns.has(columnId),
@@ -853,6 +920,112 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
     );
   };
 
+  // Simplified row for stablecoin assets - only shows Symbol, Price, Tokens, Value, Actions
+  const renderStablecoinRow = (holding: Holding) => {
+    const price = prices[holding.symbol]?.priceUsd ?? holding.avgCost ?? 0;
+    const value = valueUsd(holding, price);
+    const posShare = share(value, totals.totalValue);
+    const isLocked = holding.categoryLocked ?? false;
+
+    return (
+      <div
+        key={holding.id}
+        className="grid grid-cols-[2fr_1.2fr_1.2fr_1.4fr_auto] items-center gap-3 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth"
+      >
+        {/* Symbol */}
+        <div className="flex items-center gap-3">
+          <div
+            className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold text-primary-foreground shadow-md"
+            style={{ backgroundColor: categoryColor('stablecoin') }}
+          >
+            {holding.symbol.charAt(0).toUpperCase()}
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-base font-semibold text-foreground">{holding.symbol}</span>
+              {isLocked && (
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
+                  <Lock className="h-3 w-3" />
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Price */}
+        <div className="text-sm">
+          <div className="font-mono text-foreground/90">{formatPrice(price)}</div>
+          <div className="text-[11px] text-muted-foreground/80">Live price</div>
+        </div>
+
+        {/* Tokens */}
+        <div className="text-sm">
+          <div className="font-mono text-foreground/90">{formatTokens(holding.tokensOwned)}</div>
+          <div className="text-[11px] text-muted-foreground/80">Tokens</div>
+        </div>
+
+        {/* Value */}
+        <div className="text-sm">
+          <div className="font-mono text-foreground/90">{formatUsd(value)}</div>
+          <div className="text-[11px] text-muted-foreground/80">
+            {formatPercent(posShare, 1)} of portfolio
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center justify-end gap-2">
+          <Tooltip>
+            <TooltipTrigger>
+              <button
+                className={cn(
+                  'h-7 w-7 rounded-full border border-divide/80 bg-black/20 text-muted-foreground transition-smooth hover:bg-black/40 hover:text-foreground',
+                  isLocked && 'border-emerald-500/60 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
+                )}
+                onClick={() => handleToggleLock(holding)}
+                type="button"
+              >
+                {isLocked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="glass-panel border-divide/60 text-[11px] leading-relaxed">
+              {isLocked ? 'Unlock this position' : 'Lock this position'}
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger>
+              <button
+                className="h-7 w-7 rounded-full border border-divide/80 bg-black/20 text-muted-foreground transition-smooth hover:bg-black/40 hover:text-foreground"
+                onClick={() => handleEditHolding(holding)}
+                type="button"
+              >
+                <Edit className="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="glass-panel border-divide/60 text-[11px]">
+              Edit this position
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger>
+              <button
+                className="h-7 w-7 rounded-full border border-rose-500/60 bg-rose-500/10 text-rose-300 transition-smooth hover:bg-rose-500/20 hover:text-rose-200"
+                onClick={() => handleRemoveHolding(holding)}
+                type="button"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="glass-panel border-divide/60 text-[11px]">
+              Remove this position
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+    );
+  };
+
   const ColumnToggleMenu = () => {
     return (
       <DropdownMenu>
@@ -956,7 +1129,9 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
         <div className="space-y-4">
           {displayedCategories.map(category => {
             const holdings = groups[category] || [];
-            if (!holdings.length) return null;
+            // For stablecoin category, show even if no holdings (to display cash row)
+            // For other categories, hide if no holdings
+            if (!holdings.length && (category !== 'stablecoin' || cash <= 0)) return null;
             const isExpanded = expandedCategories.has(category);
             
             // Sort holdings by value (highest first)
@@ -973,88 +1148,121 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
                 {renderCategoryHeader(category)}
                 {isExpanded && (
                   <div className="space-y-2">
-                    {/* Column headers - shown below category when expanded */}
-                    <div className="flex items-center justify-between px-1 mt-2 mb-1">
-                      <div className="grid w-full grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto] text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">
-                        <span className="pl-10">Symbol</span>
-                        {!isColumnHidden('price') && <span>Price</span>}
-                        {!isColumnHidden('tokens') && <span>Tokens</span>}
-                        {!isColumnHidden('value') && <span>Value</span>}
-                        {!isColumnHidden('avgCost') && <span>Avg Cost</span>}
-                        {!isColumnHidden('%change') && <span>24h</span>}
-                        {!isColumnHidden('ladder') && <span>Exit Ladder</span>}
-                        <span className="text-right">
-                          {!isColumnHidden('actions') && <span>Actions</span>}
-                        </span>
-                      </div>
-                    </div>
-                    {/* Cash row - only shown in stablecoin category */}
-                    {category === 'stablecoin' && (
-                      <div 
-                        className="mx-1 flex items-center rounded-xl border border-divide/30 px-3 py-2.5"
-                        style={{
-                          background: 'linear-gradient(135deg, rgba(20, 184, 166, 0.08) 0%, rgba(20, 184, 166, 0.03) 100%)',
-                        }}
-                      >
-                        <div className="grid w-full grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto] items-center">
-                          <div className="flex items-center gap-2 pl-1">
-                            <div 
-                              className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold"
-                              style={{
-                                background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)',
-                                color: 'white',
-                              }}
-                            >
-                              $
-                            </div>
-                            <span className="text-sm font-bold tracking-wide">CASH</span>
+                    {/* Column headers - different layout for stablecoin category */}
+                    {category === 'stablecoin' ? (
+                      /* Stablecoin column headers: Symbol, Price, Tokens, Value, Actions only */
+                      sortedHoldings.length > 0 && (
+                        <div className="flex items-center justify-between px-1 mt-2 mb-1">
+                          <div className="grid w-full grid-cols-[2fr_1.2fr_1.2fr_1.4fr_auto] text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">
+                            <span className="pl-10">Symbol</span>
+                            <span>Price</span>
+                            <span>Tokens</span>
+                            <span>Value</span>
+                            <span className="text-right pr-2">Actions</span>
                           </div>
-                          <div className="text-xs text-muted-foreground">
-                            $1.00
-                            <div className="text-[10px] text-muted-foreground/60">Fixed</div>
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {formatUsd(cash, 2).replace('$', '')}
-                            <div className="text-[10px] text-muted-foreground/60">USD</div>
-                          </div>
-                          <div>
-                            <span className="text-sm font-semibold" style={{ color: '#14b8a6' }}>
-                              {formatUsd(cash)}
-                            </span>
-                            <div className="text-[10px] text-muted-foreground/60">
-                              {totals.totalValue > 0 ? ((cash / totals.totalValue) * 100).toFixed(1) : '0.0'}% of portfolio
-                            </div>
-                          </div>
-                          <div className="text-xs text-muted-foreground">—</div>
-                          <div className="text-xs text-muted-foreground">—</div>
-                          <div></div>
-                          <div className="flex items-center justify-end gap-1">
-                            <input
-                              type="number"
-                              value={cashInput}
-                              onChange={(e) => {
-                                setCashInput(e.target.value);
-                                setIsEditingCash(true);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleCashUpdate();
-                              }}
-                              className="w-24 rounded-lg border border-divide/40 bg-black/30 px-2 py-1 text-xs text-right focus:border-primary/50 focus:outline-none"
-                              placeholder="0.00"
-                              min="0"
-                              step="0.01"
-                            />
-                            <button
-                              onClick={handleCashUpdate}
-                              className="rounded-lg bg-primary/20 px-2 py-1 text-[10px] font-medium text-primary hover:bg-primary/30 transition-colors"
-                            >
-                              Update
-                            </button>
-                          </div>
+                        </div>
+                      )
+                    ) : (
+                      /* Standard column headers for other categories */
+                      <div className="flex items-center justify-between px-1 mt-2 mb-1">
+                        <div className="grid w-full grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto] text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">
+                          <span className="pl-10">Symbol</span>
+                          {!isColumnHidden('price') && <span>Price</span>}
+                          {!isColumnHidden('tokens') && <span>Tokens</span>}
+                          {!isColumnHidden('value') && <span>Value</span>}
+                          {!isColumnHidden('avgCost') && <span>Avg Cost</span>}
+                          {!isColumnHidden('%change') && <span>24h</span>}
+                          {!isColumnHidden('ladder') && <span>Exit Ladder</span>}
+                          <span className="text-right">
+                            {!isColumnHidden('actions') && <span>Actions</span>}
+                          </span>
                         </div>
                       </div>
                     )}
-                    {sortedHoldings.map(holding => renderHoldingRow(holding, category))}
+                    {/* Cash Balance Row - Custom layout (NOT standard columns) */}
+                    {category === 'stablecoin' && (
+                      <div 
+                        className="mx-1 flex items-center justify-between rounded-xl border border-teal-500/20 px-4 py-3"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(20, 184, 166, 0.06) 0%, rgba(15, 118, 110, 0.04) 100%)',
+                        }}
+                      >
+                        {/* Left: Icon + Label + Badge */}
+                        <div className="flex items-center gap-3">
+                          <div 
+                            className="flex h-9 w-9 items-center justify-center rounded-full shadow-lg"
+                            style={{
+                              background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)',
+                              boxShadow: '0 4px 12px rgba(20, 184, 166, 0.3)',
+                            }}
+                          >
+                            <DollarSign className="h-5 w-5 text-white" />
+                          </div>
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold text-foreground/90">Cash Balance</span>
+                              <span 
+                                className="rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider"
+                                style={{
+                                  background: 'rgba(20, 184, 166, 0.15)',
+                                  color: '#2dd4bf',
+                                  border: '1px solid rgba(20, 184, 166, 0.25)',
+                                }}
+                              >
+                                Manual
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-muted-foreground/60">Dry powder • Stablecoins</span>
+                          </div>
+                        </div>
+
+                        {/* Right: Editable Amount with inline edit */}
+                        <div className="flex items-center gap-2">
+                          {isEditingCash ? (
+                            <div className="flex items-center">
+                              <span className="text-lg font-semibold text-teal-400 mr-0.5">$</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={cashInput}
+                                onChange={(e) => setCashInput(e.target.value)}
+                                onKeyDown={handleCashKeyDown}
+                                onBlur={handleCashBlur}
+                                autoFocus
+                                className="w-28 bg-transparent text-lg font-semibold text-teal-400 text-right outline-none border-b border-teal-400/50 focus:border-teal-400 transition-colors"
+                                placeholder="0"
+                              />
+                            </div>
+                          ) : (
+                            <button
+                              onClick={startCashEdit}
+                              className="group flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-white/5 transition-colors cursor-text"
+                            >
+                              <span className="text-xl font-semibold" style={{ color: '#2dd4bf' }}>
+                                {formatCashDisplay(cash)}
+                              </span>
+                              <Pencil className="h-3.5 w-3.5 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </button>
+                          )}
+                          
+                          {/* Save status indicator */}
+                          {cashSaveStatus === 'saving' && (
+                            <Loader2 className="h-4 w-4 text-teal-400 animate-spin" />
+                          )}
+                          {cashSaveStatus === 'saved' && (
+                            <div className="flex items-center gap-1 text-teal-400 animate-in fade-in duration-200">
+                              <Check className="h-4 w-4" />
+                              <span className="text-[10px] font-medium">Saved</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {sortedHoldings.map(holding => 
+                      category === 'stablecoin' 
+                        ? renderStablecoinRow(holding) 
+                        : renderHoldingRow(holding, category)
+                    )}
                   </div>
                 )}
               </div>

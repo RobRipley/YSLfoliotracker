@@ -2780,3 +2780,184 @@ The store already has `cash: 0` property, which will help with Task A (Cash and 
 
 ---
 
+
+## Session 9 Progress - January 28, 2026
+
+### Completed:
+
+**Task C: Hide Category Trend Badges ✅**
+- Commented out `<CategoryTrendCharts>` in PortfolioDashboard.tsx
+- These showed incorrect values ($41,550 vs actual $28,606) from stale snapshot data
+- Donut chart + legend still show accurate current values
+
+**Task B: Fix Popover Click-Outside ✅**
+- Root cause: Custom Popover component had no click-outside handling
+- Added mousedown listener for click-outside detection
+- Added escape key handler
+- Added asChild prop support for PopoverTrigger
+- Removed unused `infoPopoverOpen` state from CompactHoldingsTable
+- Info icon only (no text) and button order were already correct from previous session
+
+### Git Commits:
+- `a7fe9b5` - Fix popover click-outside and hide category trend badges
+
+### Next: Task A - Cash and Stablecoins Category
+
+---
+
+
+
+## Session 10 Progress - January 28, 2026
+
+### Task A: Cash & Stablecoins Category - MAJOR IMPROVEMENTS ✅
+
+This session focused on refining the Cash & Stablecoins category UI based on a detailed spec document. The previous session had implemented the basic functionality, and this session polished the UX.
+
+---
+
+### What Was Already Working (from previous session):
+
+- ✅ Cash & Stablecoins category exists at top of portfolio
+- ✅ Cash Balance row with inline edit (click to edit, Enter to save, Escape to cancel)
+- ✅ Category header shows "Value $X.XK" and "Share X.X%"
+- ✅ Donut chart and allocation overview include Cash & Stablecoins
+- ✅ Portfolio totals include cash amount
+- ✅ "MANUAL" badge on cash row
+- ✅ "Dry powder • Stablecoins" subtitle
+- ✅ Teal gradient background for visual distinction
+- ✅ Save status indicator ("Saving..." spinner, "Saved ✓" checkmark)
+- ✅ No action buttons (lock/edit/trash) on Cash row
+
+---
+
+### Changes Made This Session:
+
+#### 1. Removed SHARE from Cash Row ✅
+**Problem:** The Cash row displayed "SHARE X.X%" in the middle, which was redundant since the category header already shows this.
+
+**Solution:** Removed the middle "Share of portfolio" section from the Cash Balance row. Now the layout is:
+- Left: Icon + "Cash Balance" label + MANUAL badge + subtitle
+- Right: Editable amount ($X,XXX) with pencil icon on hover
+
+#### 2. Simplified Stablecoin Category Headers ✅
+**Problem:** When stablecoins are added to the category, the standard column headers (SYMBOL, PRICE, TOKENS, VALUE, AVG COST, 24H, EXIT LADDER, ACTIONS) were showing, which is overkill for stablecoins that don't need avg cost, 24h change, or exit ladders.
+
+**Solution:** Created separate column headers for stablecoin category:
+- Standard categories: SYMBOL, PRICE, TOKENS, VALUE, AVG COST, 24H, EXIT LADDER, ACTIONS
+- Stablecoin category: SYMBOL, PRICE, TOKENS, VALUE, ACTIONS (only 5 columns)
+- Column headers are hidden when there are 0 stablecoin positions (only Cash row shows)
+
+#### 3. Created Dedicated Stablecoin Row Renderer ✅
+**Problem:** Stablecoin assets were using the same row layout as regular assets, showing columns that aren't relevant.
+
+**Solution:** Created `renderStablecoinRow()` function that:
+- Uses simplified 5-column grid: `grid-cols-[2fr_1.2fr_1.2fr_1.5fr_auto]`
+- Shows only: Symbol, Price, Tokens, Value, Actions
+- Actions include all 3 buttons (lock, edit, delete) - same as other assets for now
+- Matches the simplified column headers
+
+---
+
+### Files Modified:
+
+**`/frontend/src/components/CompactHoldingsTable.tsx`**
+
+1. **Added `renderStablecoinRow()` function** (around line 922):
+   - Simplified row layout for stablecoin assets
+   - 5-column grid matching stablecoin headers
+   - Shows Symbol, Price, Tokens, Value, and all 3 action buttons
+
+2. **Updated column headers rendering** (around line 1150):
+   - Conditional rendering: stablecoin vs standard categories
+   - Stablecoin headers: Symbol, Price, Tokens, Value, Actions
+   - Standard headers: Full 8-column layout with all options
+   - Headers hidden for stablecoin category when no assets present
+
+3. **Removed SHARE section from Cash Balance row** (around line 1200):
+   - Deleted the middle "Share of portfolio" display
+   - Cash row now has 2-section layout (left label, right amount)
+
+4. **Updated holdings map** (around line 1260):
+   - Uses `renderStablecoinRow()` for stablecoin category
+   - Uses `renderHoldingRow()` for all other categories
+
+---
+
+### Current Cash & Stablecoins UI:
+
+**When Expanded (0 stablecoin positions):**
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Cash & Stablecoins   0 positions  Value $5.0K  Share 13.3% │
+├─────────────────────────────────────────────────────────────┤
+│  [$] Cash Balance [MANUAL]                          $5,000 ✏│
+│      Dry powder • Stablecoins                               │
+└─────────────────────────────────────────────────────────────┘
+```
+- No column headers shown (clean look)
+- Cash row has teal gradient background
+- Click amount to edit inline
+- Enter saves, Escape cancels
+
+**When Expanded (with stablecoin positions):**
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Cash & Stablecoins   1 positions  Value $6.0K  Share 15%   │
+├─────────────────────────────────────────────────────────────┤
+│  [$] Cash Balance [MANUAL]                          $5,000 ✏│
+│      Dry powder • Stablecoins                               │
+├─────────────────────────────────────────────────────────────┤
+│  SYMBOL    PRICE     TOKENS    VALUE           ACTIONS      │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │ U USDC  $1.00     1000      $1,000          🔒 ✏ 🗑    │ │
+│  └────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+- Simplified 5-column headers appear
+- Stablecoin rows use compact layout
+- No Avg Cost, 24H, or Exit Ladder columns
+
+---
+
+### Inline Edit Behavior (verified working):
+
+1. **Click on amount** → Opens inline input with $ prefix
+2. **Type new value** → Input accepts numbers
+3. **Press Enter** → Saves value, shows "Saved ✓" indicator
+4. **Press Escape** → Cancels edit, reverts to previous value
+5. **Click outside (blur)** → Saves if changed
+6. **While saving** → Shows spinner
+7. **After save** → Shows "Saved ✓" for ~1 second
+
+---
+
+### Known Issue / Future Work:
+
+- **Stablecoin detection**: Currently relies on category assignment at add time. Could add auto-detection based on known stablecoin symbols (USDT, USDC, DAI, etc.) or price proximity to $1.00.
+
+---
+
+### Testing Notes:
+
+- Cash value persists in localStorage via the portfolio store
+- Changes to cash immediately update:
+  - Category header value and share %
+  - Donut chart slice
+  - Allocation overview sidebar
+  - All other category share percentages (recalculated)
+
+---
+
+### Remaining Tasks (from HANDOFF):
+
+1. **24h % change always shows 0.00%** - Data not wired up
+2. **Fix initial load race condition** - Assets briefly show as wrong category
+3. **Remove lock button from actions** (if desired)
+4. **Add "Notes" column header when enabled**
+5. **Admin Panel blank screen** - Needs debugging
+6. **Real Internet Identity authentication** - Currently stubbed
+7. **Wire frontend to backend canisters** - Data in localStorage only
+8. **Deploy to IC mainnet**
+9. **Push to GitHub**
+
+---
