@@ -4847,3 +4847,234 @@ dfx deploy frontend --network ic
 ```
 
 ---
+
+
+---
+
+## 🚀 TOP PRIORITY: Cloudflare Workers Price Cache Infrastructure
+
+### Session 19 - January 28, 2026
+
+### Overview
+
+Implement Option B with Cloudflare Workers to create a robust price caching infrastructure:
+1. A shared prices cache refreshed on a schedule (KV holds latest)
+2. A daily versioned snapshot written to R2
+3. A daily CoinGecko registry refresh (ids, tickers, names, logo URLs) that app consumes for logos and stable identifiers
+4. Frontend reads cached JSON from Worker, not CoinGecko directly, for routine price lookups
+
+### Architecture Design
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    CLOUDFLARE WORKER                             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  CRON: Every 5 minutes                                          │
+│  ┌─────────────────────────────────────────────────┐            │
+│  │ Fetch https://cryptorates.ai/v1/coins/500       │            │
+│  │ Normalize → KV prices:top500:latest             │            │
+│  └─────────────────────────────────────────────────┘            │
+│                                                                  │
+│  CRON: Daily 09:00 UTC                                          │
+│  ┌─────────────────────────────────────────────────┐            │
+│  │ 1. Write daily snapshot to R2                   │            │
+│  │    prices/top500/YYYY-MM-DD.json                │            │
+│  │                                                  │            │
+│  │ 2. Fetch CoinGecko /coins/markets (2 pages)     │            │
+│  │ 3. Merge into append-only registry in R2        │            │
+│  │    registry/coingecko_registry.json             │            │
+│  │ 4. Write daily snapshot                         │            │
+│  │    registry/top500_snapshot/YYYY-MM-DD.json     │            │
+│  │ 5. Update KV registry:coingecko:latest          │            │
+│  └─────────────────────────────────────────────────┘            │
+│                                                                  │
+│  HTTP Endpoints:                                                 │
+│  GET /prices/top500.json    → KV prices:top500:latest           │
+│  GET /prices/status.json    → status + updatedAt                │
+│  GET /registry/latest.json  → KV registry:coingecko:latest      │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    FRONTEND (React/ICP)                          │
+├─────────────────────────────────────────────────────────────────┤
+│  priceFeed.ts                                                    │
+│  ├── fetchPricesTop500() → bySymbol map                         │
+│  ├── fetchRegistry() → byId + symbolToIds                       │
+│  └── Cache in memory (2-5 min TTL)                              │
+│                                                                  │
+│  Logo rendering: logoUrl from registry                           │
+│  Price matching: bySymbol[symbol] or coingeckoId mapping        │
+│                                                                  │
+│  Footer: "Prices powered by cryptorates.ai"                     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Deliverables
+
+1. **Cloudflare Worker Project** (`/workers/price-cache/`)
+   - wrangler.toml with KV, R2, cron triggers
+   - scheduled() handler for 5-min and daily jobs
+   - fetch() handler for HTTP endpoints
+   - README with setup instructions
+
+2. **Frontend Integration**
+   - `src/lib/services/market/priceFeed.ts` - Client module to fetch from Worker
+   - Update price fetching logic to use Worker cache
+   - Update logo rendering to use registry logoUrl
+   - Add footer attribution "Prices powered by cryptorates.ai"
+
+### Schemas
+
+**Normalized Prices Schema:**
+```json
+{
+  "source": "cryptorates.ai",
+  "updatedAt": "2026-01-28T03:10:00.000Z",
+  "count": 500,
+  "bySymbol": {
+    "BTC": {
+      "symbol": "BTC",
+      "name": "Bitcoin",
+      "rank": 1,
+      "priceUsd": 12345.67,
+      "marketCapUsd": 1234567890,
+      "volume24hUsd": 1234567,
+      "change24hPct": 1.23
+    }
+  }
+}
+```
+
+**Registry Schema:**
+```json
+{
+  "source": "coingecko",
+  "updatedAt": "2026-01-28T09:00:00.000Z",
+  "count": 500,
+  "byId": {
+    "bitcoin": {
+      "id": "bitcoin",
+      "symbol": "BTC",
+      "name": "Bitcoin",
+      "logoUrl": "https://...",
+      "marketCapRank": 1,
+      "firstSeenAt": "2026-01-28T09:00:00.000Z",
+      "lastSeenAt": "2026-01-28T09:00:00.000Z"
+    }
+  },
+  "symbolToIds": {
+    "BTC": ["bitcoin"],
+    "USDC": ["usd-coin"]
+  }
+}
+```
+
+### Status
+
+- [ ] Create Worker project structure
+- [ ] Implement wrangler.toml configuration
+- [ ] Implement scheduled() handler for price refresh
+- [ ] Implement scheduled() handler for daily registry
+- [ ] Implement HTTP endpoints
+- [ ] Create frontend priceFeed.ts client
+- [ ] Integrate with existing price service
+- [ ] Add attribution footer
+- [ ] Write README with deployment instructions
+- [ ] Test locally with `wrangler dev`
+- [ ] Deploy to Cloudflare
+
+---
+
+
+
+### Session 19 Progress (Continued)
+
+#### Cloudflare Worker Project Created ✅
+
+**Directory Structure:**
+```
+workers/price-cache/
+├── src/
+│   ├── index.ts          # Main worker with HTTP handlers and cron jobs
+│   ├── types.ts          # TypeScript type definitions
+│   └── providers/
+│       ├── cryptorates.ts # CryptoRates.ai API integration
+│       └── coingecko.ts   # CoinGecko API integration
+├── wrangler.toml         # Cloudflare Worker configuration
+├── package.json          # npm dependencies
+├── tsconfig.json         # TypeScript configuration
+└── README.md             # Setup and deployment guide
+```
+
+#### Frontend Client Module Created ✅
+
+**Path:** `frontend/src/lib/services/market/priceFeed.ts`
+
+**Features:**
+- `fetchPricesTop500()` - Fetch normalized price data from Worker
+- `fetchRegistry()` - Fetch token registry with logos
+- `fetchPriceStatus()` - Get cache status information
+- `getPrice(symbol)` / `getPrices(symbols)` - Get prices from local cache
+- `getLogoUrl(symbol)` / `getLogoUrls(symbols)` - Get logos from registry
+- `getCoinGeckoId(symbol)` - Get stable CoinGecko ID for a symbol
+- `clearCache()` / `getCacheStatus()` - Cache management utilities
+
+**Cache Configuration:**
+- Prices: 2 minute TTL
+- Registry: 5 minute TTL
+- Stale-on-error: Returns cached data when Worker is unreachable
+
+#### Next Steps
+
+1. **Setup Cloudflare Resources:**
+   ```bash
+   cd workers/price-cache
+   npm install
+   wrangler login
+   wrangler kv:namespace create PRICE_KV
+   wrangler r2 bucket create ysl-price-snapshots
+   # Update wrangler.toml with KV namespace ID
+   ```
+
+2. **Test Locally:**
+   ```bash
+   npm run dev
+   ```
+
+3. **Deploy Worker:**
+   ```bash
+   npm run deploy
+   ```
+
+4. **Configure Frontend:**
+   - Set `VITE_PRICE_CACHE_URL` environment variable
+   - Or update the default URL in `priceFeed.ts`
+
+5. **Integrate with Existing Price Service:**
+   - Update `priceService.ts` to use priceFeed as primary source
+   - Add fallback to direct API calls if Worker is unavailable
+
+6. **Add Attribution Footer:**
+   - Add "Prices powered by cryptorates.ai" to the app footer
+
+#### Files Created This Session
+
+| File | Purpose |
+|------|---------|
+| `workers/price-cache/wrangler.toml` | Cloudflare Worker configuration |
+| `workers/price-cache/package.json` | Worker npm dependencies |
+| `workers/price-cache/tsconfig.json` | TypeScript configuration |
+| `workers/price-cache/README.md` | Setup and deployment guide |
+| `workers/price-cache/src/index.ts` | Main worker with HTTP handlers and cron |
+| `workers/price-cache/src/types.ts` | TypeScript type definitions |
+| `workers/price-cache/src/providers/cryptorates.ts` | CryptoRates.ai provider |
+| `workers/price-cache/src/providers/coingecko.ts` | CoinGecko provider |
+| `frontend/src/lib/services/market/priceFeed.ts` | Frontend client module |
+| `frontend/src/lib/services/market/index.ts` | Service exports |
+| `frontend/src/lib/services/index.ts` | Services index |
+
+---
+
