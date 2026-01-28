@@ -885,8 +885,8 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           background: 'linear-gradient(135deg, rgba(20, 184, 166, 0.06) 0%, rgba(15, 118, 110, 0.02) 100%)',
         }}
       >
-        {/* Column 1: Symbol - Cash Balance label (allowed to bleed into next columns) */}
-        <div className="flex items-center gap-3 col-span-3">
+        {/* Column 1: Symbol - Cash Balance label */}
+        <div className="flex items-center gap-3">
           <div 
             className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full shadow-md"
             style={{
@@ -913,6 +913,12 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
             <span className="text-[10px] text-muted-foreground/50">Dry powder</span>
           </div>
         </div>
+
+        {/* Column 2: Price - blank for cash */}
+        <div></div>
+
+        {/* Column 3: Tokens - blank for cash */}
+        <div></div>
 
         {/* Column 4: Value - editable inline + share % */}
         <div className="flex items-center gap-2">
