@@ -3200,3 +3200,59 @@ const sortedLegendItems = [...legendItems].sort((a, b) => {
 
 ---
 
+
+
+
+---
+
+## Session 13 - January 27, 2026
+
+### Summary
+
+Finalized the Add Asset button styling and Cash Balance row value alignment based on screenshot comparison with the original design.
+
+### Changes Made
+
+#### 1. Add Asset Button - Restored Original Styling
+
+**Problem:** The Add Asset button had been changed to a different style that didn't match the original design.
+
+**Solution:** Updated to match the original purple filled pill button:
+- ✅ Purple/indigo filled background (`#6366f1`)
+- ✅ Rounded pill shape (`rounded-full`)
+- ✅ White text
+- ✅ Plus icon + "Add Asset" text
+
+#### 2. Cash Balance Row Value Alignment
+
+**Problem:** The Cash Balance value "$5,000" was not aligned with the VALUE column where other asset values appear.
+
+**Solution:** Changed the Cash Balance row from flexbox layout back to grid layout:
+- Uses same 8-column grid as other rows: `grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto]`
+- Value "$5,000" now appears in column 4 (VALUE column) - same position as "$665.81" in USDC row
+- Share percentage "13.1% of portfolio" appears close to the right of the value with `gap-2`
+
+### Current State
+
+Both issues are now fixed:
+1. **Add Asset button** - Now matches the original purple filled pill shape exactly
+2. **Cash Balance value** - Now aligned to the VALUE column (same grid position as other asset values), with share% close beside it
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `frontend/src/components/CompactHoldingsTable.tsx` | Updated Add Asset button styling, changed Cash Balance row to grid layout for value alignment |
+
+### Git Commit
+
+`9bc7d84` - Add Asset button purple pill + Cash Balance value aligned to VALUE column
+
+### Verification
+
+- ✅ Add Asset button is purple filled pill shape
+- ✅ Cash Balance "$5,000" aligns with other values in VALUE column
+- ✅ Share% "13.1% of portfolio" appears close to the value
+- ✅ Overall layout matches the reference design
+
+---

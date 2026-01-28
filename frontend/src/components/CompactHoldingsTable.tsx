@@ -885,10 +885,10 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           background: 'linear-gradient(135deg, rgba(20, 184, 166, 0.06) 0%, rgba(15, 118, 110, 0.02) 100%)',
         }}
       >
-        {/* Column 1: Symbol - Cash Balance label */}
-        <div className="flex items-center gap-3">
+        {/* Column 1: Symbol - Cash Balance label (allowed to bleed into next columns) */}
+        <div className="flex items-center gap-3 col-span-3">
           <div 
-            className="flex h-7 w-7 items-center justify-center rounded-full shadow-md"
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full shadow-md"
             style={{
               background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)',
               boxShadow: '0 2px 8px rgba(20, 184, 166, 0.25)',
@@ -898,9 +898,9 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           </div>
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-foreground/90">Cash Balance</span>
+              <span className="text-sm font-semibold text-foreground/90 whitespace-nowrap">Cash Balance</span>
               <span 
-                className="rounded-full px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-wider"
+                className="rounded-full px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-wider whitespace-nowrap"
                 style={{
                   background: 'rgba(20, 184, 166, 0.15)',
                   color: '#2dd4bf',
@@ -913,12 +913,6 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
             <span className="text-[10px] text-muted-foreground/50">Dry powder</span>
           </div>
         </div>
-
-        {/* Column 2: Price - blank */}
-        <div></div>
-
-        {/* Column 3: Tokens - blank */}
-        <div></div>
 
         {/* Column 4: Value - editable inline + share % */}
         <div className="flex items-center gap-2">
