@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { usePortfolioStore } from '@/lib/store';
 import { CompactHoldingsTable } from './CompactHoldingsTable';
-import { ExitPlanSummary } from './ExitPlanSummary';
+import { NearestExits } from './NearestExits';
 import { type Category, type Holding, getCategoryForHolding, updateCash } from '@/lib/dataModel';
 import { getPriceAggregator, type ExtendedPriceQuote } from '@/lib/priceService';
 import { usePortfolioSnapshots } from '@/hooks/usePortfolioSnapshots';
@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { loadExitPlans, type ExitPlanState } from '@/lib/exitPlanPersistence';
+// import { loadExitPlans, type ExitPlanState } from '@/lib/exitPlanPersistence'; // Now reading directly from localStorage
 
 const aggregator = getPriceAggregator();
 
@@ -225,19 +225,36 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     setSelectedPreset(preset);
   };
 
-  // Load exit plans from persistence - for ExitPlanSummary (expects Record<string, ExitPlanState>)
+  // Load raw exit plans from localStorage (ysl-exit-plans key) - for NearestExits component
+  // This preserves the full structure with rungs array
   const exitPlanStates = useMemo(() => {
-    const loaded = loadExitPlans();
-    return loaded || {};
+    try {
+      const stored = localStorage.getItem('ysl-exit-plans');
+      if (!stored) return {};
+      return JSON.parse(stored);
+    } catch (error) {
+      console.error('Failed to load exit plan states:', error);
+      return {};
+    }
   }, []);
 
-  // Convert exit plan states to ExitLadderRung[] format for CompactHoldingsTable
-  // This provides the ladder rungs expected by the table component
+  // Convert exit plans to simplified ExitLadderRung[] format for CompactHoldingsTable
+  // This extracts just the rungs array with valid entries
   const exitPlans = useMemo(() => {
-    const result: Record<string, { percent: number; multiplier: number }[]> = {};
+    const result: Record<string, { percent: number; multiplier: number; targetPrice: number; tokensToSell: number }[]> = {};
     
-    // For now, return empty - exit plans need proper conversion logic
-    // The exit ladder rungs are computed differently in the Exit Strategy page
+    Object.entries(exitPlanStates).forEach(([holdingId, plan]: [string, any]) => {
+      if (plan && Array.isArray(plan.rungs)) {
+        // Filter out invalid rungs (multiplier 0, targetPrice 0)
+        const validRungs = plan.rungs.filter((r: any) => 
+          r.multiplier > 0 && r.targetPrice > 0 && r.tokensToSell > 0
+        );
+        if (validRungs.length > 0) {
+          result[holdingId] = validRungs;
+        }
+      }
+    });
+    
     return result;
   }, [exitPlanStates]);
 
@@ -329,12 +346,10 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
               </div>
             </Card>
 
-            <ExitPlanSummary
+            <NearestExits
               holdings={store.holdings}
               prices={prices}
               exitPlans={exitPlanStates}
-              selectedPreset={selectedPreset}
-              onPresetChange={handlePresetChange}
             />
           </div>
         </div>

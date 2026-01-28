@@ -4031,3 +4031,176 @@ planStatus === 'Edited'
 - Summary calculation iterates over `exitPlans` object to count custom vs template plans
 
 ---
+
+
+---
+
+## Session 15 (continued) - January 28, 2026
+
+### BTC Logo Issue - Investigation (Incomplete)
+
+**Issue Reported:** Bitcoin was removed from portfolio and when re-added, the logo shows a generic placeholder instead of the Bitcoin logo.
+
+**Initial Observations:**
+1. On Portfolio page, Blue Chip category shows only 1 position (SOL) - BTC not visible in screenshot
+2. Console logs show BTC is NOT in the symbol list being fetched:
+   - `[Aggregator] Fetching market cap from CoinGecko for: SOL, RENDER, KMNO, DEEP, ICP, SYRUP, RSR, ONDO, AVAX, DOT, HYPE, ENA, SUI, PAYAI`
+   - Notice: BTC is missing from this list entirely
+3. `[CoinGecko] Fetched logos for 9 symbols` - suggests logo fetching is working for other symbols
+4. Primary price provider (CryptoRates.ai) is failing with "Failed to fetch" errors, falling back to CoinGecko
+
+**Hypothesis:**
+When BTC was re-added to the portfolio, either:
+1. The holding wasn't properly saved to localStorage
+2. The logo URL wasn't fetched/cached for the new BTC entry
+3. There may be a case sensitivity issue (btc vs BTC)
+
+**Logo Fetching System (from previous sessions):**
+- Logos are fetched from CoinGecko API via `logoService.ts`
+- Logos are cached in localStorage under `ysl-logos` key
+- The service uses symbol-to-CoinGecko-ID mapping
+
+**Files to Investigate:**
+- `frontend/src/services/logoService.ts` - Logo fetching logic
+- `frontend/src/store/portfolioStore.ts` - How holdings are stored
+- `frontend/src/components/AssetLogo.tsx` - Logo display component
+
+**Status:** Investigation paused - user wants to work on something else first. Will resume later.
+
+---
+
+
+---
+
+## Session 16 - January 28, 2026
+
+### Portfolio UI Improvements - Exit Column & Columns Dropdown
+
+**Tasks Completed:**
+
+#### 1. Exit Ladder Column Redesign ✅
+
+**Before:** Big pill/button showing "Exit Ladder" and "No ladder set" - read like a control, wasted space
+
+**After:** Compact, informational display:
+- Shows "No plan" (muted) when no exit plan exists
+- Shows two lines when plan exists:
+  - Line 1: "Next: $117,588" (normal foreground)
+  - Line 2: "Sell: 0.015 BTC" (muted)
+- Advances to next rung if current price > first target price
+- Filters out invalid rungs (multiplier 0, targetPrice 0)
+
+**Files Modified:**
+- `frontend/src/components/CompactHoldingsTable.tsx` - Added `renderExitLadderCompact()` function, `formatTokensCompact()` helper
+- `frontend/src/components/PortfolioDashboard.tsx` - Connected to `ysl-exit-plans` localStorage, converts to ExitLadderRung[] format
+
+**Key Code:**
+```typescript
+// Compact Exit Ladder display - shows next target and tokens to sell
+const renderExitLadderCompact = (holding: Holding, category: Category) => {
+  const rungs = getHoldingExitPlan(holding, category);
+  const currentPrice = prices[holding.symbol]?.priceUsd ?? 0;
+  
+  if (!rungs.length) {
+    return <div className="text-muted-foreground/60">No plan</div>;
+  }
+
+  // Find next relevant rung (target price > current price)
+  let nextRung = rungs[0];
+  if (currentPrice > 0) {
+    const futureRung = rungs.find(r => r.targetPrice > currentPrice && r.tokensToSell > 0);
+    if (futureRung) nextRung = futureRung;
+  }
+
+  return (
+    <div className="text-xs leading-tight">
+      <div className="text-foreground/90">Next: {formatPrice(nextRung.targetPrice)}</div>
+      <div className="text-muted-foreground/70">Sell: {formatTokensCompact(nextRung.tokensToSell)} {holding.symbol}</div>
+    </div>
+  );
+};
+```
+
+#### 2. Exit Plans Data Connection Fixed ✅
+
+**Problem:** Exit plans from Exit Strategy page weren't showing in Portfolio table - always showed "No plan"
+
+**Root Cause:** 
+- Exit plans stored in localStorage under `ysl-exit-plans` key
+- PortfolioDashboard was using old `loadExitPlans()` which looked at wrong key (`crypto-portfolio-exit-plans`)
+- Key format mismatch: localStorage uses holding ID directly, code was looking for `holding:SYMBOL:ID:preset`
+
+**Solution:**
+- Load directly from `localStorage.getItem('ysl-exit-plans')`
+- Parse and extract rungs array (already has targetPrice, tokensToSell calculated)
+- Pass both raw `exitPlanStates` (for NearestExits) and converted `exitPlans` (for CompactHoldingsTable)
+- Updated `getHoldingExitPlan()` to check holding ID directly first
+
+#### 3. Grid Layout Updated ✅
+
+Updated grid columns from 8-column to 9-column layout to properly accommodate Notes column:
+- **Before:** `grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto]`
+- **After:** `grid-cols-[1.6fr_1fr_1fr_1.2fr_1fr_0.8fr_1.2fr_1.4fr_auto]`
+
+Applied to: holding rows, stablecoin rows, cash balance row, column headers
+
+#### 4. Column Header Renamed ✅
+
+Changed Exit column header from "EXIT LADDER" to "EXIT" (shorter, fits better)
+
+#### 5. Columns Dropdown Bug (Partially Fixed)
+
+**Issue:** Dropdown closes immediately when clicking checkbox items
+
+**Root Cause:** Document-level `mousedown` listener for click-outside detection fires before checkbox `onClick` can call `stopPropagation()`
+
+**Attempted Fixes:**
+1. Added `e.stopPropagation()` to checkbox onClick - Failed (mousedown fires first)
+2. Added `contentRef` to check if click is inside dropdown content - Failed
+3. Added `suppressClose` ref flag set on `onMouseDown` - Implemented but untested
+
+**Current State:** The fix code is in place but behavior unchanged. The `suppressClose` approach should work but may need debugging.
+
+**Files Modified:**
+- `frontend/src/components/ui/dropdown-menu.tsx` - Added suppressClose ref, onMouseDown handler
+
+### Files Modified This Session
+
+| File | Changes |
+|------|---------|
+| `frontend/src/components/CompactHoldingsTable.tsx` | Exit column compact display, grid layout fix, header rename |
+| `frontend/src/components/PortfolioDashboard.tsx` | Exit plans loading from ysl-exit-plans localStorage |
+| `frontend/src/components/ui/dropdown-menu.tsx` | Attempted checkbox dropdown fix |
+
+### Current Deployment
+
+| Component | Canister ID | Status |
+|-----------|-------------|--------|
+| Frontend | `ulvla-h7777-77774-qaacq-cai` | ✅ Running |
+| Backend | `uxrrr-q7777-77774-qaaaq-cai` | ✅ Running |
+
+**Frontend URL:** http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
+
+### Remaining Known Issues
+
+1. **Columns dropdown closes on checkbox click** - Fix implemented but may need debugging
+2. **24h % change always 0.00%** - Price providers don't return change data
+3. **Admin Panel blank** - Needs debugging
+4. **Internet Identity stubbed** - Needs real implementation
+5. **Backend not connected** - Frontend uses localStorage only
+
+### Quick Commands
+
+```bash
+cd /Users/robertripley/coding/YSLfolioTracker
+export PATH="/Users/robertripley/.nvm/versions/node/v20.20.0/bin:$PATH"
+
+# Build and deploy
+cd frontend && npm run build && cd ..
+dfx canister install frontend --mode reinstall -y
+
+# Access
+open http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
+```
+
+---

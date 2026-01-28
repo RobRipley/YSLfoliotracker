@@ -4,6 +4,7 @@ import * as React from "react";
 type DropdownMenuContextType = {
   open: boolean;
   setOpen: (open: boolean) => void;
+  suppressClose: React.MutableRefObject<boolean>;
 };
 
 const DropdownMenuContext = React.createContext<DropdownMenuContextType | null>(null);
@@ -18,6 +19,7 @@ type DropdownMenuProps = {
 export function DropdownMenu({ children, open, defaultOpen, onOpenChange }: DropdownMenuProps) {
   const [internalOpen, setInternalOpen] = React.useState(!!defaultOpen);
   const menuRef = React.useRef<HTMLDivElement>(null);
+  const suppressClose = React.useRef<boolean>(false);
   
   const actualOpen = open !== undefined ? open : internalOpen;
   
@@ -29,6 +31,11 @@ export function DropdownMenu({ children, open, defaultOpen, onOpenChange }: Drop
   // Close dropdown when clicking outside
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      // Check if we should suppress this close event
+      if (suppressClose.current) {
+        suppressClose.current = false;
+        return;
+      }
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setOpen(false);
       }
@@ -55,7 +62,7 @@ export function DropdownMenu({ children, open, defaultOpen, onOpenChange }: Drop
   }, [actualOpen]);
 
   return (
-    <DropdownMenuContext.Provider value={{ open: actualOpen, setOpen }}>
+    <DropdownMenuContext.Provider value={{ open: actualOpen, setOpen, suppressClose }}>
       <div ref={menuRef} className="relative inline-block text-left">
         {children}
       </div>
@@ -172,14 +179,29 @@ export function DropdownMenuCheckboxItem({
   onClick,
   ...props
 }: CheckboxItemProps) {
-  // Don't close dropdown on checkbox toggle
+  const ctx = React.useContext(DropdownMenuContext);
+  
+  // Don't close dropdown on checkbox toggle - set suppress flag before event bubbles
+  const handleMouseDown = () => {
+    if (ctx) {
+      ctx.suppressClose.current = true;
+    }
+  };
+
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    e.preventDefault();
+    onClick?.(e);
+  };
+
   return (
     <button
       type="button"
       className={`flex w-full cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground ${className}`}
       role="menuitemcheckbox"
       aria-checked={checked}
-      onClick={onClick}
+      onMouseDown={handleMouseDown}
+      onClick={handleClick}
       {...props}
     >
       <span

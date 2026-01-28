@@ -228,10 +228,11 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
   cash,
   onUpdateCash
 }: CompactHoldingsTableProps) {
-  // Default hidden columns: only "Exit Ladder" and "Notes"
+  // Default hidden columns: only "% Change" is hidden by default
+  // All other columns (Price, Tokens, Value, Share, Avg Cost, Exit Ladder, Notes, Actions) are visible
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => {
     const prefs = loadUIPreferences();
-    return new Set(prefs.hiddenColumns.length > 0 ? prefs.hiddenColumns : ['ladder', 'notes']);
+    return new Set(prefs.hiddenColumns.length > 0 ? prefs.hiddenColumns : ['%change']);
   });
 
   const [columnsOpen, setColumnsOpen] = useState(false);
@@ -398,6 +399,11 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
 
   const getHoldingExitPlan = useCallback(
     (holding: Holding, category: Category): ExitLadderRung[] => {
+      // Try direct holding ID first (used by PortfolioDashboard's exitPlans)
+      if (exitPlans[holding.id]) {
+        return exitPlans[holding.id];
+      }
+      // Fallback to legacy key formats
       const baseKey = `holding:${holding.symbol}:${holding.id}`;
       const presetKey = `${baseKey}:${selectedPreset}`;
       const defaultCategoryKey = `category:${category}:${selectedPreset}`;
@@ -412,6 +418,56 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
       rungs.reduce((sum, rung) => sum + rung.multiplier * (rung.percent / 100), 0) || 0;
     const totalPercent = rungs.reduce((sum, rung) => sum + rung.percent, 0);
     return `${Math.round(totalPercent)}% of position, weighted avg ${avgMultiplier.toFixed(2)}×`;
+  };
+
+  // Format tokens without unnecessary trailing zeros
+  const formatTokensCompact = (amount: number): string => {
+    if (!Number.isFinite(amount) || amount === 0) return '0';
+    if (amount >= 1000000) return `${(amount / 1000000).toFixed(1).replace(/\.0$/, '')}M`;
+    if (amount >= 1000) return `${(amount / 1000).toFixed(1).replace(/\.0$/, '')}K`;
+    if (amount >= 100) return amount.toFixed(1).replace(/\.0$/, '');
+    if (amount >= 1) return amount.toFixed(2).replace(/\.?0+$/, '');
+    return amount.toFixed(4).replace(/\.?0+$/, '');
+  };
+
+  // Compact Exit Ladder display - shows next target and tokens to sell
+  const renderExitLadderCompact = (holding: Holding, category: Category) => {
+    const rungs = getHoldingExitPlan(holding, category);
+    const currentPrice = prices[holding.symbol]?.priceUsd ?? 0;
+    
+    if (!rungs.length) {
+      return (
+        <div className="text-xs">
+          <div className="text-muted-foreground/60">No plan</div>
+        </div>
+      );
+    }
+
+    // Find the next relevant rung (first rung with target price > current price, or just first rung)
+    let nextRung = rungs[0];
+    if (currentPrice > 0) {
+      const futureRung = rungs.find(r => r.targetPrice > currentPrice && r.tokensToSell > 0);
+      if (futureRung) nextRung = futureRung;
+    }
+
+    if (!nextRung || !nextRung.targetPrice) {
+      return (
+        <div className="text-xs">
+          <div className="text-muted-foreground/60">No plan</div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="text-xs leading-tight">
+        <div className="text-foreground/90">
+          Next: {formatPrice(nextRung.targetPrice)}
+        </div>
+        <div className="text-muted-foreground/70">
+          Sell: {formatTokensCompact(nextRung.tokensToSell)} {holding.symbol}
+        </div>
+      </div>
+    );
   };
 
 
@@ -670,7 +726,7 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
     return (
       <div
         key={holding.id}
-        className="group grid grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto] items-center gap-3 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth"
+        className="group grid grid-cols-[1.6fr_1fr_1fr_1.2fr_1fr_0.8fr_1.2fr_1.4fr_auto] items-center gap-2 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth"
       >
         <div className="flex items-center gap-3">
           {logos[holding.symbol] ? (
@@ -750,13 +806,12 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
               {percentChange > 0 ? '+' : ''}
               {percentChange.toFixed(2)}%
             </div>
-            <div className="text-[11px] text-muted-foreground/80">24h change</div>
           </div>
         )}
 
         {!isColumnHidden('ladder') && (
           <div className="flex items-center justify-start">
-            {renderExitLadderPill(holding, category)}
+            {renderExitLadderCompact(holding, category)}
           </div>
         )}
 
@@ -767,23 +822,25 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
         )}
 
         {!isColumnHidden('actions') && (
-          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            {/* Edit button - neutral subtle circle */}
+          <div className="flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {/* Edit button - compact icon */}
             <button
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divide/80 bg-black/20 text-muted-foreground transition-smooth hover:bg-black/40 hover:text-foreground"
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-white/5 hover:text-foreground"
               onClick={() => handleEditHolding(holding)}
               type="button"
+              title="Edit holding"
             >
-              <Edit className="block h-4 w-4" />
+              <Edit className="h-3.5 w-3.5" />
             </button>
 
-            {/* Delete button - red-tinted subtle circle */}
+            {/* Delete button - compact icon with red tint on hover */}
             <button
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-rose-500/40 bg-rose-500/10 text-rose-400 transition-smooth hover:bg-rose-500/20 hover:text-rose-300"
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-rose-500/10 hover:text-rose-400"
               onClick={() => handleRemoveHolding(holding)}
               type="button"
+              title="Delete holding"
             >
-              <Trash2 className="block h-4 w-4" />
+              <Trash2 className="h-3.5 w-3.5" />
             </button>
           </div>
         )}
@@ -802,7 +859,7 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
     return (
       <div
         key={holding.id}
-        className="group grid grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto] items-center gap-3 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth"
+        className="group grid grid-cols-[1.6fr_1fr_1fr_1.2fr_1fr_0.8fr_1.2fr_1.4fr_auto] items-center gap-2 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth"
       >
         {/* Symbol */}
         <div className="flex items-center gap-3">
@@ -873,34 +930,42 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
         {!isColumnHidden('%change') && (
           <div className="text-sm">
             <div className="font-mono text-muted-foreground">—</div>
-            <div className="text-[11px] text-muted-foreground/80">24h change</div>
           </div>
         )}
 
-        {/* Exit Ladder - empty for stablecoins */}
+        {/* Exit Ladder - show "No plan" for stablecoins */}
         {!isColumnHidden('ladder') && (
-          <div className="text-[11px] text-muted-foreground/60">
-            No exit ladder
+          <div className="text-xs">
+            <div className="text-muted-foreground/60">No plan</div>
           </div>
         )}
 
-        {/* Actions - Edit and Delete only */}
+        {/* Notes */}
+        {!isColumnHidden('notes') && (
+          <div className="text-[11px] text-muted-foreground/90">
+            {holding.notes ? holding.notes : 'No notes yet'}
+          </div>
+        )}
+
+        {/* Actions - Edit and Delete only, stacked vertically */}
         {!isColumnHidden('actions') && (
-          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-divide/80 bg-black/20 text-muted-foreground transition-smooth hover:bg-black/40 hover:text-foreground"
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-white/5 hover:text-foreground"
               onClick={() => handleEditHolding(holding)}
               type="button"
+              title="Edit holding"
             >
-              <Edit className="block h-4 w-4" />
+              <Edit className="h-3.5 w-3.5" />
             </button>
 
             <button
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-rose-500/40 bg-rose-500/10 text-rose-400 transition-smooth hover:bg-rose-500/20 hover:text-rose-300"
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-rose-500/10 hover:text-rose-400"
               onClick={() => handleRemoveHolding(holding)}
               type="button"
+              title="Delete holding"
             >
-              <Trash2 className="block h-4 w-4" />
+              <Trash2 className="h-3.5 w-3.5" />
             </button>
           </div>
         )}
@@ -915,7 +980,7 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
 
     return (
       <div 
-        className="grid grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto] items-center gap-3 rounded-lg border border-teal-500/20 px-3 py-2"
+        className="grid grid-cols-[1.6fr_1fr_1fr_1.2fr_1fr_0.8fr_1.2fr_1.4fr_auto] items-center gap-2 rounded-lg border border-teal-500/20 px-3 py-2"
         style={{
           background: 'linear-gradient(135deg, rgba(20, 184, 166, 0.06) 0%, rgba(15, 118, 110, 0.02) 100%)',
         }}
@@ -1143,17 +1208,16 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
                     {/* Column headers: only show if there are stablecoin assets (below cash row) */}
                     {isCashCategory && hasStablecoinAssets && (
                       <div className="flex items-center justify-between px-1 mt-3 mb-1">
-                        <div className="grid w-full grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto] text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">
+                        <div className="grid w-full grid-cols-[1.6fr_1fr_1fr_1.2fr_1fr_0.8fr_1.2fr_1.4fr_auto] gap-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">
                           <span className="pl-10">Symbol</span>
                           {!isColumnHidden('price') && <span>Price</span>}
                           {!isColumnHidden('tokens') && <span>Tokens</span>}
                           {!isColumnHidden('value') && <span>Value</span>}
                           {!isColumnHidden('avgCost') && <span>Avg Cost</span>}
                           {!isColumnHidden('%change') && <span>24h</span>}
-                          {!isColumnHidden('ladder') && <span>Exit Ladder</span>}
-                          <span className="text-right">
-                            {!isColumnHidden('actions') && <span>Actions</span>}
-                          </span>
+                          {!isColumnHidden('ladder') && <span>Exit</span>}
+                          {!isColumnHidden('notes') && <span>Notes</span>}
+                          {!isColumnHidden('actions') && <span className="text-right">Actions</span>}
                         </div>
                       </div>
                     )}
@@ -1161,17 +1225,16 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
                     {/* For non-stablecoin categories: always show headers */}
                     {!isCashCategory && (
                       <div className="flex items-center justify-between px-1 mt-2 mb-1">
-                        <div className="grid w-full grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto] text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">
+                        <div className="grid w-full grid-cols-[1.6fr_1fr_1fr_1.2fr_1fr_0.8fr_1.2fr_1.4fr_auto] gap-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">
                           <span className="pl-10">Symbol</span>
                           {!isColumnHidden('price') && <span>Price</span>}
                           {!isColumnHidden('tokens') && <span>Tokens</span>}
                           {!isColumnHidden('value') && <span>Value</span>}
                           {!isColumnHidden('avgCost') && <span>Avg Cost</span>}
                           {!isColumnHidden('%change') && <span>24h</span>}
-                          {!isColumnHidden('ladder') && <span>Exit Ladder</span>}
-                          <span className="text-right">
-                            {!isColumnHidden('actions') && <span>Actions</span>}
-                          </span>
+                          {!isColumnHidden('ladder') && <span>Exit</span>}
+                          {!isColumnHidden('notes') && <span>Notes</span>}
+                          {!isColumnHidden('actions') && <span className="text-right">Actions</span>}
                         </div>
                       </div>
                     )}
