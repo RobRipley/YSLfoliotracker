@@ -3362,3 +3362,126 @@ The code currently has:
 **LOW PRIORITY** - The functionality works correctly. The alignment is a visual polish issue that doesn't affect usability. Users can still see and edit the cash balance, it just doesn't perfectly align with the column header below.
 
 ---
+
+
+---
+
+## Session 9 - January 28, 2026
+
+### Summary
+
+Implemented the "Quick Add" mode for rapid asset entry in the UnifiedAssetModal component, allowing users to add multiple assets without closing and reopening the modal.
+
+### Features Implemented
+
+#### 1. Quick Add Toggle
+- Added a switch at the top of the modal: "Quick Add - Keep modal open and focus Asset for rapid entry"
+- When enabled, optimizes the workflow for keyboard-first rapid entry
+
+#### 2. Add & Add Another Button
+- New secondary button alongside the primary "Add Asset" button
+- Saves the current asset and keeps the modal open for the next entry
+- For merge mode: Shows "Merge & Add Another" instead
+
+#### 3. Smart Field Persistence After Add
+Fields that **persist** (reused between entries):
+- Purchase Date (commonly the same for batch additions)
+- Price Mode (market vs manual)
+- Manual price value (only if mode is manual)
+
+Fields that **reset** (change per asset):
+- Symbol
+- Tokens
+- Notes
+- Merge preview state
+
+#### 4. Keyboard-First Workflow (Quick Add mode)
+- On modal open: Auto-focuses Symbol input
+- Enter in Symbol field: Moves focus to Tokens
+- Enter in Tokens field (Quick Add + market price mode): Submits with "Add & Add Another"
+- Enter in Tokens field (manual mode, no price): Moves focus to Price input
+- Enter in Price field: Submits with "Add & Add Another"
+- After each successful add: Focus returns to Symbol input
+
+#### 5. Loading States
+- Buttons disabled while submitting
+- Spinner shown on the clicked button
+- Prevents double-submit via rapid Enter presses
+
+#### 6. Success Feedback
+- Toast notification: "Added. Ready for next asset."
+
+### Technical Changes
+
+**UnifiedAssetModal.tsx:**
+- Added `quickAddMode` state with Switch component
+- Added `priceMode` state to track market vs manual price
+- Added refs: `symbolInputRef`, `tokensInputRef`, `priceInputRef` for focus management
+- Refactored into `submitHolding(keepOpen: boolean)` function for reuse
+- Added `resetForNextEntry()` callback for partial form reset
+- Added keyboard event handlers for Enter key progression
+- Dynamic button labels: "Merge Position" / "Merge & Add Another" when merging
+
+**PortfolioDashboard.tsx:**
+- Removed `setShowUnifiedModal(false)` from `handleUnifiedSubmit`
+- Modal now controls its own visibility based on user's action
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `frontend/src/components/UnifiedAssetModal.tsx` | Complete rewrite with Quick Add features (+167 lines) |
+| `frontend/src/components/PortfolioDashboard.tsx` | Let modal control its own close behavior |
+
+### Git Commit
+
+`0ec76e7` - Implement Quick Add mode for rapid asset entry
+
+### Testing Performed
+
+1. ✅ Normal "Add Asset" flow still works (modal closes)
+2. ✅ "Add & Add Another" keeps modal open
+3. ✅ Symbol and Tokens clear after add
+4. ✅ Purchase Date persists between entries
+5. ✅ Focus returns to Symbol input after add
+6. ✅ Toast notification appears
+7. ✅ Quick Add toggle works
+8. ✅ Enter key progression works in Quick Add mode
+
+### Current Deployment
+
+| Component | Canister ID | Status |
+|-----------|-------------|--------|
+| Frontend | `ulvla-h7777-77774-qaacq-cai` | ✅ Deployed |
+| Backend | `uxrrr-q7777-77774-qaaaq-cai` | ✅ Running |
+| Local Replica | Port 4943 | ✅ Running |
+
+**Frontend URL:** http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
+
+### Outstanding Items
+
+From the task specification, all requirements have been implemented:
+
+- [x] A) UI changes: Quick Add toggle, Add & Add Another button
+- [x] B) "Add & Add Another" behavior with smart field reset
+- [x] C) Quick Add keyboard-first mode
+- [x] D) Reusable save logic (submitHolding function)
+- [x] E) Existing-position merge logic works correctly
+- [x] F) Disable states and loading spinners
+- [x] G) Manual testing completed
+
+### Quick Commands
+
+```bash
+# Build and deploy
+export PATH="/Users/robertripley/.nvm/versions/node/v20.20.0/bin:$PATH"
+cd /Users/robertripley/coding/YSLfolioTracker/frontend
+npm run build
+cd ..
+dfx canister install frontend --mode reinstall -y
+
+# Push to GitHub (9 commits ahead)
+git push origin main
+```
+
+---
