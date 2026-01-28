@@ -4666,3 +4666,184 @@ open http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
 
 ---
 
+
+
+---
+
+## Session 18 - January 28, 2026
+
+### 🎉 IC MAINNET DEPLOYMENT COMPLETE
+
+Successfully deployed YSLfolioTracker to the Internet Computer mainnet!
+
+### Live Deployment Details
+
+| Component | Canister ID | URL |
+|-----------|-------------|-----|
+| **Frontend** | `t5qhm-myaaa-aaaas-qdwya-cai` | https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io/ |
+| **Backend** | `ranje-7qaaa-aaaas-qdwxq-cai` | [Candid UI](https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=ranje-7qaaa-aaaas-qdwxq-cai) |
+
+### Controllers Added
+
+Both canisters have these controllers:
+- `7ma2w-gqief-6zbuk-7hxgr-aehmx-imu3j-bwstx-2fvfw-jazen-6ljbd-hqe` (RobRipley_YSL identity)
+- `cpbhu-5iaaa-aaaad-aalta-cai` (CycleOps balance checker)
+
+### Work Completed
+
+#### 1. Fixed Local II + Local Canister Incompatibility
+
+**Problem:** When running locally, the app used `https://id.ai/` (mainnet Internet Identity) for authentication. This created delegations signed by mainnet, but the local replica has a different root key - causing "Invalid delegation: Invalid canister signature" errors.
+
+**Solution:** Updated `Layout.tsx` to use localStorage as a fallback when backend calls fail:
+- Profile data first tries to load/save to backend canister
+- If backend fails (e.g., mainnet II + local canister), falls back to localStorage
+- User experience remains smooth - they don't see errors
+
+#### 2. Deployed to IC Mainnet
+
+**Commands used:**
+```bash
+dfx identity use RobRipley_YSL
+dfx deploy --network ic
+```
+
+**Cycles consumed:** ~7 TC (from 7.919 TC to 0.919 TC remaining)
+
+#### 3. Updated Backend Canister ID Detection
+
+**File:** `frontend/src/hooks/useActor.ts`
+
+Added hardcoded mainnet backend canister ID:
+```typescript
+const IC_BACKEND_CANISTER_ID = 'ranje-7qaaa-aaaas-qdwxq-cai';
+const LOCAL_BACKEND_CANISTER_ID = 'uxrrr-q7777-77774-qaaaq-cai';
+
+const getBackendCanisterId = (): string => {
+  // Check for environment variable first
+  if (import.meta.env?.VITE_BACKEND_CANISTER_ID) {
+    return import.meta.env.VITE_BACKEND_CANISTER_ID;
+  }
+  
+  // Check if we're on IC mainnet
+  if (window.location.hostname.endsWith('.ic0.app') || 
+      window.location.hostname.endsWith('.icp0.io')) {
+    return IC_BACKEND_CANISTER_ID;
+  }
+  
+  return LOCAL_BACKEND_CANISTER_ID;
+};
+```
+
+#### 4. Added CycleOps Controller
+
+```bash
+dfx canister update-settings frontend --add-controller cpbhu-5iaaa-aaaad-aalta-cai --network ic
+dfx canister update-settings backend --add-controller cpbhu-5iaaa-aaaad-aalta-cai --network ic
+```
+
+### Verified Working on Mainnet
+
+| Feature | Status |
+|---------|--------|
+| Internet Identity login via id.ai | ✅ Working |
+| Name prompt modal on first login | ✅ Working |
+| Profile save to backend canister | ✅ Working |
+| Name displayed in header | ✅ Working |
+| Empty portfolio for new users | ✅ Working |
+| Navigation tabs | ✅ Working |
+| Sign Out | ✅ Working |
+
+### Files Modified This Session
+
+| File | Changes |
+|------|---------|
+| `frontend/src/components/Layout.tsx` | Added localStorage fallback for profile storage |
+| `frontend/src/hooks/useActor.ts` | Added mainnet backend canister ID |
+| `canister_ids.json` | Created with mainnet canister IDs |
+
+### Current Deployment Status (Updated)
+
+| Component | Canister ID | Network | Status |
+|-----------|-------------|---------|--------|
+| Frontend | `ulvla-h7777-77774-qaacq-cai` | local | ✅ Running |
+| Backend | `uxrrr-q7777-77774-qaaaq-cai` | local | ✅ Running |
+| **Frontend** | `t5qhm-myaaa-aaaas-qdwya-cai` | **ic (mainnet)** | ✅ **LIVE** |
+| **Backend** | `ranje-7qaaa-aaaas-qdwxq-cai` | **ic (mainnet)** | ✅ **LIVE** |
+
+### Deployment Commands (Updated)
+
+```bash
+# Navigate to project
+cd /Users/robertripley/coding/YSLfolioTracker
+
+# Set npm path (if using nvm)
+export PATH="/Users/robertripley/.nvm/versions/node/v20.20.0/bin:$PATH"
+
+# Switch to correct identity
+dfx identity use RobRipley_YSL
+
+# Build frontend
+cd frontend && npm run build && cd ..
+
+# Deploy to IC mainnet
+dfx deploy --network ic
+
+# Or deploy just frontend (faster if backend unchanged)
+dfx deploy frontend --network ic
+
+# Check cycles balance
+dfx cycles balance --network ic
+
+# Check canister status
+dfx canister status --all --network ic
+```
+
+### Cycles Balance
+
+- **Before deployment:** 7.919 TC
+- **After deployment:** 0.919 TC
+- **Cost:** ~7 TC for creating 2 new canisters
+
+### GitHub
+
+All changes pushed to: https://github.com/RobRipley/YSLfoliotracker
+
+**Commit:** `4d3417a` - Deploy to IC mainnet
+
+---
+
+### Known Limitation: Local Development with Mainnet II
+
+When developing locally, using `https://id.ai/` for authentication will cause backend canister calls to fail because:
+1. `id.ai` creates delegations signed by mainnet IC
+2. Local replica has different root key
+3. Delegation verification fails
+
+**Workarounds:**
+1. Deploy a local Internet Identity canister for development
+2. Use the localStorage fallback (implemented in this session)
+3. Test authentication flow only on mainnet
+
+The app now gracefully falls back to localStorage when backend is unreachable, so local development still works for UI testing.
+
+---
+
+### Quick Start for Next Session
+
+```bash
+# Access live app
+open https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io/
+
+# For local development
+cd /Users/robertripley/coding/YSLfolioTracker
+dfx start --background
+dfx deploy --network local
+open http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
+
+# For mainnet updates
+cd frontend && npm run build && cd ..
+dfx deploy frontend --network ic
+```
+
+---
