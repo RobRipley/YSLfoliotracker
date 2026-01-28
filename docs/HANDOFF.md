@@ -3256,3 +3256,109 @@ Both issues are now fixed:
 - ✅ Overall layout matches the reference design
 
 ---
+
+
+---
+
+## Session 14 - January 27, 2026
+
+### Task: Align Cash Balance Value with VALUE Column
+
+**Goal:** Make the `$5,000` in the Cash Balance row left-aligned with `$665.81` in the USDC row below it, so both values start at the same horizontal position under the VALUE column header.
+
+### What Was Tried
+
+#### Attempt 1: Remove col-span-3, use separate columns
+- **Change:** Removed `col-span-3` from the Cash Balance label, added empty `<div></div>` placeholders for columns 2 (Price) and 3 (Tokens)
+- **Result:** Value shifted TOO FAR RIGHT - past the VALUE column header position
+- **Why it failed:** With the label cramped into just column 1, the text overflowed visually but the grid still allocated separate space for columns 2 and 3, pushing column 4 (value) further right than expected
+
+#### Attempt 2: Use col-span-3 with col-start-4
+- **Change:** Kept `col-span-3` for label, added `col-start-4` to the value div
+- **Result:** No change - value still appeared before the VALUE column header
+- **Why it failed:** `col-start-4` with `col-span-3` on the previous element should work, but the visual alignment still didn't match. The grid gap and proportional column widths may interact differently when spanning vs. not spanning
+
+#### Attempt 3: col-span-3 for label, col-span-4 for remaining columns  
+- **Change:** Used `col-span-3` for label, then value in column 4, then `col-span-4` for remaining empty columns
+- **Result:** Value still appeared before the VALUE column header
+- **Why it failed:** Same underlying issue - the proportional widths with `col-span-3` don't match the cumulative widths of 3 separate 1-column elements
+
+#### Attempt 4: Back to separate columns (final state)
+- **Change:** Reverted to having separate divs for columns 1, 2, 3, then value in column 4
+- **Result:** Value goes too far right again
+- **Current state:** This is where we left off
+
+### Root Cause Analysis
+
+The issue is a **grid layout mismatch** between rows that use `col-span` and rows that don't:
+
+**USDC Row (works correctly):**
+```
+[Col 1: Symbol] [Col 2: Price] [Col 3: Tokens] [Col 4: Value] ...
+     USDC          $0.9997         666           $665.81
+```
+Each column is its own grid cell with `gap-3` between them.
+
+**Cash Balance Row (doesn't align):**
+```
+Option A - col-span-3:
+[Col 1-3 merged: Cash Balance + MANUAL + Dry powder] [Col 4: Value] ...
+                                                        $5,000
+```
+The merged cell spans the WIDTH of 3 columns PLUS 2 gaps, making it wider than expected.
+
+```
+Option B - separate columns:
+[Col 1: Cash Balance + MANUAL + Dry powder] [Col 2: empty] [Col 3: empty] [Col 4: Value]
+```
+The label overflows column 1 visually but column 4 starts further right due to the gaps.
+
+**The fundamental problem:** The Cash Balance label content ("Cash Balance" + "MANUAL" badge + "Dry powder" subtitle) is wider than the SYMBOL column alone, but narrower than SYMBOL + PRICE + TOKENS combined. There's no grid configuration that perfectly matches both cases.
+
+### How I Knew Each Attempt Failed
+
+After each change:
+1. Ran `npm run build` 
+2. Deployed with `dfx canister install frontend --mode reinstall -y`
+3. Hard refreshed browser (`Cmd+Shift+R`)
+4. Expanded Cash & Stablecoins category
+5. Visually compared the horizontal position of `$5,000` vs `$665.81` (USDC) vs `$22.3K` (BTC)
+6. The `$5,000` was either LEFT of the VALUE column (col-span approach) or RIGHT of it (separate columns approach)
+
+### Current State
+
+The code currently has:
+- Separate divs for columns 1-8
+- Column 1 has the Cash Balance label (overflows into column 2 visually)
+- Columns 2-3 are empty `<div></div>`
+- Column 4 has the `$5,000` value
+- The value appears TOO FAR RIGHT compared to USDC's `$665.81`
+
+### What Needs to Happen for Completion
+
+**Option A: CSS Grid Subgrid (Modern Browsers)**
+- Use CSS `subgrid` to ensure consistent column alignment across rows
+- May not work in all browsers
+
+**Option B: Fixed Pixel Widths**
+- Replace proportional `fr` units with fixed pixel widths
+- Would break responsiveness
+
+**Option C: Flexbox with Fixed Positions**
+- Abandon grid for Cash Balance row
+- Use absolute positioning or fixed margins to place the value
+- Hacky but would work
+
+**Option D: Redesign Cash Balance Row**
+- Accept that Cash Balance is a special row
+- Move the value to a different visual location (e.g., keep it in current position but accept misalignment, or put it elsewhere entirely)
+
+**Option E: Match USDC Row Structure Exactly**
+- Make Cash Balance row have visible "Price" and "Tokens" columns with "—" or "N/A" values
+- This would align perfectly but adds visual noise
+
+### Priority
+
+**LOW PRIORITY** - The functionality works correctly. The alignment is a visual polish issue that doesn't affect usability. Users can still see and edit the cash balance, it just doesn't perfectly align with the column header below.
+
+---

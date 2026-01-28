@@ -885,7 +885,7 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           background: 'linear-gradient(135deg, rgba(20, 184, 166, 0.06) 0%, rgba(15, 118, 110, 0.02) 100%)',
         }}
       >
-        {/* Column 1: Symbol - Cash Balance label */}
+        {/* Column 1: Symbol - Cash Balance label with icon */}
         <div className="flex items-center gap-3">
           <div 
             className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full shadow-md"
@@ -914,10 +914,10 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           </div>
         </div>
 
-        {/* Column 2: Price - blank for cash */}
+        {/* Column 2: Price - empty for cash */}
         <div></div>
 
-        {/* Column 3: Tokens - blank for cash */}
+        {/* Column 3: Tokens - empty for cash */}
         <div></div>
 
         {/* Column 4: Value - editable inline + share % */}
@@ -959,16 +959,16 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           </span>
         </div>
 
-        {/* Column 5: Avg Cost - blank */}
+        {/* Column 5: Avg Cost - empty */}
         <div></div>
 
-        {/* Column 6: 24H - blank */}
+        {/* Column 6: 24H - empty */}
         <div></div>
 
-        {/* Column 7: Exit Ladder - blank */}
+        {/* Column 7: Exit Ladder - empty */}
         <div></div>
 
-        {/* Column 8: Actions - blank */}
+        {/* Column 8: Actions - empty */}
         <div></div>
       </div>
     );
