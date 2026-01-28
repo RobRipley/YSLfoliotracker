@@ -3178,3 +3178,25 @@ const sortedLegendItems = [...legendItems].sort((a, b) => {
 
 ---
 
+
+
+### Session 12 Additional Fix - January 27, 2026
+
+**Changes:**
+
+1. **Add Asset button** - Changed to purple filled pill shape:
+   - `rounded-full` (pill shape)
+   - `bg-[#6366f1]` (indigo/purple fill)
+   - `h-10 px-5` (slightly larger)
+   - White text
+
+2. **Cash Balance row value alignment** - Moved value to VALUE column:
+   - Changed from flexbox to grid layout matching other rows
+   - Uses same `grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto]`
+   - Value + share% now in column 4 (VALUE column)
+   - Share% close to value with `gap-2`
+
+**Git Commit:** `9bc7d84`
+
+---
+
