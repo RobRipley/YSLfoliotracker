@@ -5121,29 +5121,45 @@ workers/price-cache/
 | `workers/price-cache/src/types.ts` | Made R2 optional in Env interface |
 | `workers/price-cache/src/index.ts` | Added R2 null checks, added admin endpoints |
 
-### Uncommitted Changes (Ready to Commit)
+### All Changes Committed ✅
 
-**Modified:**
+**Commit:** `eb4f283` - "Deploy Cloudflare Worker price cache - LIVE"
+
+**Files in commit:**
 - `frontend/src/components/Layout.tsx`
 - `frontend/src/lib/priceService.ts`
+- `frontend/src/lib/workerCacheProvider.ts` (new)
+- `frontend/src/services/market/priceFeed.ts` (new)
 - `workers/price-cache/src/index.ts`
 - `workers/price-cache/src/types.ts`
 - `workers/price-cache/wrangler.toml`
 
-**New Files:**
-- `frontend/src/lib/workerCacheProvider.ts`
-- `frontend/src/services/` (directory)
+### Integration Complete ✅
 
-### Integration Status
+1. **Environment variable set:** `VITE_PRICE_CACHE_URL=https://ysl-price-cache.robertripleyjunior.workers.dev`
+2. **Frontend rebuilt and deployed to IC mainnet**
+3. **Registry manually triggered** (500 coins with logos cached)
 
-The Worker is deployed and caching prices. To complete frontend integration:
+### Price Flow Architecture
 
-1. Set environment variable:
-   ```bash
-   echo "VITE_PRICE_CACHE_URL=https://ysl-price-cache.robertripleyjunior.workers.dev" >> frontend/.env
-   ```
+```
+Step 0: Worker Cache (PRIMARY) ← NEW!
+  ↓ (499 coins from CryptoRates.ai, 5-min refresh)
+Step 1: CryptoRates.ai (fallback for missing coins)
+Step 2: CryptoPrices.cc (per-symbol fallback)
+Step 3: CoinGecko (market cap supplement for categorization)
+```
 
-2. Rebuild and redeploy frontend to use cached prices
+### Console Verification
+
+The browser console confirms the Worker is being used:
+```
+[Aggregator] Trying Worker cache first...
+[WorkerCache] Fetched 499 coins from Worker, updated at 2026-01-28T21:35:55.084Z
+[Aggregator] Got 6 prices from Worker cache
+[Aggregator] Missing from Worker cache: PAYAI
+[Aggregator] Added market cap for BTC: $1778.13B
+```
 
 ### Verification
 
