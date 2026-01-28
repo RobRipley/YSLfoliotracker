@@ -1,136 +1,154 @@
 # YSL Price Cache Worker
 
-A Cloudflare Worker that provides cached cryptocurrency price data and a token registry for the YSL Portfolio Tracker.
-
-## Features
-
-- **Price Caching**: Fetches top 500 coins from CryptoRates.ai every 5 minutes
-- **Daily Snapshots**: Stores versioned price snapshots in R2 storage
-- **Token Registry**: Maintains a CoinGecko-based registry with logos and stable IDs
-- **Fast Reads**: Serves cached data from KV storage with minimal latency
+A Cloudflare Worker that provides cached cryptocurrency price data and token registry for the YSL Portfolio Tracker.
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    CRON JOBS                                │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  Every 5 minutes:                                          │
-│  └── Fetch cryptorates.ai/v1/coins/500                     │
-│  └── Normalize and store in KV                             │
-│                                                             │
-│  Daily at 09:00 UTC:                                       │
-│  └── Write price snapshot to R2                            │
-│  └── Fetch CoinGecko /coins/markets (2 pages)              │
-│  └── Merge into append-only registry                       │
-│  └── Write registry to R2 and KV                           │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+### Storage Layers
 
-┌─────────────────────────────────────────────────────────────┐
-│                    HTTP ENDPOINTS                           │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  GET /prices/top500.json                                    │
-│  └── Returns normalized price data for top 500 coins       │
-│  └── Cache-Control: public, max-age=60                     │
-│                                                             │
-│  GET /prices/status.json                                    │
-│  └── Returns price refresh status and metadata             │
-│                                                             │
-│  GET /registry/latest.json                                  │
-│  └── Returns token registry with logos and IDs             │
-│  └── Cache-Control: public, max-age=3600                   │
-│                                                             │
-│  GET /health                                                │
-│  └── Health check endpoint                                 │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
+| Storage | Purpose | Write Frequency |
+|---------|---------|-----------------|
+| **KV** | Hot cache for real-time access | Every 5 minutes |
+| **R2** | Cold storage for historical snapshots | Daily at 09:00 UTC |
 
-## Setup
+### KV Keys (Hot Cache)
 
-### Prerequisites
+| Key | Description |
+|-----|-------------|
+| `prices:top500:latest` | Current normalized price data blob |
+| `prices:top500:status` | Status with `updatedAt`, `lastSuccess`, `r2Enabled` |
+| `registry:coingecko:latest` | Mirror of CoinGecko registry for fast reads |
 
-- Node.js 18+
-- Cloudflare account with Workers enabled
-- Wrangler CLI installed globally (`npm install -g wrangler`)
+### R2 Paths (Historical Snapshots)
 
-### Installation
+| Path | Description |
+|------|-------------|
+| `prices/top500/YYYY-MM-DD.json` | Daily price snapshots |
+| `registry/coingecko_registry.json` | Master append-only registry (source of truth) |
+| `registry/top500_snapshot/YYYY-MM-DD.json` | Daily top 500 composition |
 
-1. Navigate to the worker directory:
-   ```bash
-   cd workers/price-cache
-   ```
+### KV Write Budget (Free Tier: 1,000 writes/day)
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+| Operation | Writes | Frequency | Daily Total |
+|-----------|--------|-----------|-------------|
+| Price refresh | 2 (latest + status) | Every 5 min (288×) | 576 |
+| Registry mirror | 1 | Daily (1×) | 1 |
+| **Total** | | | **~577** ✅ |
 
-3. Login to Cloudflare:
-   ```bash
-   wrangler login
-   ```
+Well under the 1,000 free tier limit!
 
-### Create Cloudflare Resources
+## Cron Schedules
 
-1. **Create KV Namespace:**
-   ```bash
-   wrangler kv:namespace create PRICE_KV
-   # Copy the ID and update wrangler.toml
-   ```
+| Cron | Schedule | Action |
+|------|----------|--------|
+| `*/5 * * * *` | Every 5 minutes | Refresh prices from CryptoRates.ai → KV |
+| `0 9 * * *` | Daily 09:00 UTC | Write snapshot to R2, refresh registry |
 
-2. **Create R2 Bucket:**
-   ```bash
-   wrangler r2 bucket create ysl-price-snapshots
-   ```
+## HTTP Endpoints
 
-3. **Update wrangler.toml** with the KV namespace ID:
-   ```toml
-   [[kv_namespaces]]
-   binding = "PRICE_KV"
-   id = "<YOUR_KV_NAMESPACE_ID>"
-   ```
+| Endpoint | Description | Cache |
+|----------|-------------|-------|
+| `GET /prices/top500.json` | Current prices from KV | 60s |
+| `GET /prices/status.json` | Cache status | no-cache |
+| `GET /registry/latest.json` | Token registry (KV → R2 fallback) | 1h |
+| `GET /snapshots/prices/top500/YYYY-MM-DD.json` | Historical snapshot from R2 | 24h |
+| `GET /health` | Health check with R2/KV status | - |
+| `GET /admin/refresh-prices` | Manual price refresh | - |
+| `GET /admin/refresh-registry` | Manual registry refresh | - |
+| `GET /admin/write-snapshot` | Manual snapshot write | - |
 
-### Local Development
+## Setup Instructions
 
-Run the worker locally:
+### 1. Prerequisites
+
 ```bash
-npm run dev
+# Install dependencies
+cd workers/price-cache
+npm install
+
+# Login to Cloudflare
+npx wrangler login
 ```
 
-This starts a local server at `http://localhost:8787`.
+### 2. Create KV Namespace (if not already created)
 
-Test endpoints:
 ```bash
-# Health check
-curl http://localhost:8787/health
-
-# Prices (may be empty until cron runs)
-curl http://localhost:8787/prices/top500.json
-
-# Status
-curl http://localhost:8787/prices/status.json
-
-# Registry
-curl http://localhost:8787/registry/latest.json
+npx wrangler kv:namespace create PRICE_KV
+# Copy the ID and update wrangler.toml
 ```
 
-### Deployment
+### 3. Enable R2 and Create Bucket
 
-Deploy to Cloudflare:
+1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com/) → R2 Object Storage
+2. Enable R2 for your account (requires payment method on file)
+3. Create bucket named `ysl-price-snapshots`
+4. Uncomment the `[[r2_buckets]]` section in `wrangler.toml`:
+
+```toml
+[[r2_buckets]]
+binding = "PRICE_R2"
+bucket_name = "ysl-price-snapshots"
+```
+
+### 4. Deploy
+
 ```bash
+# Deploy to Cloudflare
 npm run deploy
+# or
+npx wrangler deploy
+
+# Verify deployment
+curl https://ysl-price-cache.robertripleyjunior.workers.dev/health
 ```
 
-The worker will be available at:
-`https://ysl-price-cache.<your-subdomain>.workers.dev`
+### 5. Initialize Data (First Time)
 
-## Response Schemas
+```bash
+# Trigger initial price fetch
+curl https://ysl-price-cache.robertripleyjunior.workers.dev/admin/refresh-prices
 
-### Prices Response (`/prices/top500.json`)
+# Trigger initial registry fetch
+curl https://ysl-price-cache.robertripleyjunior.workers.dev/admin/refresh-registry
+```
+
+## R2 Requirement for Daily Snapshots
+
+R2 is **required** for daily snapshot functionality. If R2 is not configured:
+
+- The `0 9 * * *` daily cron will **hard fail** with error
+- Status will show: `"R2 disabled - daily snapshot skipped"`
+- The 5-minute price refresh will continue working (KV only)
+- Historical snapshots endpoint will return 503
+
+### Verification
+
+Check R2 status:
+```bash
+curl https://ysl-price-cache.robertripleyjunior.workers.dev/health
+# Should show: "r2Enabled": true
+```
+
+Check status endpoint:
+```bash
+curl https://ysl-price-cache.robertripleyjunior.workers.dev/prices/status.json
+```
+
+## Local Development
+
+```bash
+# Start local dev server
+npm run dev
+
+# Test endpoints
+curl http://localhost:8787/health
+curl http://localhost:8787/admin/refresh-prices
+curl http://localhost:8787/prices/top500.json
+```
+
+## Schemas
+
+### Normalized Prices (`/prices/top500.json`)
 
 ```json
 {
@@ -142,18 +160,29 @@ The worker will be available at:
       "symbol": "BTC",
       "name": "Bitcoin",
       "rank": 1,
-      "priceUsd": 88162.45,
-      "marketCapUsd": 1750000000000,
-      "volume24hUsd": 25000000000,
-      "change24hPct": 2.5
-    },
-    "ETH": { ... },
-    ...
+      "priceUsd": 88929.33,
+      "marketCapUsd": 1778130000000,
+      "volume24hUsd": 12345678,
+      "change24hPct": 1.23
+    }
   }
 }
 ```
 
-### Registry Response (`/registry/latest.json`)
+### Daily Snapshot (`/snapshots/prices/top500/YYYY-MM-DD.json`)
+
+Same as normalized prices, plus:
+
+```json
+{
+  "snapshotDate": "2026-01-28",
+  "snapshotTimestamp": "2026-01-28T09:00:00.000Z",
+  "source": "cryptorates.ai",
+  ...
+}
+```
+
+### Registry (`/registry/latest.json`)
 
 ```json
 {
@@ -165,61 +194,65 @@ The worker will be available at:
       "id": "bitcoin",
       "symbol": "BTC",
       "name": "Bitcoin",
-      "logoUrl": "https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png",
+      "logoUrl": "https://...",
       "marketCapRank": 1,
       "firstSeenAt": "2026-01-28T09:00:00.000Z",
       "lastSeenAt": "2026-01-28T09:00:00.000Z"
-    },
-    ...
+    }
   },
   "symbolToIds": {
     "BTC": ["bitcoin"],
-    "USDC": ["usd-coin", "bridged-usdc-polygon-pos-bridge"],
-    ...
+    "USDC": ["usd-coin"]
   }
 }
 ```
 
-### Status Response (`/prices/status.json`)
+### Status (`/prices/status.json`)
 
 ```json
 {
   "success": true,
-  "count": 500,
+  "count": 499,
   "timestamp": "2026-01-28T03:10:00.000Z",
   "trigger": "scheduled",
-  "updatedAt": "2026-01-28T03:10:00.000Z",
-  "service": "ysl-price-cache"
+  "lastSuccess": "2026-01-28T03:10:00.000Z",
+  "r2Enabled": true,
+  "service": "ysl-price-cache",
+  "kvWritesPerDay": "~577 (well under 1,000 free tier limit)"
 }
 ```
 
-## Attribution
-
-Prices are sourced from [CryptoRates.ai](https://cryptorates.ai) - attribution is required in the frontend:
-
-> Prices powered by cryptorates.ai
-
 ## Troubleshooting
 
-### Prices not updating
+### "R2 disabled - daily snapshot skipped"
 
-1. Check the status endpoint: `/prices/status.json`
-2. View logs: `wrangler tail`
-3. Verify KV namespace is properly configured
-4. Check CryptoRates.ai API availability
+1. Enable R2 in Cloudflare Dashboard
+2. Create bucket `ysl-price-snapshots`
+3. Uncomment R2 section in `wrangler.toml`
+4. Deploy: `npm run deploy`
 
-### Registry empty
+### Prices Not Updating
 
-1. The registry is populated daily at 09:00 UTC
-2. Trigger manually via Wrangler dashboard or wait for scheduled job
-3. Check for CoinGecko API rate limiting
+1. Check status: `curl .../prices/status.json`
+2. If `success: false`, check the `error` field
+3. Manually trigger: `curl .../admin/refresh-prices`
 
-### R2 snapshots not appearing
+### KV updatedAt Not Advancing
 
-1. Verify R2 bucket exists: `wrangler r2 bucket list`
-2. Check bucket name matches wrangler.toml
-3. Review worker logs for errors
+1. Check cron is running in Cloudflare Dashboard → Workers → ysl-price-cache → Triggers
+2. Check Worker logs for errors
+3. Manually trigger price refresh
 
-## License
+### R2 Daily File Not Appearing
 
-MIT
+1. Verify R2 is enabled: `curl .../health` should show `r2Enabled: true`
+2. Check if daily cron ran (09:00 UTC)
+3. Manually trigger: `curl .../admin/write-snapshot`
+4. Check R2 bucket in Cloudflare Dashboard
+
+### Registry Not Growing (Append-Only)
+
+1. The registry is append-only - entries are never removed
+2. New coins are added when they enter the top 500
+3. `firstSeenAt` tracks when coin was first added
+4. `lastSeenAt` tracks most recent update

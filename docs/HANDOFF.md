@@ -5178,3 +5178,389 @@ curl -s https://ysl-price-cache.robertripleyjunior.workers.dev/prices/top500.jso
 ```
 
 ---
+
+
+---
+
+## Session 21: KV + R2 Storage Implementation
+
+**Date:** January 28, 2026
+
+### Summary
+
+Implemented the KV + R2 hybrid storage architecture for the Cloudflare Worker price cache:
+- **KV**: Hot cache for real-time price access (5-minute refresh)
+- **R2**: Cold storage for daily snapshots and master registry (source of truth)
+
+### Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                 CLOUDFLARE WORKER                            │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  EVERY 5 MINUTES (*/5 * * * *)                              │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │ Fetch CryptoRates.ai top 500                           │ │
+│  │ KV Write 1: prices:top500:latest (price blob)          │ │
+│  │ KV Write 2: prices:top500:status (timestamp + status)  │ │
+│  │                                                        │ │
+│  │ 288 runs/day × 2 writes = 576 KV writes/day           │ │
+│  └────────────────────────────────────────────────────────┘ │
+│                                                              │
+│  DAILY at 09:00 UTC (0 9 * * *)                             │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │ R2: Write prices/top500/YYYY-MM-DD.json (daily snap)   │ │
+│  │ R2: Update registry/coingecko_registry.json (master)   │ │
+│  │ R2: Write registry/top500_snapshot/YYYY-MM-DD.json     │ │
+│  │ KV Write 1: registry:coingecko:latest (fast mirror)    │ │
+│  │                                                        │ │
+│  │ ⚠️ R2 REQUIRED - hard fails if not configured          │ │
+│  └────────────────────────────────────────────────────────┘ │
+│                                                              │
+│  HTTP ENDPOINTS                                              │
+│  GET /prices/top500.json        ← KV (60s cache)            │
+│  GET /prices/status.json        ← KV (no-cache)             │
+│  GET /registry/latest.json      ← KV → R2 fallback (1h)     │
+│  GET /snapshots/prices/top500/YYYY-MM-DD.json ← R2 (24h)    │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### KV Write Budget (Free Tier: 1,000 writes/day)
+
+| Operation | Writes | Frequency | Daily Total |
+|-----------|--------|-----------|-------------|
+| Price refresh | 2 (latest + status) | 288× (every 5 min) | 576 |
+| Registry mirror | 1 | 1× (daily) | 1 |
+| **Total** | | | **~577** ✅ |
+
+### KV Keys
+
+| Key | What it stores | Write frequency |
+|-----|---------------|-----------------|
+| `prices:top500:latest` | Current normalized price blob | Every 5 min |
+| `prices:top500:status` | Status with `updatedAt`, `lastSuccess`, `r2Enabled` | Every 5 min |
+| `registry:coingecko:latest` | Mirror of master registry (fast reads) | Daily |
+
+### R2 Paths
+
+| Path | What it stores | When written |
+|------|---------------|--------------|
+| `prices/top500/YYYY-MM-DD.json` | Daily price snapshot | Daily 09:00 UTC |
+| `registry/coingecko_registry.json` | Append-only master registry (SOURCE OF TRUTH) | Daily 09:00 UTC |
+| `registry/top500_snapshot/YYYY-MM-DD.json` | Daily top 500 composition | Daily 09:00 UTC |
+
+### R2 Requirement
+
+R2 is **REQUIRED** for daily snapshot functionality. If R2 is not configured:
+- Daily cron **hard fails** with clear error in logs and status
+- Status shows: `"error": "R2 disabled - daily snapshot skipped"`
+- 5-minute price refresh continues working (KV only)
+- Historical snapshot endpoint returns 503
+
+### How to Enable R2
+
+1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com/) → R2 Object Storage
+2. Enable R2 for your account (requires payment method on file)
+3. Create bucket named `ysl-price-snapshots`
+4. Uncomment the `[[r2_buckets]]` section in `wrangler.toml`:
+
+```toml
+[[r2_buckets]]
+binding = "PRICE_R2"
+bucket_name = "ysl-price-snapshots"
+```
+
+5. Deploy: `npm run deploy`
+
+### Verification Checklist
+
+**KV updatedAt advancing:**
+```bash
+curl https://ysl-price-cache.robertripleyjunior.workers.dev/prices/status.json
+# Check: "timestamp" and "lastSuccess" update every 5 min
+```
+
+**R2 daily file appears:**
+```bash
+# After 09:00 UTC the next day:
+curl https://ysl-price-cache.robertripleyjunior.workers.dev/snapshots/prices/top500/2026-01-28.json
+# Should return the daily snapshot
+```
+
+**Registry grows append-only:**
+```bash
+curl https://ysl-price-cache.robertripleyjunior.workers.dev/registry/latest.json
+# Check: "count" increases as new coins enter top 500
+# Check: "firstSeenAt" vs "lastSeenAt" for tracking
+```
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `workers/price-cache/wrangler.toml` | Added R2 configuration (commented, ready to enable) |
+| `workers/price-cache/src/types.ts` | Updated status schema, added DailySnapshot type |
+| `workers/price-cache/src/index.ts` | Implemented R2 writes, hard fail for daily cron if R2 missing |
+| `workers/price-cache/README.md` | Complete documentation with setup instructions |
+
+### Corrected Misconception
+
+**Previous understanding:** KV resets on Worker restart
+**Actual behavior:** KV is **persistent** across Worker restarts. The tradeoff is **eventual consistency** - propagation delay up to ~60 seconds for KV writes to be visible globally.
+
+This is why we use KV for the "latest" data that needs fast reads, and R2 for historical snapshots that are written once and read many times.
+
+### Current Deployment Status
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| KV Namespace | ✅ Configured | ID: `947dc235f7fc41ada662d7d5318bad2a` |
+| R2 Bucket | ⚠️ Ready to enable | Needs R2 enabled on account |
+| 5-min cron | ✅ Running | Prices refresh working |
+| Daily cron | ⚠️ Will fail | Until R2 is enabled |
+
+### Deployment Commands
+
+```bash
+cd /Users/robertripley/coding/YSLfolioTracker/workers/price-cache
+
+# Login to Cloudflare
+npx wrangler login
+
+# Deploy worker
+npm run deploy
+
+# Check deployment
+curl https://ysl-price-cache.robertripleyjunior.workers.dev/health
+
+# Manual triggers (for testing)
+curl https://ysl-price-cache.robertripleyjunior.workers.dev/admin/refresh-prices
+curl https://ysl-price-cache.robertripleyjunior.workers.dev/admin/refresh-registry
+curl https://ysl-price-cache.robertripleyjunior.workers.dev/admin/write-snapshot
+```
+
+---
+
+
+---
+
+## Session 12 - January 28, 2026
+
+### Summary
+
+This session focused on two main tasks:
+1. Implementing donut chart hover animation and unified category color mapping
+2. Fixing the NamePromptModal Skip button that was stuck in "Saving..." state
+
+### Task A: Donut Chart Hover Animation + Unified Colors
+
+#### Created Centralized Color Utility
+
+**File:** `/frontend/src/lib/categoryColors.ts`
+
+Created a single source of truth for all category colors used across the app:
+
+```typescript
+export const CATEGORY_COLORS: Record<ExtendedCategory, string> = {
+  'cash': '#64748b',        // Slate-500 - neutral gray
+  'stablecoin': '#14b8a6',  // Teal-500
+  'blue-chip': '#3b82f6',   // Blue-500 (NOT cyan)
+  'mid-cap': '#a855f7',     // Purple-500
+  'low-cap': '#eab308',     // Yellow-500 (changed from green!)
+  'micro-cap': '#f97316',   // Orange-500
+  'defi': '#8b5cf6',        // Violet-500
+};
+```
+
+**Key Changes:**
+- Cash: Neutral slate/gray (intentionally off-spectrum)
+- Stablecoins: Teal (distinct from cash)
+- Blue Chip: True blue (NOT cyan - to distinguish from teal)
+- Low Cap: Changed from green to amber/yellow (better distinction)
+
+Also includes:
+- `CATEGORY_ACCENT_COLORS` - lighter versions for hover states
+- `CATEGORY_LABELS` - display names
+- `CATEGORY_ORDER` - consistent ordering for legends
+- `CATEGORY_GRADIENTS` - for category header backgrounds
+- `CATEGORY_BG_COLORS`, `CATEGORY_BORDER_COLORS`, `CATEGORY_RING_COLORS`
+
+#### Updated AllocationDonutChart with Hover Animation
+
+**File:** `/frontend/src/components/AllocationDonutChart.tsx`
+
+Added subtle "explode on hover" effect:
+
+```typescript
+// Custom active shape for hover effect
+const renderActiveShape = (props: any) => {
+  const EXPLODE_OFFSET = 5; // pixels
+  // Calculate offset position based on slice angle
+  const offsetX = cx + EXPLODE_OFFSET * Math.cos(-midAngleRad);
+  const offsetY = cy + EXPLODE_OFFSET * Math.sin(-midAngleRad);
+  
+  return (
+    <Sector
+      cx={offsetX}
+      cy={offsetY}
+      innerRadius={innerRadius}
+      outerRadius={outerRadius + 3}
+      // ... with drop shadow
+    />
+  );
+};
+```
+
+Features:
+- Hovered slice shifts outward 5px from center
+- Outer radius increases by 3px
+- Drop shadow added for depth
+- Smooth 200ms transition
+- Legend rows highlight when corresponding slice is hovered (bidirectional)
+- Legend dots scale up slightly on hover
+
+#### Updated CompactHoldingsTable to Use Centralized Colors
+
+**File:** `/frontend/src/components/CompactHoldingsTable.tsx`
+
+Replaced local color definitions with imports from `categoryColors.ts`:
+
+```typescript
+import {
+  CATEGORY_COLORS,
+  CATEGORY_LABELS as IMPORTED_LABELS,
+  CATEGORY_ACCENT_COLORS,
+  CATEGORY_GRADIENTS,
+  // ...
+} from '@/lib/categoryColors';
+```
+
+---
+
+### Task B: Fix NamePromptModal Skip Button
+
+#### Problem
+
+The Skip button was stuck showing "Saving..." and never closing the modal. This was caused by:
+1. The `handleSkipProfile` function was trying to call `actor.upsert_profile()` which was failing/hanging
+2. The localStorage key was tied to `principal` which wasn't reliable
+
+#### Solution
+
+**File:** `/frontend/src/components/Layout.tsx`
+
+1. **Simplified the skip flag** - Changed from `ysl-first-login-prompted-${principal}` to just `ysl-name-prompt-skipped`:
+
+```typescript
+const NAME_PROMPT_SKIPPED_KEY = 'ysl-name-prompt-skipped';
+```
+
+2. **Made handleSkipProfile synchronous** - No more waiting for backend:
+
+```typescript
+const handleSkipProfile = useCallback(() => {
+  // Set the skip flag immediately
+  localStorage.setItem(NAME_PROMPT_SKIPPED_KEY, 'true');
+  
+  if (principal) {
+    // Save empty profile to localStorage only
+    const emptyProfile: UserProfile = { ... };
+    localStorage.setItem(localProfileKey, JSON.stringify(emptyProfile));
+    setProfile(emptyProfile);
+  }
+  
+  setShowNamePrompt(false);  // Close immediately
+}, [principal]);
+```
+
+3. **Updated useEffect to check skip flag first**:
+
+```typescript
+const loadProfile = async () => {
+  const wasSkipped = localStorage.getItem(NAME_PROMPT_SKIPPED_KEY);
+  // ... only show modal if !wasSkipped
+};
+```
+
+**File:** `/frontend/src/components/NamePromptModal.tsx`
+
+4. **Made handleSkip not async**:
+
+```typescript
+// Before
+const handleSkip = async () => { await onSkip(); };
+
+// After  
+const handleSkip = () => { onSkip(); };
+```
+
+5. **Updated interface**:
+
+```typescript
+onSkip: () => void;  // Changed from Promise<void>
+```
+
+---
+
+### Files Modified This Session
+
+| File | Changes |
+|------|---------|
+| `frontend/src/lib/categoryColors.ts` | **NEW** - Centralized color mapping utility |
+| `frontend/src/components/AllocationDonutChart.tsx` | Added hover animation, use centralized colors |
+| `frontend/src/components/CompactHoldingsTable.tsx` | Use centralized colors instead of local definitions |
+| `frontend/src/components/Layout.tsx` | Fixed Skip button - synchronous, simple localStorage flag |
+| `frontend/src/components/NamePromptModal.tsx` | Made handleSkip synchronous |
+
+---
+
+### Verification
+
+**To test Skip button:**
+1. Clear localStorage: `localStorage.clear()`
+2. Refresh page - modal should appear
+3. Click Skip - modal should close immediately
+4. Refresh page - modal should NOT appear again
+
+**To test donut chart:**
+1. Hover over a donut slice - should shift outward slightly with shadow
+2. Hover over legend row - corresponding slice should highlight
+3. Colors should be distinct (Blue Chip = blue, Stablecoins = teal, etc.)
+
+---
+
+### Current Deployment Status
+
+| Component | Canister ID | Status |
+|-----------|-------------|--------|
+| Frontend | `ulvla-h7777-77774-qaacq-cai` | ✅ Running |
+| Backend | `uxrrr-q7777-77774-qaaaq-cai` | ✅ Running |
+| Local Replica | Port 4943 | ✅ Running |
+
+**Frontend URL:** http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
+
+---
+
+### Build/Deploy Commands
+
+```bash
+# Navigate to project
+cd /Users/robertripley/coding/YSLfolioTracker
+
+# Set npm path (nvm)
+export PATH="/Users/robertripley/.nvm/versions/node/v20.20.0/bin:$PATH"
+
+# Build frontend
+cd frontend && npm run build && cd ..
+
+# Deploy frontend
+dfx canister install frontend --mode reinstall -y
+
+# Access frontend
+open http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
+```
+
+---
+

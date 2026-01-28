@@ -2,21 +2,34 @@ name = "ysl-price-cache"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
 
-# KV namespace for fast reads
+# KV namespace for fast reads (hot "latest" data)
+# KV is used for real-time access to current prices and registry mirror
 [[kv_namespaces]]
 binding = "PRICE_KV"
 id = "947dc235f7fc41ada662d7d5318bad2a"
 
-# R2 bucket for historical snapshots (OPTIONAL - uncomment if R2 is enabled)
+# R2 bucket for historical snapshots (REQUIRED for daily snapshots)
+# This bucket stores:
+# - Daily price snapshots: prices/top500/YYYY-MM-DD.json
+# - Master CoinGecko registry: registry/coingecko_registry.json (append-only, source of truth)
+# - Daily composition snapshots: registry/top500_snapshot/YYYY-MM-DD.json
+#
+# To enable R2:
+# 1. Go to Cloudflare Dashboard > R2 Object Storage
+# 2. Enable R2 for your account (requires payment method on file)
+# 3. Create bucket named "ysl-price-snapshots"
+# 4. Uncomment the r2_buckets section below
+#
 # [[r2_buckets]]
 # binding = "PRICE_R2"
 # bucket_name = "ysl-price-snapshots"
 
 # Cron triggers
+# Schedule reference: https://crontab.guru/
 [triggers]
 crons = [
-  "*/5 * * * *",  # Every 5 minutes - refresh prices
-  "0 9 * * *"     # Daily at 09:00 UTC - refresh registry
+  "*/5 * * * *",  # Every 5 minutes - refresh prices to KV (288 runs/day)
+  "0 9 * * *"     # Daily at 09:00 UTC - write daily snapshot to R2 + refresh registry
 ]
 
 # Environment variables

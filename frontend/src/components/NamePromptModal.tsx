@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 interface NamePromptModalProps {
   open: boolean;
   onSave: (firstName: string, lastName: string) => Promise<void>;
-  onSkip: () => Promise<void>;
+  onSkip: () => void;
   isLoading?: boolean;
   initialFirstName?: string;
   initialLastName?: string;
@@ -37,8 +37,8 @@ export function NamePromptModal({
     await onSave(firstName.trim(), lastName.trim());
   };
 
-  const handleSkip = async () => {
-    await onSkip();
+  const handleSkip = () => {
+    onSkip();
   };
 
   return (

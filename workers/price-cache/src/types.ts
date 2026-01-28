@@ -1,11 +1,35 @@
 /**
  * Type definitions for YSL Price Cache Worker
+ * 
+ * Data Storage Architecture:
+ * 
+ * KV (Hot Cache - Real-time Access):
+ * - prices:top500:latest      - Current price data blob (written every 5 min)
+ * - prices:top500:status      - Status with updatedAt and lastSuccess (written every 5 min)
+ * - registry:coingecko:latest - Mirror of registry for fast reads (written daily)
+ * 
+ * R2 (Cold Storage - Historical Snapshots):
+ * - prices/top500/YYYY-MM-DD.json          - Daily price snapshots
+ * - registry/coingecko_registry.json       - Master append-only registry (source of truth)
+ * - registry/top500_snapshot/YYYY-MM-DD.json - Daily top 500 composition
+ * 
+ * KV Write Budget (Free Tier: 1,000 writes/day):
+ * - 5-minute refresh: 2 writes per run (latest + status) × 288 runs = 576 writes
+ * - Daily cron: 1 write (registry mirror to KV) = 1 write
+ * - Total estimate: ~577 writes/day (under 1,000 limit)
  */
 
 // Cloudflare Worker Environment bindings
 export interface Env {
+  // KV namespace for hot cache (real-time access)
   PRICE_KV: KVNamespace;
-  PRICE_R2?: R2Bucket;  // Optional - only if R2 is enabled
+  
+  // R2 bucket for historical snapshots (daily persistence)
+  // This SHOULD be defined for full functionality.
+  // If undefined, daily snapshot writes will fail with clear error.
+  PRICE_R2?: R2Bucket;
+  
+  // Environment variables
   COINGECKO_API_URL: string;
   CRYPTORATES_API_URL: string;
 }
@@ -28,7 +52,7 @@ export interface NormalizedCoin {
   change24hPct: number;
 }
 
-// Registry data structure (append-only)
+// Registry data structure (append-only, stored in R2)
 export interface Registry {
   source: 'coingecko';
   updatedAt: string;
@@ -54,6 +78,8 @@ export interface PriceStatus {
   error?: string;
   timestamp: string;
   trigger: string;
+  lastSuccess?: string;  // ISO timestamp of last successful refresh
+  r2Enabled?: boolean;   // Whether R2 is configured
 }
 
 // CryptoRates.ai API response types
@@ -97,8 +123,12 @@ export interface CoinGeckoCoin {
 
 // Daily snapshot types
 export interface DailySnapshot {
-  date: string;
-  ids: SnapshotEntry[];
+  snapshotDate: string;  // YYYY-MM-DD
+  snapshotTimestamp: string;  // Full ISO timestamp
+  source: 'cryptorates.ai';
+  updatedAt: string;
+  count: number;
+  bySymbol: Record<string, NormalizedCoin>;
 }
 
 export interface SnapshotEntry {

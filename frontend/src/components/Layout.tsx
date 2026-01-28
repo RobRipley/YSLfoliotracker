@@ -16,7 +16,7 @@ interface LayoutProps {
 }
 
 // Storage keys
-const FIRST_LOGIN_PROMPTED_KEY = 'ysl-first-login-prompted';
+const NAME_PROMPT_SKIPPED_KEY = 'ysl-name-prompt-skipped';
 const LOCAL_PROFILE_KEY = 'ysl-local-profile';
 
 export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: LayoutProps) {
@@ -36,6 +36,9 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
   // Load profile when actor is ready OR fall back to localStorage
   useEffect(() => {
     const loadProfile = async () => {
+      // Check if user already skipped the name prompt - if so, never show it again
+      const wasSkipped = localStorage.getItem(NAME_PROMPT_SKIPPED_KEY);
+      
       if (!isAuthenticated || !principal) {
         setProfile(null);
         return;
@@ -68,8 +71,7 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
             setUseLocalStorage(false);
           } else {
             // No profile exists on backend - check if we should show prompt
-            const wasPrompted = localStorage.getItem(`${FIRST_LOGIN_PROMPTED_KEY}-${principal}`);
-            if (!wasPrompted && !localProfile) {
+            if (!wasSkipped && !localProfile) {
               console.log('[Layout] No profile found, showing name prompt');
               setShowNamePrompt(true);
             }
@@ -78,20 +80,15 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
           console.error('[Layout] Failed to load profile from backend, using localStorage fallback:', error);
           setUseLocalStorage(true);
           // Show a one-time warning toast if actor fails
-          if (!localProfile) {
-            // No local profile either - check if we should show prompt
-            const wasPrompted = localStorage.getItem(`${FIRST_LOGIN_PROMPTED_KEY}-${principal}`);
-            if (!wasPrompted) {
-              setShowNamePrompt(true);
-            }
+          if (!localProfile && !wasSkipped) {
+            setShowNamePrompt(true);
           }
         }
       } else if (actorError) {
         console.log('[Layout] No actor available, using localStorage fallback');
         setUseLocalStorage(true);
         // Check if we should show prompt
-        const wasPrompted = localStorage.getItem(`${FIRST_LOGIN_PROMPTED_KEY}-${principal}`);
-        if (!wasPrompted && !localProfile) {
+        if (!wasSkipped && !localProfile) {
           setShowNamePrompt(true);
         }
       }
@@ -169,51 +166,31 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
     setShowNamePrompt(false);
     setIsEditMode(false);
     
-    // Mark that we've prompted this user
-    localStorage.setItem(`${FIRST_LOGIN_PROMPTED_KEY}-${principal}`, 'true');
+    // Mark that we've saved/prompted - don't show modal again automatically
+    localStorage.setItem(NAME_PROMPT_SKIPPED_KEY, 'true');
     
     toast.success(firstName || lastName ? 'Name saved!' : 'Profile updated');
     setIsSavingProfile(false);
   }, [actor, principal, useLocalStorage]);
 
-  const handleSkipProfile = useCallback(async () => {
-    if (!principal) return;
-
-    setIsSavingProfile(true);
+  const handleSkipProfile = useCallback(() => {
+    // Set the skip flag immediately - this prevents the modal from ever showing again
+    localStorage.setItem(NAME_PROMPT_SKIPPED_KEY, 'true');
     
-    const emptyProfile: UserProfile = {
-      firstName: '',
-      lastName: '',
-      updatedAt: BigInt(Date.now() * 1000000),
-    };
+    if (principal) {
+      const emptyProfile: UserProfile = {
+        firstName: '',
+        lastName: '',
+        updatedAt: BigInt(Date.now() * 1000000),
+      };
 
-    // Try backend first
-    if (actor && !useLocalStorage) {
-      try {
-        const updatedProfile = await actor.upsert_profile('', '');
-        setProfile(updatedProfile);
-        const localProfileKey = `${LOCAL_PROFILE_KEY}-${principal}`;
-        localStorage.setItem(localProfileKey, JSON.stringify(updatedProfile));
-      } catch (error) {
-        console.error('[Layout] Failed to skip profile via backend, using localStorage:', error);
-        setUseLocalStorage(true);
-      }
-    }
-    
-    // Save to localStorage
-    if (useLocalStorage || !actor) {
       const localProfileKey = `${LOCAL_PROFILE_KEY}-${principal}`;
       localStorage.setItem(localProfileKey, JSON.stringify(emptyProfile));
       setProfile(emptyProfile);
     }
     
     setShowNamePrompt(false);
-    
-    // Mark that we've prompted this user
-    localStorage.setItem(`${FIRST_LOGIN_PROMPTED_KEY}-${principal}`, 'true');
-    
-    setIsSavingProfile(false);
-  }, [actor, principal, useLocalStorage]);
+  }, [principal]);
 
   const handleEditName = () => {
     setIsEditMode(true);

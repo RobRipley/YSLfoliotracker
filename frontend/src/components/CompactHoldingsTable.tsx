@@ -13,105 +13,55 @@ import { cn } from '@/lib/utils';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  CATEGORY_COLORS,
+  CATEGORY_LABELS as IMPORTED_LABELS,
+  CATEGORY_ACCENT_COLORS,
+  CATEGORY_GRADIENTS,
+  CATEGORY_BG_COLORS,
+  CATEGORY_BORDER_COLORS,
+  CATEGORY_RING_COLORS,
+} from '@/lib/categoryColors';
 
+// Override stablecoin label for this component
 const CATEGORY_LABELS: Record<Category, string> = {
-  'blue-chip': 'Blue Chip',
-  'mid-cap': 'Mid Cap',
-  'low-cap': 'Low Cap',
-  'micro-cap': 'Micro Cap',
+  ...IMPORTED_LABELS,
   stablecoin: 'Cash & Stablecoins',
-  defi: 'DeFi'
-};
+} as Record<Category, string>;
 
-const CATEGORY_COLORS: Record<Category, string> = {
-  'blue-chip': '#3b82f6',
-  'mid-cap': '#a855f7',
-  'low-cap': '#22c55e',
-  'micro-cap': '#f97316',
-  stablecoin: '#14b8a6',
-  defi: '#8b5cf6'
-};
-
-const CATEGORY_ACCENT_COLORS: Record<Category, string> = {
-  'blue-chip': '#60a5fa',
-  'mid-cap': '#c084fc',
-  'low-cap': '#4ade80',
-  'micro-cap': '#fb923c',
-  stablecoin: '#2dd4bf',
-  defi: '#a855f7'
-};
-
+// Ladder-specific colors (derived from primary colors)
 const LADDER_COLORS: Record<Category, string> = {
-  'blue-chip': '#38bdf8',
-  'mid-cap': '#a855f7',
-  'low-cap': '#22c55e',
-  'micro-cap': '#f97316',
-  stablecoin: '#14b8a6',
-  defi: '#a855f7'
+  'blue-chip': '#60a5fa',   // Blue-400
+  'mid-cap': '#c084fc',     // Purple-400
+  'low-cap': '#fcd34d',     // Yellow-300
+  'micro-cap': '#fb923c',   // Orange-400
+  stablecoin: '#2dd4bf',    // Teal-400
+  defi: '#a78bfa',          // Violet-400
 };
 
-const LADDER_RING_COLORS: Record<Category, string> = {
-  'blue-chip': 'rgba(56, 189, 248, 0.12)',
-  'mid-cap': 'rgba(168, 85, 247, 0.12)',
-  'low-cap': 'rgba(34, 197, 94, 0.12)',
-  'micro-cap': 'rgba(249, 115, 22, 0.12)',
-  stablecoin: 'rgba(20, 184, 166, 0.12)',
-  defi: 'rgba(168, 85, 247, 0.12)'
-};
-
-const LADDER_BG_COLORS: Record<Category, string> = {
-  'blue-chip': 'rgba(56, 189, 248, 0.08)',
-  'mid-cap': 'rgba(168, 85, 247, 0.08)',
-  'low-cap': 'rgba(34, 197, 94, 0.08)',
-  'micro-cap': 'rgba(249, 115, 22, 0.08)',
-  stablecoin: 'rgba(20, 184, 166, 0.08)',
-  defi: 'rgba(168, 85, 247, 0.08)'
-};
-
-const LADDER_BORDER_COLORS: Record<Category, string> = {
-  'blue-chip': 'rgba(56, 189, 248, 0.3)',
-  'mid-cap': 'rgba(168, 85, 247, 0.3)',
-  'low-cap': 'rgba(34, 197, 94, 0.3)',
-  'micro-cap': 'rgba(249, 115, 22, 0.3)',
-  stablecoin: 'rgba(20, 184, 166, 0.3)',
-  defi: 'rgba(168, 85, 247, 0.3)'
-};
+const LADDER_RING_COLORS: Record<Category, string> = CATEGORY_RING_COLORS as Record<Category, string>;
+const LADDER_BG_COLORS: Record<Category, string> = CATEGORY_BG_COLORS as Record<Category, string>;
+const LADDER_BORDER_COLORS: Record<Category, string> = CATEGORY_BORDER_COLORS as Record<Category, string>;
 
 const LADDER_CAPSULE_BG: Record<Category, string> = {
-  'blue-chip': 'rgba(37, 99, 235, 0.16)',
-  'mid-cap': 'rgba(147, 51, 234, 0.16)',
-  'low-cap': 'rgba(22, 163, 74, 0.16)',
-  'micro-cap': 'rgba(234, 88, 12, 0.16)',
-  stablecoin: 'rgba(13, 148, 136, 0.16)',
-  defi: 'rgba(147, 51, 234, 0.16)'
+  'blue-chip': 'rgba(59, 130, 246, 0.16)',
+  'mid-cap': 'rgba(168, 85, 247, 0.16)',
+  'low-cap': 'rgba(234, 179, 8, 0.16)',
+  'micro-cap': 'rgba(249, 115, 22, 0.16)',
+  stablecoin: 'rgba(20, 184, 166, 0.16)',
+  defi: 'rgba(139, 92, 246, 0.16)'
 };
 
 const LADDER_CAPSULE_BORDER: Record<Category, string> = {
-  'blue-chip': 'rgba(37, 99, 235, 0.4)',
-  'mid-cap': 'rgba(147, 51, 234, 0.4)',
-  'low-cap': 'rgba(22, 163, 74, 0.4)',
-  'micro-cap': 'rgba(234, 88, 12, 0.4)',
-  stablecoin: 'rgba(13, 148, 136, 0.4)',
-  defi: 'rgba(147, 51, 234, 0.4)'
+  'blue-chip': 'rgba(59, 130, 246, 0.4)',
+  'mid-cap': 'rgba(168, 85, 247, 0.4)',
+  'low-cap': 'rgba(234, 179, 8, 0.4)',
+  'micro-cap': 'rgba(249, 115, 22, 0.4)',
+  stablecoin: 'rgba(20, 184, 166, 0.4)',
+  defi: 'rgba(139, 92, 246, 0.4)'
 };
 
-const CATEGORY_GRADIENTS: Record<Category, string> = {
-  'blue-chip': 'linear-gradient(135deg, rgba(59,130,246,0.2), rgba(59,130,246,0.05))',
-  'mid-cap': 'linear-gradient(135deg, rgba(168,85,247,0.2), rgba(168,85,247,0.05))',
-  'low-cap': 'linear-gradient(135deg, rgba(34,197,94,0.2), rgba(34,197,94,0.05))',
-  'micro-cap': 'linear-gradient(135deg, rgba(249,115,22,0.2), rgba(249,115,22,0.05))',
-  stablecoin: 'linear-gradient(135deg, rgba(20,184,166,0.2), rgba(20,184,166,0.05))',
-  defi: 'linear-gradient(135deg, rgba(139,92,246,0.2), rgba(139,92,246,0.05))'
-};
-
-const CATEGORY_BADGE_COLORS: Record<Category, string> = {
-  'blue-chip': '#38bdf8',
-  'mid-cap': '#a855f7',
-  'low-cap': '#22c55e',
-  'micro-cap': '#f97316',
-  stablecoin: '#14b8a6',
-  defi: '#8b5cf6'
-};
+const CATEGORY_BADGE_COLORS: Record<Category, string> = CATEGORY_ACCENT_COLORS as Record<Category, string>;
 
 interface ExitLadderRung {
   percent: number;
@@ -460,11 +410,11 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
 
     return (
       <div className="text-xs leading-tight">
-        <div className="text-foreground/90">
+        <div className="text-foreground/90 whitespace-nowrap">
           Next: {formatPrice(nextRung.targetPrice)}
         </div>
-        <div className="text-muted-foreground/70">
-          Sell: {formatTokensCompact(nextRung.tokensToSell)} {holding.symbol}
+        <div className="text-muted-foreground/70 whitespace-nowrap">
+          Sell:&nbsp;{formatTokensCompact(nextRung.tokensToSell)}&nbsp;{holding.symbol}
         </div>
       </div>
     );
@@ -759,44 +709,57 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           </div>
         </div>
 
-        {!isColumnHidden('price') && (
-          <div className="text-sm">
-            <div className="font-mono text-foreground/90">{formatPrice(price)}</div>
-            <div className="text-[11px] text-muted-foreground/80">
-              Live price
-            </div>
-          </div>
-        )}
+        {/* Price - always render cell, show content only if not hidden */}
+        <div className="text-sm">
+          {!isColumnHidden('price') && (
+            <>
+              <div className="font-mono text-foreground/90">{formatPrice(price)}</div>
+              <div className="text-[11px] text-muted-foreground/80">
+                Live price
+              </div>
+            </>
+          )}
+        </div>
 
-        {!isColumnHidden('tokens') && (
-          <div className="text-sm">
-            <div className="font-mono text-foreground/90">{formatTokens(holding.tokensOwned)}</div>
-            <div className="text-[11px] text-muted-foreground/80">Tokens</div>
-          </div>
-        )}
+        {/* Tokens - always render cell */}
+        <div className="text-sm">
+          {!isColumnHidden('tokens') && (
+            <>
+              <div className="font-mono text-foreground/90">{formatTokens(holding.tokensOwned)}</div>
+              <div className="text-[11px] text-muted-foreground/80">Tokens</div>
+            </>
+          )}
+        </div>
 
-        {!isColumnHidden('value') && (
-          <div className="text-sm">
-            <div className="font-mono text-foreground/90">{formatUsd(value)}</div>
-            <div className="text-[11px] text-muted-foreground/80">
-              {formatPercent(posShare, 1)} of portfolio
-            </div>
-          </div>
-        )}
+        {/* Value - always render cell */}
+        <div className="text-sm">
+          {!isColumnHidden('value') && (
+            <>
+              <div className="font-mono text-foreground/90">{formatUsd(value)}</div>
+              <div className="text-[11px] text-muted-foreground/80">
+                {formatPercent(posShare, 1)} of portfolio
+              </div>
+            </>
+          )}
+        </div>
 
-        {!isColumnHidden('avgCost') && (
-          <div className="text-sm">
-            <div className="font-mono text-foreground/90">
-              {holding.avgCost ? formatPrice(holding.avgCost) : '—'}
-            </div>
-            <div className="text-[11px] text-muted-foreground/80">
-              {holding.avgCost ? 'Average cost' : 'Using live price'}
-            </div>
-          </div>
-        )}
+        {/* Avg Cost - always render cell */}
+        <div className="text-sm">
+          {!isColumnHidden('avgCost') && (
+            <>
+              <div className="font-mono text-foreground/90">
+                {holding.avgCost ? formatPrice(holding.avgCost) : '—'}
+              </div>
+              <div className="text-[11px] text-muted-foreground/80">
+                {holding.avgCost ? 'Average cost' : 'Using live price'}
+              </div>
+            </>
+          )}
+        </div>
 
-        {!isColumnHidden('%change') && (
-          <div className="text-sm">
+        {/* 24H % Change - always render cell */}
+        <div className="text-sm">
+          {!isColumnHidden('%change') && (
             <div
               className={cn(
                 'font-mono',
@@ -806,44 +769,45 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
               {percentChange > 0 ? '+' : ''}
               {percentChange.toFixed(2)}%
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        {!isColumnHidden('ladder') && (
-          <div className="flex items-center justify-start">
-            {renderExitLadderCompact(holding, category)}
-          </div>
-        )}
+        {/* Exit Ladder - always render cell */}
+        <div className="flex items-center justify-start">
+          {!isColumnHidden('ladder') && renderExitLadderCompact(holding, category)}
+        </div>
 
-        {!isColumnHidden('notes') && (
-          <div className="text-[11px] text-muted-foreground/90">
-            {holding.notes ? holding.notes : 'No notes yet'}
-          </div>
-        )}
+        {/* Notes - always render cell */}
+        <div className="text-[11px] text-muted-foreground/90">
+          {!isColumnHidden('notes') && (holding.notes ? holding.notes : 'No notes yet')}
+        </div>
 
-        {!isColumnHidden('actions') && (
-          <div className="flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            {/* Edit button - compact icon */}
-            <button
-              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-white/5 hover:text-foreground"
-              onClick={() => handleEditHolding(holding)}
-              type="button"
-              title="Edit holding"
-            >
-              <Edit className="h-3.5 w-3.5" />
-            </button>
+        {/* Actions - always render cell */}
+        <div className="flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {!isColumnHidden('actions') && (
+            <>
+              {/* Edit button - compact icon */}
+              <button
+                className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-white/5 hover:text-foreground"
+                onClick={() => handleEditHolding(holding)}
+                type="button"
+                title="Edit holding"
+              >
+                <Edit className="h-3.5 w-3.5" />
+              </button>
 
-            {/* Delete button - compact icon with red tint on hover */}
-            <button
-              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-rose-500/10 hover:text-rose-400"
-              onClick={() => handleRemoveHolding(holding)}
-              type="button"
-              title="Delete holding"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
+              {/* Delete button - compact icon with red tint on hover */}
+              <button
+                className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-rose-500/10 hover:text-rose-400"
+                onClick={() => handleRemoveHolding(holding)}
+                type="button"
+                title="Delete holding"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
+        </div>
       </div>
     );
   };
