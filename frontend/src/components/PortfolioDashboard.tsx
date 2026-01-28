@@ -161,7 +161,8 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
       purchaseDate: holding.purchaseDate,
       notes: holding.notes,
     });
-    setShowUnifiedModal(false);
+    // Note: Do NOT close modal here - let UnifiedAssetModal control this
+    // based on whether user clicked "Add Asset" vs "Add & Add Another"
   };
 
   const handleEditHoldingInit = (holding: Holding) => {
