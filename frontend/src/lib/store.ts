@@ -23,6 +23,7 @@ import {
   resetStore as resetGlobalStore,
   getStore,
   DEFAULT_SETTINGS,
+  initializeIdCounters,
   calculateWeightedAverage,
 } from './dataModel';
 import { saveStore, loadStore, clearPersistedData, hasPersistedData } from './persistence';
@@ -33,6 +34,8 @@ function initializeStore(): void {
   if (persisted) {
     Object.assign(globalStore, persisted);
     console.log('[Store] Loaded persisted data:', globalStore.holdings.length, 'holdings');
+    // Initialize ID counters from existing holdings to prevent duplicate IDs
+    initializeIdCounters();
   } else {
     // Load mock data if no persisted data
     loadMockData();

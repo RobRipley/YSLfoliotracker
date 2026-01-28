@@ -430,6 +430,36 @@ let nextHoldingId = 1;
 let nextTransactionId = 1;
 
 /**
+ * Initialize ID counters from existing holdings to prevent duplicate IDs
+ * Call this after loading persisted data from localStorage
+ */
+export function initializeIdCounters(): void {
+  // Find the max holding ID
+  let maxHoldingId = 0;
+  for (const holding of store.holdings) {
+    const match = holding.id.match(/^holding-(\d+)$/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num > maxHoldingId) maxHoldingId = num;
+    }
+  }
+  nextHoldingId = maxHoldingId + 1;
+  
+  // Find the max transaction ID
+  let maxTransactionId = 0;
+  for (const tx of store.transactions) {
+    const match = tx.id.match(/^tx-(\d+)$/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num > maxTransactionId) maxTransactionId = num;
+    }
+  }
+  nextTransactionId = maxTransactionId + 1;
+  
+  console.log(`[DataModel] Initialized ID counters: nextHoldingId=${nextHoldingId}, nextTransactionId=${nextTransactionId}`);
+}
+
+/**
  * Add a new holding to the portfolio or merge with existing position
  * If symbol already exists, merge positions using weighted average cost
  */

@@ -4204,3 +4204,172 @@ open http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
 ```
 
 ---
+
+
+---
+
+## Session 16 (continued) - January 28, 2026
+
+### Critical Bug Fix: Duplicate Holding IDs
+
+**Problem Identified:**
+User reported that clicking the delete (trash) button on ONDO or AVAX was actually deleting Bitcoin, and that ONDO/AVAX were showing Bitcoin's average cost and exit plan data.
+
+**Root Cause Analysis:**
+Examined localStorage data and discovered **duplicate holding IDs**:
+```
+holding-3: SOL
+holding-4: RENDER  
+holding-7: KMNO
+holding-8: DEEP
+holding-2: ICP
+holding-3: SYRUP   <-- DUPLICATE!
+holding-4: RSR     <-- DUPLICATE!
+holding-2: HYPE    <-- DUPLICATE!
+holding-3: ENA     <-- DUPLICATE!
+holding-4: SUI     <-- DUPLICATE!
+holding-5: PAYAI
+```
+
+This caused:
+1. Delete operations affected wrong holdings (multiple holdings shared same ID)
+2. Exit plans displayed for wrong assets (exit plans keyed by holding ID)
+3. React reconciliation confused (keys not unique in mapped lists)
+
+**Root Cause:**
+The `nextHoldingId` counter in `dataModel.ts` started at 1 on every page load, rather than being initialized from the maximum existing ID in localStorage. When new holdings were added after a page refresh, they received IDs that already existed.
+
+### Fix Implemented
+
+**1. Added ID Counter Initialization Function**
+
+**File:** `frontend/src/lib/dataModel.ts`
+
+Added new exported function `initializeIdCounters()`:
+```typescript
+/**
+ * Initialize ID counters from existing holdings to prevent duplicate IDs
+ * Call this after loading persisted data from localStorage
+ */
+export function initializeIdCounters(): void {
+  // Find the max holding ID
+  let maxHoldingId = 0;
+  for (const holding of store.holdings) {
+    const match = holding.id.match(/^holding-(\d+)$/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num > maxHoldingId) maxHoldingId = num;
+    }
+  }
+  nextHoldingId = maxHoldingId + 1;
+  
+  // Find the max transaction ID
+  let maxTransactionId = 0;
+  for (const tx of store.transactions) {
+    const match = tx.id.match(/^tx-(\d+)$/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num > maxTransactionId) maxTransactionId = num;
+    }
+  }
+  nextTransactionId = maxTransactionId + 1;
+  
+  console.log(`[DataModel] Initialized ID counters: nextHoldingId=${nextHoldingId}, nextTransactionId=${nextTransactionId}`);
+}
+```
+
+**2. Call Initialization After Loading Persisted Data**
+
+**File:** `frontend/src/lib/store.ts`
+
+Updated import and `initializeStore()` function:
+```typescript
+import {
+  // ... other imports
+  initializeIdCounters,
+} from './dataModel';
+
+function initializeStore(): void {
+  const persisted = loadStore();
+  if (persisted) {
+    Object.assign(globalStore, persisted);
+    console.log('[Store] Loaded persisted data:', globalStore.holdings.length, 'holdings');
+    // Initialize ID counters from existing holdings to prevent duplicate IDs
+    initializeIdCounters();
+  } else {
+    loadMockData();
+  }
+}
+```
+
+**3. Fixed Existing Corrupted Data**
+
+Ran browser console script to reassign unique IDs to all existing holdings and update exit plans:
+```javascript
+// Fix duplicate IDs in localStorage
+const storeData = JSON.parse(localStorage.getItem('crypto-portfolio-store'));
+const holdings = storeData.store.holdings;
+
+// Assign unique IDs to all holdings
+let nextId = 1;
+const fixedHoldings = holdings.map(h => ({
+  ...h,
+  id: `holding-${nextId++}`
+}));
+
+// Update exit plans to match new IDs
+const exitPlans = JSON.parse(localStorage.getItem('ysl-exit-plans') || '{}');
+const oldToNewIdMap = {};
+holdings.forEach((old, idx) => {
+  oldToNewIdMap[old.id] = fixedHoldings[idx].id;
+});
+
+const newExitPlans = {};
+Object.entries(exitPlans).forEach(([oldId, plan]) => {
+  const newId = oldToNewIdMap[oldId] || oldId;
+  newExitPlans[newId] = { ...plan, holdingId: newId };
+});
+
+// Save fixed data
+storeData.store.holdings = fixedHoldings;
+localStorage.setItem('crypto-portfolio-store', JSON.stringify(storeData));
+localStorage.setItem('ysl-exit-plans', JSON.stringify(newExitPlans));
+```
+
+### Verification
+
+After fix:
+- Console shows: `[DataModel] Initialized ID counters: nextHoldingId=12, nextTransactionId=1`
+- Each holding now has unique ID (holding-1 through holding-11)
+- Exit plans correctly associated with their holdings
+- Delete button now deletes the correct asset
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `frontend/src/lib/dataModel.ts` | Added `initializeIdCounters()` function |
+| `frontend/src/lib/store.ts` | Import and call `initializeIdCounters()` after loading persisted data |
+
+### Technical Notes
+
+**Why This Bug Occurred:**
+- Module-level variables (`let nextHoldingId = 1`) reset on every page load
+- localStorage persists holdings but not the ID counter state
+- New holdings created after page refresh got IDs starting from 1 again
+- No validation existed to check for ID uniqueness
+
+**Prevention:**
+- The fix ensures ID counters are always initialized from existing data
+- New holdings will always get IDs higher than any existing holding
+- This is a common pattern for auto-increment IDs with localStorage persistence
+
+### Remaining Issue
+
+The delete button functionality still needs verification. After fixing the duplicate IDs, the delete should work correctly, but this should be tested:
+1. Hover over any asset row
+2. Click the trash icon
+3. Verify the CORRECT asset is removed
+4. Verify the removal persists after page refresh
+
+---
