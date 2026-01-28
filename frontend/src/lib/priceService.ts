@@ -229,46 +229,259 @@ class CryptoPricesProvider {
 }
 
 // ============================================================================
-// COINGECKO PROVIDER (Last Resort Fallback)
+// COINGECKO ID AUTO-DISCOVERY SYSTEM
 // ============================================================================
 
-class CoinGeckoProvider {
-  private readonly baseUrl = 'https://api.coingecko.com/api/v3';
+/**
+ * CoinGecko Coin List Manager
+ * 
+ * Automatically fetches and caches the full CoinGecko coins list (/coins/list)
+ * to dynamically resolve symbol -> CoinGecko ID mappings without hardcoding.
+ * 
+ * Strategy:
+ * 1. On first use, fetch full coins list from CoinGecko (15,000+ coins)
+ * 2. Cache in localStorage for 24 hours
+ * 3. Build symbol -> ID map dynamically
+ * 4. Use hardcoded overrides for known edge cases (multiple coins same symbol)
+ * 5. Log unknown symbols for easy debugging
+ */
+
+interface CoinGeckoCoinListItem {
+  id: string;
+  symbol: string;
+  name: string;
+}
+
+class CoinGeckoIdResolver {
+  private readonly localStorageKey = 'coingecko_coins_list';
+  private readonly localStorageTimestampKey = 'coingecko_coins_list_timestamp';
+  private readonly cacheTTL = 24 * 60 * 60 * 1000; // 24 hours
   
-  // Map common symbols (UPPERCASE) to CoinGecko IDs
-  private symbolToId: Record<string, string> = {
+  private symbolToIdMap: Map<string, string> = new Map();
+  private idToSymbolMap: Map<string, string> = new Map();
+  private initialized: boolean = false;
+  private initPromise: Promise<void> | null = null;
+  
+  // Hardcoded overrides for symbols with multiple coins (pick the most popular)
+  // These take precedence over the auto-discovered mappings
+  private readonly symbolOverrides: Record<string, string> = {
+    // Major coins (ensure correct ID for common symbols)
     'BTC': 'bitcoin',
     'ETH': 'ethereum',
-    'SOL': 'solana',
     'BNB': 'binancecoin',
     'USDT': 'tether',
     'USDC': 'usd-coin',
-    'LINK': 'chainlink',
-    'RENDER': 'render-token',
-    'ONDO': 'ondo-finance',
-    'SUI': 'sui',
-    'NEAR': 'near',
-    'ICP': 'internet-computer',
-    'KMNO': 'kamino',
-    'DEEP': 'deepbook-protocol',
+    'SOL': 'solana',
     'XRP': 'ripple',
     'ADA': 'cardano',
     'AVAX': 'avalanche-2',
     'DOT': 'polkadot',
     'MATIC': 'matic-network',
     'ATOM': 'cosmos',
+    
+    // Tokens with multiple matches - specify correct one
+    'LINK': 'chainlink',
     'UNI': 'uniswap',
     'AAVE': 'aave',
+    'RENDER': 'render-token',
+    'ONDO': 'ondo-finance',
     'FIL': 'filecoin',
+    'SUI': 'sui',
+    'NEAR': 'near',
+    'ICP': 'internet-computer',
+    'HYPE': 'hyperliquid',
     'ARB': 'arbitrum',
     'OP': 'optimism',
+    'ENA': 'ethena',
+    'RSR': 'reserve-rights',
+    'KMNO': 'kamino',
+    'DEEP': 'deepbook',
+    'SYRUP': 'maple-finance',
+    'W': 'wormhole',
+    'JUP': 'jupiter-exchange-solana',
+    'SHIB': 'shiba-inu',
+    'DOGE': 'dogecoin',
   };
+  
+  constructor() {
+    // Initialize asynchronously
+    this.initPromise = this.initialize();
+  }
+  
+  private async initialize(): Promise<void> {
+    if (this.initialized) return;
+    
+    // Try to load from localStorage first
+    if (this.loadFromLocalStorage()) {
+      this.initialized = true;
+      console.log(`[CoinGecko ID Resolver] Loaded ${this.symbolToIdMap.size} symbols from cache`);
+      return;
+    }
+    
+    // Fetch fresh data
+    await this.fetchAndCacheCoins();
+    this.initialized = true;
+  }
+  
+  private loadFromLocalStorage(): boolean {
+    try {
+      const cached = localStorage.getItem(this.localStorageKey);
+      const timestamp = localStorage.getItem(this.localStorageTimestampKey);
+      
+      if (cached && timestamp) {
+        const age = Date.now() - parseInt(timestamp, 10);
+        if (age < this.cacheTTL) {
+          const data: CoinGeckoCoinListItem[] = JSON.parse(cached);
+          this.buildMapsFromData(data);
+          return true;
+        }
+      }
+    } catch (error) {
+      console.warn('[CoinGecko ID Resolver] Failed to load from localStorage:', error);
+    }
+    return false;
+  }
+  
+  private async fetchAndCacheCoins(): Promise<void> {
+    try {
+      console.log('[CoinGecko ID Resolver] Fetching full coins list...');
+      const response = await fetch('https://api.coingecko.com/api/v3/coins/list');
+      
+      if (!response.ok) {
+        throw new Error(`CoinGecko API error: ${response.status}`);
+      }
+      
+      const data: CoinGeckoCoinListItem[] = await response.json();
+      console.log(`[CoinGecko ID Resolver] Fetched ${data.length} coins from CoinGecko`);
+      
+      // Build maps
+      this.buildMapsFromData(data);
+      
+      // Cache in localStorage
+      localStorage.setItem(this.localStorageKey, JSON.stringify(data));
+      localStorage.setItem(this.localStorageTimestampKey, Date.now().toString());
+      
+    } catch (error) {
+      console.error('[CoinGecko ID Resolver] Failed to fetch coins list:', error);
+      // Fall back to overrides only
+      this.symbolToIdMap = new Map(Object.entries(this.symbolOverrides));
+    }
+  }
+  
+  private buildMapsFromData(data: CoinGeckoCoinListItem[]): void {
+    this.symbolToIdMap.clear();
+    this.idToSymbolMap.clear();
+    
+    // First pass: build maps from CoinGecko data
+    // For duplicate symbols, we prefer shorter IDs (usually more popular coins)
+    const symbolIdLengths: Map<string, number> = new Map();
+    
+    for (const coin of data) {
+      const symbol = coin.symbol.toUpperCase();
+      const existingIdLength = symbolIdLengths.get(symbol);
+      
+      // If no existing mapping, or this ID is shorter (likely more popular), use it
+      if (!existingIdLength || coin.id.length < existingIdLength) {
+        this.symbolToIdMap.set(symbol, coin.id);
+        symbolIdLengths.set(symbol, coin.id.length);
+      }
+      
+      // Always map ID -> symbol (no conflicts possible)
+      this.idToSymbolMap.set(coin.id, symbol);
+    }
+    
+    // Second pass: apply hardcoded overrides (these take precedence)
+    for (const [symbol, id] of Object.entries(this.symbolOverrides)) {
+      this.symbolToIdMap.set(symbol, id);
+    }
+  }
+  
+  /**
+   * Get CoinGecko ID for a symbol
+   * Returns the ID or falls back to lowercase symbol
+   */
+  async getId(symbol: string): Promise<string> {
+    await this.initPromise;
+    
+    const normalized = symbol.toUpperCase();
+    const id = this.symbolToIdMap.get(normalized);
+    
+    if (id) {
+      return id;
+    }
+    
+    // Not found - log it and return lowercase symbol as fallback
+    console.warn(`[CoinGecko ID Resolver] No ID found for symbol: ${normalized}. Using fallback: ${symbol.toLowerCase()}`);
+    return symbol.toLowerCase();
+  }
+  
+  /**
+   * Get multiple IDs at once
+   */
+  async getIds(symbols: string[]): Promise<Map<string, string>> {
+    await this.initPromise;
+    
+    const result = new Map<string, string>();
+    for (const symbol of symbols) {
+      const normalized = symbol.toUpperCase();
+      const id = this.symbolToIdMap.get(normalized) || symbol.toLowerCase();
+      result.set(normalized, id);
+      
+      if (!this.symbolToIdMap.has(normalized)) {
+        console.warn(`[CoinGecko ID Resolver] Unknown symbol: ${normalized}`);
+      }
+    }
+    return result;
+  }
+  
+  /**
+   * Get symbol from CoinGecko ID (reverse lookup)
+   */
+  async getSymbol(id: string): Promise<string | undefined> {
+    await this.initPromise;
+    return this.idToSymbolMap.get(id);
+  }
+  
+  /**
+   * Get all known symbol -> ID mappings
+   */
+  async getAllMappings(): Promise<Record<string, string>> {
+    await this.initPromise;
+    return Object.fromEntries(this.symbolToIdMap);
+  }
+  
+  /**
+   * Force refresh the coins list cache
+   */
+  async refresh(): Promise<void> {
+    localStorage.removeItem(this.localStorageKey);
+    localStorage.removeItem(this.localStorageTimestampKey);
+    this.initialized = false;
+    this.initPromise = this.initialize();
+    await this.initPromise;
+  }
+}
+
+// Singleton instance
+const coinGeckoIdResolver = new CoinGeckoIdResolver();
+
+// Export for debugging/manual refresh
+export { coinGeckoIdResolver };
+
+// ============================================================================
+// COINGECKO PROVIDER (Last Resort Fallback)
+// ============================================================================
+
+class CoinGeckoProvider {
+  private readonly baseUrl = 'https://api.coingecko.com/api/v3';
+  private readonly idResolver = coinGeckoIdResolver;
 
   async getPrice(symbols: string[]): Promise<(ExtendedPriceQuote | null)[]> {
-    // Convert symbols to CoinGecko IDs (use UPPERCASE for lookup)
-    const ids = symbols
-      .map(s => this.symbolToId[s.toUpperCase()] || s.toLowerCase())
-      .join(',');
+    // Get symbol -> ID mappings using the auto-discovery resolver
+    const symbolToIdMap = await this.idResolver.getIds(symbols);
+    
+    // Convert to comma-separated IDs
+    const ids = Array.from(symbolToIdMap.values()).join(',');
     
     const response = await fetch(
       `${this.baseUrl}/simple/price?ids=${ids}&vs_currencies=usd&include_market_cap=true`
@@ -283,7 +496,7 @@ class CoinGeckoProvider {
 
     return symbols.map(symbol => {
       const normalizedSymbol = symbol.toUpperCase();
-      const id = this.symbolToId[normalizedSymbol] || symbol.toLowerCase();
+      const id = symbolToIdMap.get(normalizedSymbol) || symbol.toLowerCase();
       const priceData = data[id];
 
       if (!priceData) {
@@ -307,10 +520,11 @@ class CoinGeckoProvider {
   async getLogos(symbols: string[]): Promise<Record<string, string>> {
     const result: Record<string, string> = {};
     
-    // Convert symbols to CoinGecko IDs
-    const ids = symbols
-      .map(s => this.symbolToId[s.toUpperCase()] || s.toLowerCase())
-      .join(',');
+    // Get symbol -> ID mappings using the auto-discovery resolver
+    const symbolToIdMap = await this.idResolver.getIds(symbols);
+    
+    // Convert to comma-separated IDs
+    const ids = Array.from(symbolToIdMap.values()).join(',');
     
     if (!ids) return result;
 
@@ -328,16 +542,8 @@ class CoinGeckoProvider {
       
       // Build reverse map: CoinGecko ID -> original symbol
       const idToSymbol: Record<string, string> = {};
-      for (const [sym, id] of Object.entries(this.symbolToId)) {
-        idToSymbol[id as string] = sym;
-      }
-      
-      // Also map lowercase symbols to themselves
-      for (const sym of symbols) {
-        const normalized = sym.toUpperCase();
-        if (!this.symbolToId[normalized]) {
-          idToSymbol[sym.toLowerCase()] = normalized;
-        }
+      for (const [sym, id] of symbolToIdMap.entries()) {
+        idToSymbol[id] = sym;
       }
 
       for (const coin of data) {
@@ -355,9 +561,9 @@ class CoinGeckoProvider {
     return result;
   }
 
-  // Expose symbolToId for external use
-  getSymbolToId(): Record<string, string> {
-    return this.symbolToId;
+  // Expose method to get symbol->ID mappings for debugging
+  async getSymbolToId(): Promise<Record<string, string>> {
+    return this.idResolver.getAllMappings();
   }
 }
 
