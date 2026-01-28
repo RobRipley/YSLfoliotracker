@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, memo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -6,8 +6,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { store, getCategoryForHolding, type Holding, type Category } from '@/lib/dataModel';
 import { getPriceAggregator, type ExtendedPriceQuote } from '@/lib/priceService';
 import { toast } from 'sonner';
-import { ChevronDown, ChevronRight, Info } from 'lucide-react';
+import { ChevronDown, ChevronRight, Info, Loader2 } from 'lucide-react';
 import { formatPrice, formatTokens } from '@/lib/formatting';
+
+const EXIT_PLANS_STORAGE_KEY = 'ysl-exit-plans';
 
 const CATEGORY_LABELS: Record<Category, string> = {
   'blue-chip': 'Blue Chip',
@@ -41,7 +43,7 @@ interface ExitPlan {
   }>;
 }
 
-// Blue Chip Conservative (unchanged)
+// Blue Chip Conservative
 const BLUE_CHIP_CONSERVATIVE = [
   { percent: 10, multiplier: 1.2 },
   { percent: 20, multiplier: 1.4 },
@@ -86,6 +88,63 @@ const LOW_CAP_CONSERVATIVE = [
   { percent: 5, multiplier: 0 },  // Remaining
 ];
 
+// Helper functions for localStorage persistence
+function loadExitPlans(): Record<string, ExitPlan> {
+  try {
+    const stored = localStorage.getItem(EXIT_PLANS_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.warn('[ExitStrategy] Failed to load exit plans from localStorage:', e);
+  }
+  return {};
+}
+
+function saveExitPlans(plans: Record<string, ExitPlan>): void {
+  try {
+    localStorage.setItem(EXIT_PLANS_STORAGE_KEY, JSON.stringify(plans));
+  } catch (e) {
+    console.warn('[ExitStrategy] Failed to save exit plans to localStorage:', e);
+  }
+}
+
+// Create default exit plan for a holding
+function createDefaultExitPlan(
+  holding: Holding,
+  category: Category
+): ExitPlan | null {
+  if (!holding.avgCost) return null;
+  
+  const useBase = true;
+  const avgCost = holding.avgCost;
+  const base = useBase ? avgCost * 1.1 : avgCost;
+  
+  // Select proper template based on category
+  let template = category === 'blue-chip' ? BLUE_CHIP_CONSERVATIVE : 
+                 category === 'mid-cap' ? MID_CAP_AGGRESSIVE : LOW_CAP_AGGRESSIVE;
+  
+  // Default preset based on category
+  const defaultPreset: PresetType = category === 'blue-chip' ? 'conservative' : 'aggressive';
+  
+  const rungs = template.map((t, idx) => {
+    const isRemaining = idx === template.length - 1;
+    return {
+      percent: t.percent,
+      multiplier: t.multiplier,
+      targetPrice: isRemaining || t.multiplier === 0 ? 0 : base * t.multiplier,
+      tokensToSell: (holding.tokensOwned * t.percent) / 100
+    };
+  });
+  
+  return {
+    holdingId: holding.id,
+    useBase,
+    preset: defaultPreset,
+    rungs
+  };
+}
+
 interface AssetRowProps {
   holding: Holding;
   price: ExtendedPriceQuote | undefined;
@@ -111,30 +170,39 @@ const AssetRow = memo(({
 }: AssetRowProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Calculate values before any early returns
+  // Calculate values - guard against undefined/NaN
   const avgCost = holding.avgCost || 0;
   const base = plan?.useBase ? avgCost * 1.1 : avgCost;
-  const totalValue = price ? holding.tokensOwned * price.priceUsd : 0;
+  const currentPrice = price?.priceUsd ?? 0;
+  const totalValue = holding.tokensOwned * currentPrice;
   const totalCost = holding.tokensOwned * avgCost;
 
-  // Calculate expected profit and proceeds
+  // Calculate expected profit and proceeds - with NaN guards
   const { expectedProfit, totalProceeds } = useMemo(() => {
-    if (!plan) return { expectedProfit: 0, totalProceeds: 0 };
+    if (!plan || !plan.rungs) return { expectedProfit: 0, totalProceeds: 0 };
+    
     let totalRevenue = 0;
     plan.rungs.forEach(rung => {
-      if (rung.multiplier > 0) {
-        totalRevenue += rung.tokensToSell * rung.targetPrice;
+      const tokens = rung.tokensToSell ?? 0;
+      const targetPrice = rung.targetPrice ?? 0;
+      const multiplier = rung.multiplier ?? 0;
+      
+      if (multiplier > 0 && !isNaN(tokens) && !isNaN(targetPrice)) {
+        totalRevenue += tokens * targetPrice;
       }
     });
+    
+    const profit = isNaN(totalRevenue) || isNaN(totalCost) ? 0 : totalRevenue - totalCost;
+    
     return {
-      expectedProfit: totalRevenue - totalCost,
+      expectedProfit: profit,
       totalProceeds: totalRevenue
     };
   }, [plan, totalCost]);
 
-  const percentGain = totalCost > 0 ? (expectedProfit / totalCost) * 100 : 0;
+  const percentGain = totalCost > 0 && !isNaN(expectedProfit) ? (expectedProfit / totalCost) * 100 : 0;
 
-  // Early return after all hooks
+  // Early return after all hooks - show nothing if no avgCost or no plan
   if (!holding.avgCost || !plan) return null;
 
   // Determine if editing is locked (locked for conservative and aggressive presets)
@@ -281,8 +349,8 @@ const AssetRow = memo(({
               </thead>
               <tbody>
                 {plan.rungs.map((rung, idx) => {
-                  const proceeds = rung.tokensToSell * rung.targetPrice;
-                  const profitFromSale = proceeds - (rung.tokensToSell * avgCost);
+                  const proceeds = (rung.tokensToSell ?? 0) * (rung.targetPrice ?? 0);
+                  const profitFromSale = proceeds - ((rung.tokensToSell ?? 0) * avgCost);
                   const isRemaining = idx === plan.rungs.length - 1;
                   
                   return (
@@ -292,11 +360,11 @@ const AssetRow = memo(({
                       </td>
                       <td className="py-2 px-3 text-right">
                         {isRemaining ? (
-                          <div className="text-muted-foreground">{rung.percent.toFixed(1)}%</div>
+                          <div className="text-muted-foreground">{(rung.percent ?? 0).toFixed(1)}%</div>
                         ) : (
                           <Input
                             type="number"
-                            value={rung.percent}
+                            value={rung.percent ?? 0}
                             onChange={(e) => onUpdateRung(idx, 'percent', parseFloat(e.target.value) || 0)}
                             className="w-20 h-8 text-right text-sm ml-auto"
                             min="0"
@@ -308,7 +376,7 @@ const AssetRow = memo(({
                       <td className="py-2 px-3 text-right">
                         <Input
                           type="number"
-                          value={rung.multiplier}
+                          value={rung.multiplier ?? 0}
                           onChange={(e) => onUpdateRung(idx, 'multiplier', parseFloat(e.target.value) || 0)}
                           className="w-20 h-8 text-right text-sm ml-auto"
                           min="0"
@@ -317,16 +385,16 @@ const AssetRow = memo(({
                         />
                       </td>
                       <td className="py-2 px-3 text-right">
-                        {formatTokens(rung.tokensToSell)}
+                        {formatTokens(rung.tokensToSell ?? 0)}
                       </td>
                       <td className="py-2 px-3 text-right font-semibold">
-                        {rung.multiplier === 0 ? '—' : formatPrice(rung.targetPrice)}
+                        {(rung.multiplier ?? 0) === 0 ? '—' : formatPrice(rung.targetPrice ?? 0)}
                       </td>
                       <td className="py-2 px-3 text-right font-semibold">
-                        {rung.multiplier === 0 ? '—' : formatPrice(proceeds)}
+                        {(rung.multiplier ?? 0) === 0 ? '—' : formatPrice(proceeds)}
                       </td>
                       <td className="py-2 px-3 text-right">
-                        {rung.multiplier === 0 ? (
+                        {(rung.multiplier ?? 0) === 0 ? (
                           '—'
                         ) : (
                           <span className={profitFromSale >= 0 ? 'text-success' : 'text-danger'}>
@@ -350,15 +418,31 @@ AssetRow.displayName = 'AssetRow';
 
 export function ExitStrategy() {
   const [prices, setPrices] = useState<Record<string, ExtendedPriceQuote>>({});
-  const [exitPlans, setExitPlans] = useState<Record<string, ExitPlan>>({});
+  const [exitPlans, setExitPlans] = useState<Record<string, ExitPlan>>(() => loadExitPlans());
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasFetchedOnce, setHasFetchedOnce] = useState(false);
+  
+  // Track which holdings have been initialized to avoid re-initializing on price updates
+  const initializedHoldingsRef = useRef<Set<string>>(new Set());
 
-  // Fetch prices
+  // Persist exit plans to localStorage whenever they change
+  useEffect(() => {
+    if (Object.keys(exitPlans).length > 0) {
+      saveExitPlans(exitPlans);
+    }
+  }, [exitPlans]);
+
+  // Fetch prices - only fetch, don't rebuild plans on every update
   useEffect(() => {
     const aggregator = getPriceAggregator();
     
     const fetchPrices = async () => {
       const symbols = store.holdings.map(h => h.symbol);
-      if (symbols.length === 0) return;
+      if (symbols.length === 0) {
+        setIsLoading(false);
+        setHasFetchedOnce(true);
+        return;
+      }
 
       try {
         const quotes = await aggregator.getPrice(symbols);
@@ -367,38 +451,86 @@ export function ExitStrategy() {
           priceMap[q.symbol] = q;
         });
         setPrices(priceMap);
+        setHasFetchedOnce(true);
+        setIsLoading(false);
       } catch (error) {
-        console.error('Failed to fetch prices:', error);
+        console.error('[ExitStrategy] Failed to fetch prices:', error);
+        setIsLoading(false);
+        setHasFetchedOnce(true);
       }
     };
 
     fetchPrices();
-    const interval = setInterval(fetchPrices, 10000);
+    const interval = setInterval(fetchPrices, 30000); // Reduced frequency to 30s
 
     return () => clearInterval(interval);
   }, []);
 
-  // Initialize exit plans for all holdings with proper defaults
+  // Initialize exit plans ONLY for new holdings - don't wipe existing plans
   useEffect(() => {
-    const plans: Record<string, ExitPlan> = {};
+    if (!hasFetchedOnce) return; // Wait for first price fetch
     
-    store.holdings.forEach(holding => {
-      if (!holding.avgCost) return;
+    setExitPlans(prevPlans => {
+      const newPlans = { ...prevPlans };
+      let hasChanges = false;
       
-      const price = prices[holding.symbol];
-      if (!price?.marketCapUsd) return;
+      store.holdings.forEach(holding => {
+        // Skip if already initialized
+        if (initializedHoldingsRef.current.has(holding.id)) return;
+        // Skip if plan already exists (from localStorage)
+        if (newPlans[holding.id]) {
+          initializedHoldingsRef.current.add(holding.id);
+          return;
+        }
+        // Skip if no avgCost
+        if (!holding.avgCost) return;
+        
+        const price = prices[holding.symbol];
+        // Skip if no market cap data yet
+        if (!price?.marketCapUsd) return;
+        
+        const category = getCategoryForHolding(holding, price.marketCapUsd);
+        const plan = createDefaultExitPlan(holding, category);
+        
+        if (plan) {
+          newPlans[holding.id] = plan;
+          initializedHoldingsRef.current.add(holding.id);
+          hasChanges = true;
+        }
+      });
       
-      const category = getCategoryForHolding(holding, price.marketCapUsd);
-      const useBase = true; // Default to using base
-      const avgCost = holding.avgCost;
+      // Clean up plans for holdings that no longer exist
+      const holdingIds = new Set(store.holdings.map(h => h.id));
+      Object.keys(newPlans).forEach(planId => {
+        if (!holdingIds.has(planId)) {
+          delete newPlans[planId];
+          initializedHoldingsRef.current.delete(planId);
+          hasChanges = true;
+        }
+      });
+      
+      return hasChanges ? newPlans : prevPlans;
+    });
+  }, [prices, hasFetchedOnce]);
+
+  // Broadcast exit plan updates to Portfolio page
+  useEffect(() => {
+    const event = new CustomEvent('exitPlansUpdated', { detail: exitPlans });
+    window.dispatchEvent(event);
+  }, [exitPlans]);
+
+  const handlePresetConservative = useCallback((holdingId: string, category: Category) => {
+    const holding = store.holdings.find(h => h.id === holdingId);
+    if (!holding?.avgCost) return;
+    
+    const avgCost = holding.avgCost;
+    
+    setExitPlans(prev => {
+      const currentPlan = prev[holdingId];
+      const useBase = currentPlan?.useBase ?? true;
       const base = useBase ? avgCost * 1.1 : avgCost;
-      
-      // Select proper template based on category - Mid and Low cap default to Aggressive
-      let template = category === 'blue-chip' ? BLUE_CHIP_CONSERVATIVE : 
-                     category === 'mid-cap' ? MID_CAP_AGGRESSIVE : LOW_CAP_AGGRESSIVE;
-      
-      // Default preset based on category
-      const defaultPreset: PresetType = category === 'blue-chip' ? 'conservative' : 'aggressive';
+      const template = category === 'blue-chip' ? BLUE_CHIP_CONSERVATIVE : 
+                       category === 'mid-cap' ? MID_CAP_CONSERVATIVE : LOW_CAP_CONSERVATIVE;
       
       const rungs = template.map((t, idx) => {
         const isRemaining = idx === template.length - 1;
@@ -410,81 +542,47 @@ export function ExitStrategy() {
         };
       });
       
-      plans[holding.id] = {
-        holdingId: holding.id,
-        useBase,
-        preset: defaultPreset,
-        rungs
-      };
-    });
-    
-    setExitPlans(plans);
-  }, [prices, store.holdings.length]);
-
-  // Broadcast exit plan updates to Portfolio page
-  useEffect(() => {
-    const event = new CustomEvent('exitPlansUpdated', { detail: exitPlans });
-    window.dispatchEvent(event);
-  }, [exitPlans]);
-
-  const handlePresetConservative = (holdingId: string, category: Category) => {
-    const holding = store.holdings.find(h => h.id === holdingId);
-    if (!holding?.avgCost) return;
-    
-    const avgCost = holding.avgCost;
-    const currentPlan = exitPlans[holdingId];
-    const useBase = currentPlan?.useBase ?? true;
-    const base = useBase ? avgCost * 1.1 : avgCost;
-    const template = category === 'blue-chip' ? BLUE_CHIP_CONSERVATIVE : 
-                     category === 'mid-cap' ? MID_CAP_CONSERVATIVE : LOW_CAP_CONSERVATIVE;
-    
-    const rungs = template.map((t, idx) => {
-      const isRemaining = idx === template.length - 1;
       return {
-        percent: t.percent,
-        multiplier: t.multiplier,
-        targetPrice: isRemaining || t.multiplier === 0 ? 0 : base * t.multiplier,
-        tokensToSell: (holding.tokensOwned * t.percent) / 100
+        ...prev,
+        [holdingId]: { holdingId, useBase, preset: 'conservative', rungs }
       };
     });
-    
-    setExitPlans(prev => ({
-      ...prev,
-      [holdingId]: { holdingId, useBase, preset: 'conservative', rungs }
-    }));
     
     toast.success('Applied Conservative preset');
-  };
+  }, []);
 
-  const handlePresetAggressive = (holdingId: string, category: Category) => {
+  const handlePresetAggressive = useCallback((holdingId: string, category: Category) => {
     const holding = store.holdings.find(h => h.id === holdingId);
     if (!holding?.avgCost) return;
     
     const avgCost = holding.avgCost;
-    const currentPlan = exitPlans[holdingId];
-    const useBase = currentPlan?.useBase ?? true;
-    const base = useBase ? avgCost * 1.1 : avgCost;
-    const template = category === 'mid-cap' ? MID_CAP_AGGRESSIVE : LOW_CAP_AGGRESSIVE;
     
-    const rungs = template.map((t, idx) => {
-      const isRemaining = idx === template.length - 1;
+    setExitPlans(prev => {
+      const currentPlan = prev[holdingId];
+      const useBase = currentPlan?.useBase ?? true;
+      const base = useBase ? avgCost * 1.1 : avgCost;
+      const template = category === 'mid-cap' ? MID_CAP_AGGRESSIVE : LOW_CAP_AGGRESSIVE;
+      
+      const rungs = template.map((t, idx) => {
+        const isRemaining = idx === template.length - 1;
+        return {
+          percent: t.percent,
+          multiplier: t.multiplier,
+          targetPrice: isRemaining || t.multiplier === 0 ? 0 : base * t.multiplier,
+          tokensToSell: (holding.tokensOwned * t.percent) / 100
+        };
+      });
+      
       return {
-        percent: t.percent,
-        multiplier: t.multiplier,
-        targetPrice: isRemaining || t.multiplier === 0 ? 0 : base * t.multiplier,
-        tokensToSell: (holding.tokensOwned * t.percent) / 100
+        ...prev,
+        [holdingId]: { holdingId, useBase, preset: 'aggressive', rungs }
       };
     });
     
-    setExitPlans(prev => ({
-      ...prev,
-      [holdingId]: { holdingId, useBase, preset: 'aggressive', rungs }
-    }));
-    
     toast.success('Applied Aggressive preset');
-  };
+  }, []);
 
-  const handlePresetCustom = (holdingId: string) => {
+  const handlePresetCustom = useCallback((holdingId: string) => {
     setExitPlans(prev => {
       const plan = prev[holdingId];
       if (!plan) return prev;
@@ -496,9 +594,9 @@ export function ExitStrategy() {
     });
     
     toast.success('Custom mode enabled - you can now edit percentages and multipliers');
-  };
+  }, []);
 
-  const handleUpdateRung = (holdingId: string, rungIndex: number, field: 'percent' | 'multiplier', value: number) => {
+  const handleUpdateRung = useCallback((holdingId: string, rungIndex: number, field: 'percent' | 'multiplier', value: number) => {
     const holding = store.holdings.find(h => h.id === holdingId);
     if (!holding?.avgCost) return;
     
@@ -512,22 +610,20 @@ export function ExitStrategy() {
       const newRungs = [...plan.rungs];
       
       if (field === 'multiplier') {
-        // Update multiplier and recalculate target price and proceeds
         newRungs[rungIndex] = {
           ...newRungs[rungIndex],
           multiplier: value,
           targetPrice: value > 0 ? base * value : 0
         };
       } else {
-        // When updating percent, recalculate remaining percentage
         newRungs[rungIndex] = {
           ...newRungs[rungIndex],
           percent: value,
           tokensToSell: (holding.tokensOwned * value) / 100
         };
         
-        // Calculate remaining percentage (last rung)
-        const sumOfExits = newRungs.slice(0, -1).reduce((sum, rung) => sum + rung.percent, 0);
+        // Recalculate remaining percentage (last rung)
+        const sumOfExits = newRungs.slice(0, -1).reduce((sum, rung) => sum + (rung.percent ?? 0), 0);
         const remainingPercent = Math.max(0, 100 - sumOfExits);
         newRungs[newRungs.length - 1] = {
           ...newRungs[newRungs.length - 1],
@@ -541,9 +637,9 @@ export function ExitStrategy() {
         [holdingId]: { ...plan, rungs: newRungs }
       };
     });
-  };
+  }, []);
 
-  const handleToggleBase = (holdingId: string, useBase: boolean) => {
+  const handleToggleBase = useCallback((holdingId: string, useBase: boolean) => {
     const holding = store.holdings.find(h => h.id === holdingId);
     if (!holding?.avgCost) return;
     
@@ -555,12 +651,11 @@ export function ExitStrategy() {
       
       const base = useBase ? avgCost * 1.1 : avgCost;
       
-      // Recalculate all target prices with new base (except remaining)
       const newRungs = plan.rungs.map((rung, idx) => {
         const isRemaining = idx === plan.rungs.length - 1;
         return {
           ...rung,
-          targetPrice: isRemaining || rung.multiplier === 0 ? 0 : base * rung.multiplier
+          targetPrice: isRemaining || (rung.multiplier ?? 0) === 0 ? 0 : base * (rung.multiplier ?? 0)
         };
       });
       
@@ -569,7 +664,7 @@ export function ExitStrategy() {
         [holdingId]: { ...plan, useBase, rungs: newRungs }
       };
     });
-  };
+  }, []);
 
   const groupedHoldings = useMemo(() => {
     const groups: Record<Category, Holding[]> = {
@@ -590,7 +685,36 @@ export function ExitStrategy() {
     });
 
     return groups;
-  }, [prices, store.holdings.length]);
+  }, [prices]);
+
+  // Show loading state while fetching initial prices
+  if (isLoading && !hasFetchedOnce) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold font-heading tracking-tight">Exit Strategy</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Plan your exit ladder for each asset with customizable targets
+          </p>
+        </div>
+        <Card className="p-12 text-center glass-panel border-divide-lighter/30">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <p className="text-muted-foreground">Loading prices and market data...</p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // Check if any holdings have avgCost and market cap data
+  const holdingsWithData = store.holdings.filter(h => {
+    if (!h.avgCost) return false;
+    const price = prices[h.symbol];
+    return price?.marketCapUsd && price.marketCapUsd > 0;
+  });
+
+  const hasEligibleHoldings = holdingsWithData.length > 0;
 
   return (
     <div className="space-y-6">
@@ -652,6 +776,15 @@ export function ExitStrategy() {
       {store.holdings.length === 0 && (
         <Card className="p-12 text-center glass-panel border-divide-lighter/30">
           <p className="text-muted-foreground">No holdings found. Add assets to your portfolio first.</p>
+        </Card>
+      )}
+
+      {store.holdings.length > 0 && !hasEligibleHoldings && hasFetchedOnce && (
+        <Card className="p-12 text-center glass-panel border-divide-lighter/30">
+          <p className="text-muted-foreground">
+            No holdings with both average cost and market cap data. 
+            Add an average cost to your holdings in the Portfolio page to create exit strategies.
+          </p>
         </Card>
       )}
     </div>

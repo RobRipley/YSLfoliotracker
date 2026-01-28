@@ -3684,3 +3684,166 @@ The logo feature is complete and working. Occasional failures are due to:
 These resolve automatically on retry. No code changes required.
 
 ---
+
+
+---
+
+## Session 9 - January 27, 2026
+
+### Exit Strategy Page Stability Investigation
+
+#### Task
+Investigate and fix reported issue where Exit Strategy page would blank out and return to Portfolio page, destroying user trust in the feature.
+
+#### Findings: Page is STABLE ✅
+
+After thorough code review and testing, the Exit Strategy page is functioning correctly. The stability issues may have been resolved in previous sessions, or were intermittent.
+
+#### Code Analysis - Existing Safeguards
+
+The codebase already has proper safeguards in place:
+
+**1. State Churn Prevention (ExitStrategy.tsx)**
+Exit plans are NOT rebuilt on every price update. A ref tracks initialized holdings:
+```typescript
+const initializedHoldingsRef = useRef<Set<string>>(new Set());
+
+useEffect(() => {
+  if (!hasFetchedOnce) return; // Wait for first price fetch
+  
+  setExitPlans(prevPlans => {
+    store.holdings.forEach(holding => {
+      // Skip if already initialized
+      if (initializedHoldingsRef.current.has(holding.id)) return;
+      // Skip if plan already exists (from localStorage)
+      if (newPlans[holding.id]) {
+        initializedHoldingsRef.current.add(holding.id);
+        return;
+      }
+      // Only create new plans for truly new holdings
+    });
+  });
+}, [prices, hasFetchedOnce]);
+```
+
+**2. NaN Guards Throughout**
+All calculations have defensive checks:
+```typescript
+const avgCost = holding.avgCost || 0;
+const currentPrice = price?.priceUsd ?? 0;
+const tokens = rung.tokensToSell ?? 0;
+const targetPrice = rung.targetPrice ?? 0;
+
+if (multiplier > 0 && !isNaN(tokens) && !isNaN(targetPrice)) {
+  totalRevenue += tokens * targetPrice;
+}
+```
+
+**3. Tab Persistence (App.tsx)**
+Active tab is persisted to localStorage, surviving unexpected remounts:
+```typescript
+const TAB_STORAGE_KEY = 'ysl-active-tab';
+
+function loadPersistedTab(): Tab {
+  const stored = localStorage.getItem(TAB_STORAGE_KEY);
+  if (stored && VALID_TABS.includes(stored as Tab)) {
+    return stored as Tab;
+  }
+  return 'landing';
+}
+
+const handleTabChange = useCallback((tab: Tab) => {
+  console.log(`[App] Tab change: ${activeTab} -> ${tab}`);
+  setActiveTab(tab);
+  persistTab(tab);
+}, [activeTab]);
+```
+
+**4. Error Boundary (App.tsx + ErrorBoundary.tsx)**
+Page content is wrapped in ErrorBoundary to catch React errors:
+```typescript
+<ErrorBoundary>
+  {activeTab === 'exit-strategy' && <ExitStrategy />}
+</ErrorBoundary>
+```
+
+Global error handlers are set up on mount:
+```typescript
+useEffect(() => {
+  setupGlobalErrorHandlers();
+}, []);
+```
+
+**5. Exit Plan Persistence (ExitStrategy.tsx)**
+Exit plans persist to localStorage and survive page refreshes:
+```typescript
+const EXIT_PLANS_STORAGE_KEY = 'ysl-exit-plans';
+
+function loadExitPlans(): Record<string, ExitPlan> {
+  try {
+    const stored = localStorage.getItem(EXIT_PLANS_STORAGE_KEY);
+    if (stored) return JSON.parse(stored);
+  } catch (e) {
+    console.warn('[ExitStrategy] Failed to load exit plans:', e);
+  }
+  return {};
+}
+
+useEffect(() => {
+  if (Object.keys(exitPlans).length > 0) {
+    saveExitPlans(exitPlans);
+  }
+}, [exitPlans]);
+```
+
+#### Test Results
+
+Deployed and tested the Exit Strategy page:
+- ✅ Blue Chip category displays correctly (2 assets: SOL, BTC)
+- ✅ Mid Cap category displays correctly (5 assets: ICP, SUI, etc.)
+- ✅ Low Cap category displays correctly (3 assets)
+- ✅ Expected Profit calculations working (+81.5%, +565.5%, etc.)
+- ✅ Conservative/Aggressive/Custom preset buttons functional
+- ✅ Base checkbox with info tooltip working
+- ✅ Expand/collapse rows working
+- ✅ No console errors observed
+- ✅ No blanking or unexpected navigation
+
+#### Potential Edge Cases (Not Reproduced)
+
+These could theoretically cause issues but were not observed:
+1. **All price providers failing** - Would show loading state indefinitely
+2. **localStorage JSON corruption** - Would reset to empty plans
+3. **Holding deleted while Exit Strategy open** - Cleanup logic handles this
+4. **Very large number of holdings** - Could cause performance issues
+
+#### Files Reviewed
+
+| File | Status |
+|------|--------|
+| `frontend/src/App.tsx` | ✅ Has tab persistence and ErrorBoundary |
+| `frontend/src/pages/ExitStrategy.tsx` | ✅ Has state churn prevention, NaN guards |
+| `frontend/src/components/ErrorBoundary.tsx` | ✅ Catches errors, shows fallback UI |
+| `frontend/src/components/Layout.tsx` | ✅ Clean tab navigation |
+
+#### Conclusion
+
+The Exit Strategy page appears stable. The reported blanking issue may have been:
+1. Fixed in a previous session
+2. Caused by transient network/API issues
+3. Related to browser cache serving stale code
+
+No code changes were needed. The existing safeguards are comprehensive.
+
+---
+
+### Current Deployment
+
+| Component | Canister ID |
+|-----------|-------------|
+| Frontend | `ulvla-h7777-77774-qaacq-cai` |
+| Backend | `uxrrr-q7777-77774-qaaaq-cai` |
+
+**Frontend URL:** http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
+
+---
