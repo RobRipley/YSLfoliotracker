@@ -20,6 +20,7 @@ export interface ExtendedPriceQuote extends PriceQuote {
   volume24h?: number;
   change24h?: number;
   stale?: boolean;
+  logoUrl?: string;  // Token logo URL
 }
 
 export type PriceChangeEvent = {
@@ -297,6 +298,66 @@ class CoinGeckoProvider {
         timestamp: now,
       };
     });
+  }
+
+  /**
+   * Fetch logos for symbols using CoinGecko /coins/markets endpoint
+   * Returns a map of symbol -> logoUrl
+   */
+  async getLogos(symbols: string[]): Promise<Record<string, string>> {
+    const result: Record<string, string> = {};
+    
+    // Convert symbols to CoinGecko IDs
+    const ids = symbols
+      .map(s => this.symbolToId[s.toUpperCase()] || s.toLowerCase())
+      .join(',');
+    
+    if (!ids) return result;
+
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&sparkline=false`
+      );
+
+      if (!response.ok) {
+        console.warn(`[CoinGecko] Logos fetch failed: ${response.status}`);
+        return result;
+      }
+
+      const data = await response.json();
+      
+      // Build reverse map: CoinGecko ID -> original symbol
+      const idToSymbol: Record<string, string> = {};
+      for (const [sym, id] of Object.entries(this.symbolToId)) {
+        idToSymbol[id as string] = sym;
+      }
+      
+      // Also map lowercase symbols to themselves
+      for (const sym of symbols) {
+        const normalized = sym.toUpperCase();
+        if (!this.symbolToId[normalized]) {
+          idToSymbol[sym.toLowerCase()] = normalized;
+        }
+      }
+
+      for (const coin of data) {
+        const symbol = idToSymbol[coin.id] || coin.symbol?.toUpperCase();
+        if (symbol && coin.image) {
+          result[symbol] = coin.image;
+        }
+      }
+
+      console.log(`[CoinGecko] Fetched logos for ${Object.keys(result).length} symbols`);
+    } catch (error) {
+      console.warn('[CoinGecko] Error fetching logos:', error);
+    }
+
+    return result;
+  }
+
+  // Expose symbolToId for external use
+  getSymbolToId(): Record<string, string> {
+    return this.symbolToId;
   }
 }
 
@@ -591,6 +652,14 @@ export class PriceAggregator {
   async getCurrentPrice(symbol: string): Promise<number> {
     const quotes = await this.getPrice([symbol]);
     return quotes[0]?.priceUsd || 0;
+  }
+
+  /**
+   * Fetch logos for given symbols using CoinGecko /coins/markets endpoint
+   * Returns a map of UPPERCASE symbol -> logo URL
+   */
+  async getLogos(symbols: string[]): Promise<Record<string, string>> {
+    return this.fallbackProvider.getLogos(symbols);
   }
 }
 

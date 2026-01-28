@@ -123,6 +123,7 @@ interface ExitLadderRung {
 interface CompactHoldingsTableProps {
   groups: Record<Category, Holding[]>;
   prices: Record<string, ExtendedPriceQuote>;
+  logos: Record<string, string>;  // symbol -> logo URL
   totals: any;
   expandedCategories: Set<Category>;
   onToggleCategory: (category: Category) => void;
@@ -211,6 +212,7 @@ function formatTokens(amount: number): string {
 const CompactHoldingsTable = memo(function CompactHoldingsTable({
   groups,
   prices,
+  logos,
   totals,
   expandedCategories,
   onToggleCategory,
@@ -671,9 +673,26 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
         className="group grid grid-cols-[1.6fr_1.2fr_1.2fr_1.4fr_1.2fr_1.1fr_minmax(0,2.4fr)_auto] items-center gap-3 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth"
       >
         <div className="flex items-center gap-3">
+          {logos[holding.symbol] ? (
+            <img
+              src={logos[holding.symbol]}
+              alt={holding.symbol}
+              className="h-8 w-8 rounded-full object-contain shadow-md"
+              onError={(e) => {
+                // Fallback to letter badge on error
+                const target = e.currentTarget;
+                target.style.display = 'none';
+                const fallback = target.nextElementSibling as HTMLElement;
+                if (fallback) fallback.style.display = 'flex';
+              }}
+            />
+          ) : null}
           <div
             className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold text-primary-foreground shadow-md"
-            style={{ backgroundColor: categoryColor(category) }}
+            style={{ 
+              backgroundColor: categoryColor(category),
+              display: logos[holding.symbol] ? 'none' : 'flex'
+            }}
           >
             {holding.symbol.charAt(0).toUpperCase()}
           </div>
@@ -787,9 +806,25 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
       >
         {/* Symbol */}
         <div className="flex items-center gap-3">
+          {logos[holding.symbol] ? (
+            <img
+              src={logos[holding.symbol]}
+              alt={holding.symbol}
+              className="h-8 w-8 rounded-full object-contain shadow-md"
+              onError={(e) => {
+                const target = e.currentTarget;
+                target.style.display = 'none';
+                const fallback = target.nextElementSibling as HTMLElement;
+                if (fallback) fallback.style.display = 'flex';
+              }}
+            />
+          ) : null}
           <div
             className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold text-primary-foreground shadow-md"
-            style={{ backgroundColor: categoryColor('stablecoin') }}
+            style={{ 
+              backgroundColor: categoryColor('stablecoin'),
+              display: logos[holding.symbol] ? 'none' : 'flex'
+            }}
           >
             {holding.symbol.charAt(0).toUpperCase()}
           </div>

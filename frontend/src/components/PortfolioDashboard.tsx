@@ -23,6 +23,7 @@ const aggregator = getPriceAggregator();
 export const PortfolioDashboard = memo(function PortfolioDashboard() {
   const store = usePortfolioStore();
   const [prices, setPrices] = useState<Record<string, ExtendedPriceQuote>>({});
+  const [logos, setLogos] = useState<Record<string, string>>({});
   const [selectedPreset, setSelectedPreset] = useState<'n4' | 'custom'>('n4');
   const [selectedCategory, setSelectedCategory] = useState<Category | 'all'>('all');
   const [showUnifiedModal, setShowUnifiedModal] = useState(false);
@@ -81,11 +82,23 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     }
   }, [symbols]);
 
+  // Fetch logos for all symbols (only once when symbols change)
+  const fetchLogos = useCallback(async () => {
+    if (!symbols.length) return;
+    try {
+      const logoMap = await aggregator.getLogos(symbols);
+      setLogos(prev => ({ ...prev, ...logoMap }));
+    } catch (err) {
+      console.error('Failed to fetch logos', err);
+    }
+  }, [symbols]);
+
   useEffect(() => {
     fetchPrices();
+    fetchLogos(); // Fetch logos on initial load
     const interval = setInterval(fetchPrices, 30_000);
     return () => clearInterval(interval);
-  }, [fetchPrices]);
+  }, [fetchPrices, fetchLogos]);
 
   const totals = useMemo(() => {
     const totalValue = store.holdings.reduce((sum, holding) => {
@@ -268,6 +281,7 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
             <CompactHoldingsTable
               groups={groups}
               prices={prices}
+              logos={logos}
               totals={totals}
               expandedCategories={expandedCategories}
               onToggleCategory={toggleCategory}

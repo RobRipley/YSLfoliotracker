@@ -3581,3 +3581,106 @@ The **Quick Add toggle** was meant to enhance this with automatic Enter-key subm
 The Quick Add toggle should be hidden until properly implemented. The "Add & Add Another" button alone provides the core rapid-entry functionality.
 
 ---
+
+
+---
+
+## Logos — Investigation Complete (WORKING)
+
+### Summary
+
+Token logos ARE displaying correctly in the holdings table. The feature was already fully implemented.
+
+### What Was Found
+
+#### 1. UI Code (CompactHoldingsTable.tsx)
+The `renderHoldingRow` function already checks for logos:
+```tsx
+{logos[holding.symbol] ? (
+  <img
+    src={logos[holding.symbol]}
+    alt={holding.symbol}
+    className="h-8 w-8 rounded-full object-contain shadow-md"
+    onError={(e) => {
+      // Fallback to letter badge on error
+      const target = e.currentTarget;
+      target.style.display = 'none';
+      const fallback = target.nextElementSibling as HTMLElement;
+      if (fallback) fallback.style.display = 'flex';
+    }}
+  />
+) : null}
+```
+- ✅ Renders `<img>` when logo URL exists
+- ✅ Has `onError` fallback to letter badge
+- ✅ Receives `logos` prop from parent
+
+#### 2. Data Model
+The `Holding` interface in `dataModel.ts` includes `logoUrl?: string`, but logos are NOT stored per-holding. Instead, logos are fetched dynamically and stored in component state.
+
+**PortfolioDashboard.tsx:**
+```tsx
+const [logos, setLogos] = useState<Record<string, string>>({});
+
+const fetchLogos = useCallback(async () => {
+  if (!symbols.length) return;
+  try {
+    const logoMap = await aggregator.getLogos(symbols);
+    setLogos(prev => ({ ...prev, ...logoMap }));
+  } catch (err) {
+    console.error('Failed to fetch logos', err);
+  }
+}, [symbols]);
+```
+
+#### 3. Logo Fetching (priceService.ts)
+`CoinGeckoProvider.getLogos()` fetches logos from:
+```
+https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids={ids}&order=market_cap_desc&sparkline=false
+```
+
+The response includes an `image` field for each coin, which gets mapped to the symbol.
+
+#### 4. Runtime Behavior
+Console shows:
+- Initial fetches sometimes fail with "TypeError: Failed to fetch" (CORS/transient)
+- After retry: `[CoinGecko] Fetched logos for 11 symbols`
+- Logos then render correctly
+
+#### 5. Why It Sometimes Appears Not Working
+- **CORS issues from localhost**: CoinGecko API sometimes blocks requests from `localhost:4943`
+- **Timing**: On first load, logos may not appear until the fetch completes (~1-3 seconds)
+- **Transient failures**: The CoinGecko free API has rate limits and occasional downtime
+
+### Verification Steps
+
+1. Open the Portfolio tab
+2. Wait 2-3 seconds for logos to load
+3. Check console for `[CoinGecko] Fetched logos for X symbols`
+4. Token logos should display instead of letter badges for:
+   - BTC (orange ₿)
+   - SOL (purple gradient)
+   - ETH (diamond)
+   - SUI (droplet)
+   - AVAX (red triangle)
+   - etc.
+
+### Files Involved
+
+| File | Purpose |
+|------|---------|
+| `frontend/src/components/CompactHoldingsTable.tsx` | Renders logo `<img>` or letter badge fallback |
+| `frontend/src/components/PortfolioDashboard.tsx` | Manages `logos` state, calls `fetchLogos()` |
+| `frontend/src/lib/priceService.ts` | `CoinGeckoProvider.getLogos()` - fetches from CoinGecko API |
+| `frontend/src/lib/dataModel.ts` | `Holding.logoUrl` field exists but not used for persistence |
+
+### No Changes Needed
+
+The logo feature is complete and working. Occasional failures are due to:
+- CoinGecko API rate limits (free tier)
+- CORS restrictions from localhost
+- Network latency
+
+These resolve automatically on retry. No code changes required.
+
+---

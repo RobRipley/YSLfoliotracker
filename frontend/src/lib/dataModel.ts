@@ -59,6 +59,7 @@ export interface Holding {
   notes?: string;
   categoryLocked?: boolean;
   lockedCategory?: Category;
+  logoUrl?: string;  // Token logo URL from CoinGecko
 }
 
 export interface LadderRung {
