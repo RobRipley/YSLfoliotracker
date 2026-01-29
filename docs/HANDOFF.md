@@ -5631,3 +5631,160 @@ The key fix was changing from `updateCash` (which didn't persist) to `store.setC
 
 ---
 
+
+
+---
+
+## Session 22 - January 28, 2026
+
+### Summary
+
+Committed and pushed previously completed work that makes Actions a fixed utility column and Notes inline-editable in the portfolio table.
+
+### Changes Made
+
+#### 1. Actions Column - Fixed Utility Column
+
+**What changed:**
+- Actions column is now **always visible** (not toggleable in Columns dropdown)
+- Actions column has **no header label** (empty cell in the header row)
+- Removed `actions` from the list of toggleable columns
+- Added migration to filter out 'actions' from any persisted hiddenColumns state
+- Actions buttons (Edit, Delete) still only appear on hover
+
+**Files modified:**
+- `frontend/src/components/CompactHoldingsTable.tsx`
+
+**Key code changes:**
+```typescript
+// Columns dropdown - Actions is NOT in the toggle list
+{ id: 'price', label: 'Price' },
+{ id: 'tokens', label: 'Tokens' },
+// ... other columns
+{ id: 'notes', label: 'Notes' }
+// Actions is NOT toggleable - it's a fixed utility column
+
+// Header row - empty span for Actions
+{!isColumnHidden('notes') && <span>Notes</span>}
+{/* Actions column - no header label, fixed utility column */}
+<span></span>
+
+// Actions cell - no isColumnHidden check (always renders)
+<div className="flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+  <button ...>Edit</button>
+  <button ...>Delete</button>
+</div>
+```
+
+#### 2. Notes Column - Inline Editable
+
+**What changed:**
+- Click anywhere in Notes cell to edit (no edit button required)
+- Input field appears inline with subtle focus border
+- **Enter** saves the note
+- **Escape** cancels and restores previous value
+- **Click outside (blur)** saves the note
+- Notes column remains toggleable in Columns dropdown
+
+**New state and handlers:**
+```typescript
+// State
+const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
+const [notesInputValue, setNotesInputValue] = useState('');
+const notesInputRef = useRef<HTMLInputElement>(null);
+
+// Handlers
+const startNotesEdit = useCallback((holding: Holding) => { ... });
+const saveNotes = useCallback((holdingId: string) => { ... });
+const cancelNotesEdit = useCallback(() => { ... });
+const handleNotesKeyDown = useCallback((e, holdingId) => { ... });
+const handleNotesBlur = useCallback((holdingId) => { ... });
+```
+
+**UI when not editing:**
+- Shows note text if present
+- Shows "No notes yet" in muted italic text if empty
+- Hover shows subtle background highlight
+
+**UI when editing:**
+- Single-line input with bottom border
+- Auto-focuses on edit start
+- Placeholder: "Add note..."
+
+#### 3. PortfolioDashboard Integration
+
+**Added `onUpdateNotes` prop:**
+```typescript
+const handleUpdateNotes = (holdingId: string, notes: string) => {
+  store.updateHolding(holdingId, { notes });
+};
+
+// Passed to CompactHoldingsTable
+<CompactHoldingsTable
+  ...
+  onUpdateNotes={handleUpdateNotes}
+/>
+```
+
+#### 4. Bonus: ExitStrategy Logos
+
+**Added asset logos to ExitStrategy page:**
+- Fetches logos using the same price aggregator
+- Shows logo or fallback letter badge next to symbol
+- Consistent with Portfolio table appearance
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `frontend/src/components/CompactHoldingsTable.tsx` | Actions fixed utility, Notes inline edit |
+| `frontend/src/components/PortfolioDashboard.tsx` | Added `handleUpdateNotes` handler |
+| `frontend/src/pages/ExitStrategy.tsx` | Added logos to asset rows |
+
+### Git Commit
+
+`bb4e246` - Make Actions a fixed utility column + inline-editable Notes
+
+### Acceptance Checks
+
+**Actions column:**
+- ✅ Columns dropdown no longer shows an "Actions" checkbox
+- ✅ Actions header label is gone (empty cell)
+- ✅ Actions are always visible (on row hover)
+- ✅ Table has more room for informational columns
+
+**Notes column:**
+- ✅ Click Notes cell → type → click away saves
+- ✅ Enter saves
+- ✅ Escape cancels and restores original text
+- ✅ Notes update is reflected immediately in the table
+- ✅ Notes persist across refresh (via store.updateHolding)
+- ✅ Edit/delete actions still work for full-asset editing
+
+### Current Deployment Status
+
+| Component | Canister ID | Status |
+|-----------|-------------|--------|
+| Frontend | `ulvla-h7777-77774-qaacq-cai` (local) | Needs rebuild |
+| Backend | `uxrrr-q7777-77774-qaaaq-cai` (local) | ✅ Running |
+| IC Mainnet | `zucye-ziaaa-aaaap-qhu7q-cai` | Needs deploy |
+| GitHub | RobRipley/YSLfoliotracker | ✅ Pushed |
+
+### Next Steps
+
+To deploy the changes:
+```bash
+cd /Users/robertripley/coding/YSLfolioTracker
+
+# Set npm path (nvm)
+export PATH="/Users/robertripley/.nvm/versions/node/v20.20.0/bin:$PATH"
+
+# Build and deploy locally
+cd frontend && npm run build && cd ..
+dfx canister install frontend --mode reinstall -y
+
+# Or deploy to IC mainnet
+dfx deploy frontend --network ic
+```
+
+---
