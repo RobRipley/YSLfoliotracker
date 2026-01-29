@@ -11,6 +11,7 @@ import { ChevronDown, ChevronRight, Info, Loader2 } from 'lucide-react';
 import { formatPrice } from '@/lib/formatting';
 
 const EXIT_PLANS_STORAGE_KEY = 'ysl-exit-plans';
+const GLOBAL_CUSHION_KEY = 'ysl-global-cushion';
 
 const CATEGORY_LABELS: Record<Category, string> = {
   'blue-chip': 'Blue Chip',
@@ -152,13 +153,13 @@ function formatTokensSmart(value: number, maxPrecision: number = 8): string {
 // Create default exit plan for a holding
 function createDefaultExitPlan(
   holding: Holding,
-  category: Category
+  category: Category,
+  useCushion: boolean = true
 ): ExitPlan | null {
   if (!holding.avgCost) return null;
   
-  const useBase = true;
   const avgCost = holding.avgCost;
-  const base = useBase ? avgCost * 1.1 : avgCost;
+  const base = useCushion ? avgCost * 1.1 : avgCost;
   
   // Select proper template based on category
   let template = category === 'blue-chip' ? BLUE_CHIP_CONSERVATIVE : 
@@ -179,7 +180,7 @@ function createDefaultExitPlan(
   
   return {
     holdingId: holding.id,
-    useBase,
+    useBase: useCushion,
     preset: defaultPreset,
     rungs
   };
@@ -191,9 +192,9 @@ interface AssetRowProps {
   category: Category;
   plan: ExitPlan | undefined;
   logoUrl?: string;
+  globalUseCushion: boolean;
   onPresetChange: (preset: PresetType) => void;
   onUpdateRung: (rungIndex: number, field: 'percent' | 'multiplier', value: number) => void;
-  onToggleBase: (useBase: boolean) => void;
 }
 
 const AssetRow = memo(({ 
@@ -202,15 +203,15 @@ const AssetRow = memo(({
   category, 
   plan, 
   logoUrl,
+  globalUseCushion,
   onPresetChange,
-  onUpdateRung,
-  onToggleBase
+  onUpdateRung
 }: AssetRowProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Calculate values - guard against undefined/NaN
   const avgCost = holding.avgCost || 0;
-  const planBasis = plan?.useBase ? avgCost * 1.1 : avgCost;
+  const planBasis = globalUseCushion ? avgCost * 1.1 : avgCost;
   const currentPrice = price?.priceUsd ?? 0;
   
   // Position Value = current value (tokens * current price) - PRIMARY
@@ -352,31 +353,11 @@ const AssetRow = memo(({
             </div>
           </div>
 
-          {/* Plan Basis with Cushion Toggle */}
+          {/* Plan Basis display (driven by global cushion setting) */}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/5 border border-divide-lighter/10 flex-shrink-0">
             <div className="text-left">
               <div className="text-xs text-muted-foreground/60 uppercase tracking-wider">Plan basis</div>
               <div className="text-sm font-medium text-foreground/90">{formatPrice(planBasis)}</div>
-            </div>
-            <div className="flex items-center gap-1.5 ml-2">
-              <Checkbox
-                id={`base-${holding.id}`}
-                checked={plan.useBase}
-                onCheckedChange={(checked) => onToggleBase(checked === true)}
-                className="h-3.5 w-3.5"
-              />
-              <label
-                htmlFor={`base-${holding.id}`}
-                className="text-[10px] text-muted-foreground/70 cursor-pointer whitespace-nowrap"
-              >
-                +10% cushion
-              </label>
-            </div>
-            <div className="group relative ml-1">
-              <Info className="w-3 h-3 text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors cursor-help" />
-              <div className="absolute bottom-full right-0 mb-2 w-56 p-2 bg-secondary/95 backdrop-blur-sm border border-divide-lighter/30 rounded-lg text-[10px] text-muted-foreground opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-10 shadow-lg">
-                Targets use plan basis. When cushion is enabled, target prices are calculated from 10% above your average cost.
-              </div>
             </div>
           </div>
 
@@ -518,6 +499,27 @@ export function ExitStrategy() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasFetchedOnce, setHasFetchedOnce] = useState(false);
   
+  // Global cushion toggle - affects all assets
+  const [globalUseCushion, setGlobalUseCushion] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem(GLOBAL_CUSHION_KEY);
+      if (stored !== null) return stored === 'true';
+      // Default to true (cushion enabled)
+      return true;
+    } catch {
+      return true;
+    }
+  });
+  
+  // Persist global cushion setting
+  useEffect(() => {
+    try {
+      localStorage.setItem(GLOBAL_CUSHION_KEY, String(globalUseCushion));
+    } catch (e) {
+      console.warn('[ExitStrategy] Failed to save global cushion setting:', e);
+    }
+  }, [globalUseCushion]);
+  
   // Check if we have meaningful market cap data (not just prices with $0 market cap)
   const hasMarketCapData = useMemo(() => {
     const priceValues = Object.values(prices);
@@ -607,7 +609,7 @@ export function ExitStrategy() {
         if (!price?.marketCapUsd) return;
         
         const category = getCategoryForHolding(holding, price.marketCapUsd);
-        const plan = createDefaultExitPlan(holding, category);
+        const plan = createDefaultExitPlan(holding, category, globalUseCushion);
         
         if (plan) {
           newPlans[holding.id] = plan;
@@ -628,7 +630,7 @@ export function ExitStrategy() {
       
       return hasChanges ? newPlans : prevPlans;
     });
-  }, [prices, hasFetchedOnce]);
+  }, [prices, hasFetchedOnce, globalUseCushion]);
 
   // Broadcast exit plan updates to Portfolio page
   useEffect(() => {
@@ -644,8 +646,7 @@ export function ExitStrategy() {
     
     setExitPlans(prev => {
       const currentPlan = prev[holdingId];
-      const useBase = currentPlan?.useBase ?? true;
-      const base = useBase ? avgCost * 1.1 : avgCost;
+      const base = globalUseCushion ? avgCost * 1.1 : avgCost;
       
       // Get the appropriate template
       let template;
@@ -674,7 +675,7 @@ export function ExitStrategy() {
       
       return {
         ...prev,
-        [holdingId]: { holdingId, useBase, preset, rungs }
+        [holdingId]: { holdingId, useBase: globalUseCushion, preset, rungs }
       };
     });
     
@@ -683,7 +684,7 @@ export function ExitStrategy() {
     } else {
       toast.success(`Applied ${preset.charAt(0).toUpperCase() + preset.slice(1)} preset`);
     }
-  }, []);
+  }, [globalUseCushion]);
 
   const handleUpdateRung = useCallback((holdingId: string, rungIndex: number, field: 'percent' | 'multiplier', value: number) => {
     const holding = store.holdings.find(h => h.id === holdingId);
@@ -695,7 +696,7 @@ export function ExitStrategy() {
       const plan = prev[holdingId];
       if (!plan) return prev;
       
-      const base = plan.useBase ? avgCost * 1.1 : avgCost;
+      const base = globalUseCushion ? avgCost * 1.1 : avgCost;
       const newRungs = [...plan.rungs];
       
       if (field === 'multiplier') {
@@ -726,34 +727,45 @@ export function ExitStrategy() {
         [holdingId]: { ...plan, rungs: newRungs }
       };
     });
-  }, []);
+  }, [globalUseCushion]);
 
-  const handleToggleBase = useCallback((holdingId: string, useBase: boolean) => {
-    const holding = store.holdings.find(h => h.id === holdingId);
-    if (!holding?.avgCost) return;
-    
-    const avgCost = holding.avgCost;
-    
+  // Recalculate all target prices when global cushion changes
+  useEffect(() => {
     setExitPlans(prev => {
-      const plan = prev[holdingId];
-      if (!plan) return prev;
+      const updated: Record<string, ExitPlan> = {};
+      let hasAnyChanges = false;
       
-      const base = useBase ? avgCost * 1.1 : avgCost;
-      
-      const newRungs = plan.rungs.map((rung, idx) => {
-        const isRemaining = idx === plan.rungs.length - 1;
-        return {
-          ...rung,
-          targetPrice: isRemaining || (rung.multiplier ?? 0) === 0 ? 0 : base * (rung.multiplier ?? 0)
-        };
+      Object.keys(prev).forEach(holdingId => {
+        const plan = prev[holdingId];
+        const holding = store.holdings.find(h => h.id === holdingId);
+        if (!plan || !holding?.avgCost) {
+          updated[holdingId] = plan;
+          return;
+        }
+        
+        const avgCost = holding.avgCost;
+        const base = globalUseCushion ? avgCost * 1.1 : avgCost;
+        
+        const newRungs = plan.rungs.map((rung, idx) => {
+          const isRemaining = idx === plan.rungs.length - 1;
+          const newTargetPrice = isRemaining || (rung.multiplier ?? 0) === 0 ? 0 : base * (rung.multiplier ?? 0);
+          
+          if (Math.abs(newTargetPrice - (rung.targetPrice ?? 0)) > 0.01) {
+            hasAnyChanges = true;
+          }
+          
+          return {
+            ...rung,
+            targetPrice: newTargetPrice
+          };
+        });
+        
+        updated[holdingId] = { ...plan, rungs: newRungs };
       });
       
-      return {
-        ...prev,
-        [holdingId]: { ...plan, useBase, rungs: newRungs }
-      };
+      return hasAnyChanges ? updated : prev;
     });
-  }, []);
+  }, [globalUseCushion]);
 
   const groupedHoldings = useMemo(() => {
     const groups: Record<Category, Holding[]> = {
@@ -844,18 +856,49 @@ export function ExitStrategy() {
             Set your exits now, so you can take profits later without emotion.
           </p>
         </div>
-        {/* Summary status */}
-        {planStats.total > 0 && (
-          <div className="text-xs text-muted-foreground/60">
-            {planStats.customCount === 0 ? (
-              <span>All {planStats.total} assets use templates</span>
-            ) : planStats.templateCount === 0 ? (
-              <span>All {planStats.total} assets have custom edits</span>
-            ) : (
-              <span>{planStats.customCount} of {planStats.total} assets edited</span>
-            )}
+        {/* Right section: Global cushion toggle + Summary status */}
+        <div className="flex items-center gap-6">
+          {/* Global Plan Basis Cushion Toggle */}
+          <div 
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/5 border border-divide-lighter/10 cursor-pointer hover:bg-secondary/10 transition-colors"
+            onClick={() => setGlobalUseCushion(prev => !prev)}
+          >
+            <span className="text-xs text-muted-foreground/60">Plan basis</span>
+            <Checkbox
+              id="global-cushion"
+              checked={globalUseCushion}
+              onCheckedChange={(checked) => setGlobalUseCushion(checked === true)}
+              className="h-3.5 w-3.5 pointer-events-none"
+            />
+            <span className="text-xs text-muted-foreground/80 whitespace-nowrap">
+              +10% cushion
+            </span>
+            <div className="group relative ml-1" onClick={(e) => e.stopPropagation()}>
+              <Info className="w-3.5 h-3.5 text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors cursor-help" />
+              <div className="absolute bottom-full right-0 mb-2 w-72 p-3 bg-secondary/95 backdrop-blur-sm border border-divide-lighter/30 rounded-lg text-xs text-muted-foreground opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50 shadow-lg">
+                <div className="font-semibold text-foreground/90 mb-1.5">Plan basis</div>
+                <p className="leading-relaxed">
+                  Exit targets are calculated from the Plan basis price. By default, Plan basis is your average cost per token. 
+                  If +10% cushion is enabled, we set Plan basis to 10% above your average cost to leave room for taxes, fees, and slippage. 
+                  Turn it off to calculate targets from your true average cost.
+                </p>
+              </div>
+            </div>
           </div>
-        )}
+          
+          {/* Summary status */}
+          {planStats.total > 0 && (
+            <div className="text-xs text-muted-foreground/60">
+              {planStats.customCount === 0 ? (
+                <span>All {planStats.total} assets use templates</span>
+              ) : planStats.templateCount === 0 ? (
+                <span>All {planStats.total} assets have custom edits</span>
+              ) : (
+                <span>{planStats.customCount} of {planStats.total} assets edited</span>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Holdings by Category */}
@@ -892,9 +935,9 @@ export function ExitStrategy() {
                       category={category}
                       plan={plan}
                       logoUrl={logoUrl}
+                      globalUseCushion={globalUseCushion}
                       onPresetChange={(preset) => handlePresetChange(holding.id, category, preset)}
                       onUpdateRung={(rungIndex, field, value) => handleUpdateRung(holding.id, rungIndex, field, value)}
-                      onToggleBase={(useBase) => handleToggleBase(holding.id, useBase)}
                     />
                   );
                 })}
