@@ -12,6 +12,7 @@ import { ExitStrategy } from '@/pages/ExitStrategy';
 import { useInternetIdentity } from '@/hooks/useInternetIdentity';
 import { loadThemeSettings, applyTheme } from '@/lib/themes';
 import { ErrorBoundary, setupGlobalErrorHandlers } from '@/components/ErrorBoundary';
+import { initializeMarketData } from '@/lib/marketDataService';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -66,6 +67,11 @@ function AppContent() {
   // Setup global error handlers on mount
   useEffect(() => {
     setupGlobalErrorHandlers();
+  }, []);
+
+  // Initialize market data cache on mount (warm cache for instant categorization)
+  useEffect(() => {
+    initializeMarketData();
   }, []);
 
   // Handle authentication state changes

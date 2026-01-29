@@ -75,8 +75,8 @@ export function normalizeCryptoRatesData(coins: CryptoRatesCoin[]): NormalizedPr
     // Extract price from various possible field names
     const priceUsd = extractNumber(coin, ['price', 'current_price', 'price_usd']);
     
-    // Extract market cap
-    const marketCapUsd = extractNumber(coin, ['market_cap', 'market_cap_usd']);
+    // Extract market cap (note: CryptoRates.ai uses 'marketcap' without underscore)
+    const marketCapUsd = extractNumber(coin, ['marketcap', 'market_cap', 'market_cap_usd']);
     
     // Extract 24h volume
     const volume24hUsd = extractNumber(coin, ['volume_24h', 'total_volume', 'volume_24h_usd']);

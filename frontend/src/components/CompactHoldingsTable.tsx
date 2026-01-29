@@ -1110,9 +1110,8 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
         <div className="space-y-4">
           {displayedCategories.map(category => {
             const holdings = groups[category] || [];
-            // For stablecoin category, ALWAYS show (to display cash row)
-            // For other categories, hide if no holdings
-            if (!holdings.length && category !== 'stablecoin') return null;
+            // Always show category shells, not just for stablecoin
+            // This ensures consistent UI even for empty portfolios
             const isExpanded = expandedCategories.has(category);
             
             // Sort holdings by value (highest first)
@@ -1155,8 +1154,8 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
                       </div>
                     )}
                     
-                    {/* For non-stablecoin categories: always show headers */}
-                    {!isCashCategory && (
+                    {/* For non-stablecoin categories: show headers only if there are holdings */}
+                    {!isCashCategory && sortedHoldings.length > 0 && (
                       <div className="flex items-center justify-between px-1 mt-2 mb-1">
                         <div className="grid w-full grid-cols-[1.6fr_1.2fr_0.8fr_1fr_1fr_1fr_0.8fr_1.2fr_1.4fr_auto] gap-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">
                           <span className="pl-10">Symbol</span>
@@ -1171,6 +1170,13 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
                           {/* Actions column - no header label */}
                           <span></span>
                         </div>
+                      </div>
+                    )}
+                    
+                    {/* For empty non-stablecoin categories, show a subtle hint */}
+                    {!isCashCategory && sortedHoldings.length === 0 && (
+                      <div className="px-4 py-3 text-center text-xs text-muted-foreground/50 italic">
+                        No {CATEGORY_LABELS[category].toLowerCase()} positions yet
                       </div>
                     )}
                     

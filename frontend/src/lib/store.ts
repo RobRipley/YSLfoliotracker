@@ -144,8 +144,9 @@ export function usePortfolioStore(principal?: string | null) {
   // Get current store state
   const store = useMemo(() => getStore(), [version]);
 
-  // Holdings accessor
-  const holdings = useMemo(() => store.holdings, [store.holdings, version]);
+  // Holdings accessor - spread to create new array reference on version change
+  // This ensures React detects changes when holdings are mutated
+  const holdings = useMemo(() => [...store.holdings], [store.holdings, version]);
   
   // Settings accessor
   const settings = useMemo(() => store.settings, [store.settings, version]);

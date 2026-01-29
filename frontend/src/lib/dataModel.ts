@@ -60,6 +60,14 @@ export interface Holding {
   categoryLocked?: boolean;
   lockedCategory?: Category;
   logoUrl?: string;  // Token logo URL from CoinGecko
+  
+  // Cached market data for stale-while-revalidate pattern
+  // These persist across sessions so UI renders instantly with last-known values
+  coingeckoId?: string;          // Canonical identifier for API lookups
+  lastPriceUsd?: number;         // Last known price
+  lastMarketCapUsd?: number;     // Last known market cap (used for categorization)
+  lastChange24hPct?: number;     // Last known 24h price change
+  lastMarketDataAt?: string;     // ISO timestamp of when market data was last updated
 }
 
 export interface LadderRung {
@@ -651,6 +659,7 @@ export function recordSnapshot(
 
 /**
  * Get or update category for a holding with hysteresis
+ * marketCapUsd of -1 indicates "unknown" - we should use previous category if available
  */
 export function getCategoryForHolding(
   holding: Holding,
@@ -666,6 +675,20 @@ export function getCategoryForHolding(
   if (isStablecoin(holding.symbol)) {
     console.log(`[GetCategory] ${holding.symbol}: Stablecoin (auto-detected)`);
     return 'stablecoin';
+  }
+
+  // Handle unknown market cap (-1 sentinel value)
+  // This happens when price data hasn't loaded yet
+  if (marketCapUsd < 0) {
+    const prevRecord = store.lastSeenCategories[holding.symbol];
+    if (prevRecord?.category) {
+      console.log(`[GetCategory] ${holding.symbol}: cap UNKNOWN, keeping previous category: ${prevRecord.category}`);
+      return prevRecord.category;
+    }
+    // No previous category - use 'micro-cap' as temporary placeholder
+    // This will be corrected once market data loads
+    console.log(`[GetCategory] ${holding.symbol}: cap UNKNOWN, no previous category, defaulting to micro-cap (pending data)`);
+    return 'micro-cap';
   }
 
   const prevRecord = store.lastSeenCategories[holding.symbol];

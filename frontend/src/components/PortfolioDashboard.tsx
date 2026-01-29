@@ -5,6 +5,7 @@ import { CompactHoldingsTable } from './CompactHoldingsTable';
 import { NearestExits } from './NearestExits';
 import { type Category, type Holding, getCategoryForHolding } from '@/lib/dataModel';
 import { getPriceAggregator, type ExtendedPriceQuote } from '@/lib/priceService';
+import { getMarketDataService } from '@/lib/marketDataService';
 import { usePortfolioSnapshots } from '@/hooks/usePortfolioSnapshots';
 import { AllocationDonutChart } from './AllocationDonutChart';
 import { CategoryTrendCharts } from './CategoryTrendCharts';
@@ -20,6 +21,7 @@ import { cn } from '@/lib/utils';
 // import { loadExitPlans, type ExitPlanState } from '@/lib/exitPlanPersistence'; // Now reading directly from localStorage
 
 const aggregator = getPriceAggregator();
+const marketDataService = getMarketDataService();
 
 export const PortfolioDashboard = memo(function PortfolioDashboard() {
   const { principal } = useInternetIdentity();
@@ -78,7 +80,9 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
         priceMap[quote.symbol.toUpperCase()] = quote;
       }
       setPrices(priceMap);
-      // Note: lastPriceUpdate tracking can be added to store if needed
+      
+      // Update holdings with fresh market data (stale-while-revalidate persistence)
+      marketDataService.refreshForSymbols(symbols);
     } catch (err) {
       console.error('Failed to fetch prices', err);
     }
@@ -104,7 +108,11 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
 
   const totals = useMemo(() => {
     const totalValue = store.holdings.reduce((sum, holding) => {
-      const price = prices[holding.symbol.toUpperCase()]?.priceUsd ?? holding.avgCost ?? 0;
+      // Stale-while-revalidate: use live price > cached price > avg cost
+      const price = prices[holding.symbol.toUpperCase()]?.priceUsd 
+        ?? holding.lastPriceUsd 
+        ?? holding.avgCost 
+        ?? 0;
       return sum + holding.tokensOwned * price;
     }, 0) + store.cash; // Add cash to total
 
@@ -119,8 +127,11 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
 
     for (const holding of store.holdings) {
       const priceData = prices[holding.symbol.toUpperCase()];
-      const price = priceData?.priceUsd ?? holding.avgCost ?? 0;
-      const marketCap = priceData?.marketCapUsd ?? 0;
+      // Stale-while-revalidate: use live price > cached price > avg cost
+      const price = priceData?.priceUsd ?? holding.lastPriceUsd ?? holding.avgCost ?? 0;
+      // Stale-while-revalidate for market cap: live > holding cache > -1 (UNKNOWN)
+      // Use -1 as sentinel for "unknown" - getCategoryForHolding will use hysteresis/previous category
+      const marketCap = priceData?.marketCapUsd ?? holding.lastMarketCapUsd ?? -1;
       const value = holding.tokensOwned * price;
       const category = getCategoryForHolding(holding, marketCap);
       byCategory[category] += value;
@@ -140,7 +151,9 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     };
 
     for (const holding of store.holdings) {
-      const marketCap = prices[holding.symbol.toUpperCase()]?.marketCapUsd ?? 0;
+      // Stale-while-revalidate for market cap: live > holding cache > -1 (UNKNOWN)
+      // Use -1 as sentinel for "unknown" - getCategoryForHolding will use hysteresis/previous category
+      const marketCap = prices[holding.symbol.toUpperCase()]?.marketCapUsd ?? holding.lastMarketCapUsd ?? -1;
       const category = getCategoryForHolding(holding, marketCap);
       result[category].push(holding);
     }
@@ -148,9 +161,17 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     return result;
   }, [store.holdings, prices]);
 
-  const [expandedCategories, setExpandedCategories] = useState<Set<Category>>(
-    () => new Set(['stablecoin', 'blue-chip', 'mid-cap'])
-  );
+  // Default expanded: Cash & Stablecoins always visible, others collapsed for new portfolios
+  // For portfolios with holdings, also expand categories that have positions
+  const [expandedCategories, setExpandedCategories] = useState<Set<Category>>(() => {
+    const defaults = new Set<Category>(['stablecoin']);
+    // If there are holdings, also expand their categories
+    if (store.holdings.length > 0) {
+      defaults.add('blue-chip');
+      defaults.add('mid-cap');
+    }
+    return defaults;
+  });
 
   const toggleCategory = (category: Category) => {
     setExpandedCategories(prev => {
@@ -264,7 +285,8 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     return result;
   }, [exitPlanStates]);
 
-  const showEmptyState = store.holdings.length === 0;
+  // Show table even when empty - category shells always visible
+  const showEmptyState = false; // Always show the table structure
 
   return (
     <div className="space-y-5">
