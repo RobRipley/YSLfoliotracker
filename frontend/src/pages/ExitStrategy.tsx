@@ -518,6 +518,14 @@ export function ExitStrategy() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasFetchedOnce, setHasFetchedOnce] = useState(false);
   
+  // Check if we have meaningful market cap data (not just prices with $0 market cap)
+  const hasMarketCapData = useMemo(() => {
+    const priceValues = Object.values(prices);
+    if (priceValues.length === 0) return false;
+    // At least one price should have a non-zero market cap
+    return priceValues.some(p => p.marketCapUsd && p.marketCapUsd > 0);
+  }, [prices]);
+  
   // Track which holdings have been initialized to avoid re-initializing on price updates
   const initializedHoldingsRef = useRef<Set<string>>(new Set());
 
@@ -796,8 +804,10 @@ export function ExitStrategy() {
     return { customCount, templateCount, total: customCount + templateCount };
   }, [exitPlans]);
 
-  // Show loading state while fetching initial prices
-  if (isLoading && !hasFetchedOnce) {
+  // Show loading state while fetching initial prices or waiting for market cap data
+  const showLoading = (isLoading && !hasFetchedOnce) || (store.holdings.length > 0 && hasFetchedOnce && !hasMarketCapData);
+  
+  if (showLoading) {
     return (
       <div className="space-y-6">
         <div>
@@ -900,7 +910,7 @@ export function ExitStrategy() {
         </Card>
       )}
 
-      {store.holdings.length > 0 && !hasEligibleHoldings && hasFetchedOnce && (
+      {store.holdings.length > 0 && !hasEligibleHoldings && hasFetchedOnce && hasMarketCapData && (
         <Card className="p-12 text-center glass-panel border-divide-lighter/30">
           <p className="text-muted-foreground">
             No holdings with both average cost and market cap data. 
