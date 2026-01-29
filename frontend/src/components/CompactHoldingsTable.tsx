@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, memo } from 'react';
+import { useState, useMemo, useCallback, memo, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -88,6 +88,7 @@ interface CompactHoldingsTableProps {
   exitPlans: Record<string, ExitLadderRung[]>;
   cash: number;
   onUpdateCash: (amount: number) => void;
+  onUpdateNotes?: (holdingId: string, notes: string) => void;
 }
 
 const categoryGradient = (category: Category) => CATEGORY_GRADIENTS[category] ?? CATEGORY_GRADIENTS['blue-chip'];
@@ -176,17 +177,26 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
   displayedCategories,
   exitPlans,
   cash,
-  onUpdateCash
+  onUpdateCash,
+  onUpdateNotes
 }: CompactHoldingsTableProps) {
   // Default hidden columns: only "% Change" is hidden by default
-  // All other columns (Price, Tokens, Value, Share, Avg Cost, Exit Ladder, Notes, Actions) are visible
+  // All other columns (Price, Tokens, Value, Share, Avg Cost, Exit Ladder, Notes) are visible
+  // Note: Actions is NOT in this list - it's a fixed utility column, always visible
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => {
     const prefs = loadUIPreferences();
-    return new Set(prefs.hiddenColumns.length > 0 ? prefs.hiddenColumns : ['%change']);
+    // Filter out 'actions' from any persisted state (migration)
+    const filtered = prefs.hiddenColumns.filter(col => col !== 'actions');
+    return new Set(filtered.length > 0 ? filtered : ['%change']);
   });
 
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [cashInput, setCashInput] = useState(cash.toString());
+  
+  // Inline notes editing state
+  const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
+  const [notesInputValue, setNotesInputValue] = useState('');
+  const notesInputRef = useRef<HTMLInputElement>(null);
   const [isEditingCash, setIsEditingCash] = useState(false);
   const [cashSaveStatus, setCashSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [previousCash, setPreviousCash] = useState(cash);
@@ -257,6 +267,40 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
     if (totalValue === 0) return 0;
     return (cash / totalValue) * 100;
   }, [cash, totals.totalValue]);
+
+  // Notes inline editing handlers
+  const startNotesEdit = useCallback((holding: Holding) => {
+    setEditingNotesId(holding.id);
+    setNotesInputValue(holding.notes || '');
+    // Focus the input on next render
+    setTimeout(() => notesInputRef.current?.focus(), 0);
+  }, []);
+
+  const saveNotes = useCallback((holdingId: string) => {
+    if (onUpdateNotes) {
+      onUpdateNotes(holdingId, notesInputValue);
+    }
+    setEditingNotesId(null);
+  }, [notesInputValue, onUpdateNotes]);
+
+  const cancelNotesEdit = useCallback(() => {
+    setEditingNotesId(null);
+    setNotesInputValue('');
+  }, []);
+
+  const handleNotesKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>, holdingId: string) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveNotes(holdingId);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelNotesEdit();
+    }
+  }, [saveNotes, cancelNotesEdit]);
+
+  const handleNotesBlur = useCallback((holdingId: string) => {
+    saveNotes(holdingId);
+  }, [saveNotes]);
 
   // Calculate stablecoins-only value (excluding cash)
   const stablecoinsOnlyValue = useMemo(() => {
@@ -777,36 +821,55 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           {!isColumnHidden('ladder') && renderExitLadderCompact(holding, category)}
         </div>
 
-        {/* Notes - always render cell */}
-        <div className="text-[11px] text-muted-foreground/90">
-          {!isColumnHidden('notes') && (holding.notes ? holding.notes : 'No notes yet')}
+        {/* Notes - inline editable */}
+        <div 
+          className={cn(
+            "text-[11px] cursor-pointer rounded px-1 -mx-1",
+            !isColumnHidden('notes') && "hover:bg-white/5"
+          )}
+          onClick={() => !isColumnHidden('notes') && editingNotesId !== holding.id && startNotesEdit(holding)}
+        >
+          {!isColumnHidden('notes') && (
+            editingNotesId === holding.id ? (
+              <input
+                ref={notesInputRef}
+                type="text"
+                value={notesInputValue}
+                onChange={(e) => setNotesInputValue(e.target.value)}
+                onKeyDown={(e) => handleNotesKeyDown(e, holding.id)}
+                onBlur={() => handleNotesBlur(holding.id)}
+                className="w-full bg-transparent text-foreground/90 outline-none border-b border-primary/50 focus:border-primary py-0.5"
+                placeholder="Add note..."
+              />
+            ) : (
+              <span className={holding.notes ? 'text-muted-foreground/90' : 'text-muted-foreground/50 italic'}>
+                {holding.notes || 'No notes yet'}
+              </span>
+            )
+          )}
         </div>
 
-        {/* Actions - always render cell */}
+        {/* Actions - fixed utility column, always visible (not toggleable) */}
         <div className="flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {!isColumnHidden('actions') && (
-            <>
-              {/* Edit button - compact icon */}
-              <button
-                className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-white/5 hover:text-foreground"
-                onClick={() => handleEditHolding(holding)}
-                type="button"
-                title="Edit holding"
-              >
-                <Edit className="h-3.5 w-3.5" />
-              </button>
+          {/* Edit button - compact icon */}
+          <button
+            className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-white/5 hover:text-foreground"
+            onClick={() => handleEditHolding(holding)}
+            type="button"
+            title="Edit holding"
+          >
+            <Edit className="h-3.5 w-3.5" />
+          </button>
 
-              {/* Delete button - compact icon with red tint on hover */}
-              <button
-                className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-rose-500/10 hover:text-rose-400"
-                onClick={() => handleRemoveHolding(holding)}
-                type="button"
-                title="Delete holding"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </>
-          )}
+          {/* Delete button - compact icon with red tint on hover */}
+          <button
+            className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-rose-500/10 hover:text-rose-400"
+            onClick={() => handleRemoveHolding(holding)}
+            type="button"
+            title="Delete holding"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
     );
@@ -904,35 +967,51 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           </div>
         )}
 
-        {/* Notes */}
+        {/* Notes - inline editable */}
         {!isColumnHidden('notes') && (
-          <div className="text-[11px] text-muted-foreground/90">
-            {holding.notes ? holding.notes : 'No notes yet'}
+          <div 
+            className="text-[11px] cursor-pointer rounded px-1 -mx-1 hover:bg-white/5"
+            onClick={() => editingNotesId !== holding.id && startNotesEdit(holding)}
+          >
+            {editingNotesId === holding.id ? (
+              <input
+                ref={notesInputRef}
+                type="text"
+                value={notesInputValue}
+                onChange={(e) => setNotesInputValue(e.target.value)}
+                onKeyDown={(e) => handleNotesKeyDown(e, holding.id)}
+                onBlur={() => handleNotesBlur(holding.id)}
+                className="w-full bg-transparent text-foreground/90 outline-none border-b border-primary/50 focus:border-primary py-0.5"
+                placeholder="Add note..."
+              />
+            ) : (
+              <span className={holding.notes ? 'text-muted-foreground/90' : 'text-muted-foreground/50 italic'}>
+                {holding.notes || 'No notes yet'}
+              </span>
+            )}
           </div>
         )}
 
-        {/* Actions - Edit and Delete only, stacked vertically */}
-        {!isColumnHidden('actions') && (
-          <div className="flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-white/5 hover:text-foreground"
-              onClick={() => handleEditHolding(holding)}
-              type="button"
-              title="Edit holding"
-            >
-              <Edit className="h-3.5 w-3.5" />
-            </button>
+        {/* Actions - fixed utility column, always visible (not toggleable) */}
+        <div className="flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-white/5 hover:text-foreground"
+            onClick={() => handleEditHolding(holding)}
+            type="button"
+            title="Edit holding"
+          >
+            <Edit className="h-3.5 w-3.5" />
+          </button>
 
-            <button
-              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-rose-500/10 hover:text-rose-400"
-              onClick={() => handleRemoveHolding(holding)}
-              type="button"
-              title="Delete holding"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
+          <button
+            className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-rose-500/10 hover:text-rose-400"
+            onClick={() => handleRemoveHolding(holding)}
+            type="button"
+            title="Delete holding"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
     );
   };
@@ -1063,8 +1142,8 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
             { id: 'avgCost', label: 'Avg Cost' },
             { id: '%change', label: '% Change' },
             { id: 'ladder', label: 'Exit Ladder' },
-            { id: 'notes', label: 'Notes' },
-            { id: 'actions', label: 'Actions' }
+            { id: 'notes', label: 'Notes' }
+            // Actions is NOT toggleable - it's a fixed utility column
           ].map(col => (
             <DropdownMenuCheckboxItem
               key={col.id}
@@ -1181,7 +1260,8 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
                           {!isColumnHidden('%change') && <span>24h</span>}
                           {!isColumnHidden('ladder') && <span>Exit</span>}
                           {!isColumnHidden('notes') && <span>Notes</span>}
-                          {!isColumnHidden('actions') && <span className="text-right">Actions</span>}
+                          {/* Actions column - no header label, fixed utility column */}
+                          <span></span>
                         </div>
                       </div>
                     )}
@@ -1198,7 +1278,8 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
                           {!isColumnHidden('%change') && <span>24h</span>}
                           {!isColumnHidden('ladder') && <span>Exit</span>}
                           {!isColumnHidden('notes') && <span>Notes</span>}
-                          {!isColumnHidden('actions') && <span className="text-right">Actions</span>}
+                          {/* Actions column - no header label, fixed utility column */}
+                          <span></span>
                         </div>
                       </div>
                     )}

@@ -190,6 +190,7 @@ interface AssetRowProps {
   price: ExtendedPriceQuote | undefined;
   category: Category;
   plan: ExitPlan | undefined;
+  logoUrl?: string;
   onPresetChange: (preset: PresetType) => void;
   onUpdateRung: (rungIndex: number, field: 'percent' | 'multiplier', value: number) => void;
   onToggleBase: (useBase: boolean) => void;
@@ -200,6 +201,7 @@ const AssetRow = memo(({
   price, 
   category, 
   plan, 
+  logoUrl,
   onPresetChange,
   onUpdateRung,
   onToggleBase
@@ -281,9 +283,33 @@ const AssetRow = memo(({
               )}
             </button>
 
-            {/* Symbol - prominent */}
-            <div className="font-semibold font-heading text-base w-16">
-              {holding.symbol}
+            {/* Logo + Symbol - prominent */}
+            <div className="flex items-center gap-2">
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt={holding.symbol}
+                  className="h-7 w-7 rounded-full object-contain shadow-md"
+                  onError={(e) => {
+                    // Hide image on error, fallback will show
+                    e.currentTarget.style.display = 'none';
+                    const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                    if (fallback) fallback.style.display = 'flex';
+                  }}
+                />
+              ) : null}
+              <div
+                className="flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold text-white shadow-md"
+                style={{ 
+                  backgroundColor: CATEGORY_COLORS[category],
+                  display: logoUrl ? 'none' : 'flex'
+                }}
+              >
+                {holding.symbol.charAt(0).toUpperCase()}
+              </div>
+              <span className="font-semibold font-heading text-base">
+                {holding.symbol}
+              </span>
             </div>
             
             {/* Plan Status Indicator */}
@@ -487,6 +513,7 @@ AssetRow.displayName = 'AssetRow';
 
 export function ExitStrategy() {
   const [prices, setPrices] = useState<Record<string, ExtendedPriceQuote>>({});
+  const [logos, setLogos] = useState<Record<string, string>>({});
   const [exitPlans, setExitPlans] = useState<Record<string, ExitPlan>>(() => loadExitPlans());
   const [isLoading, setIsLoading] = useState(true);
   const [hasFetchedOnce, setHasFetchedOnce] = useState(false);
@@ -529,7 +556,20 @@ export function ExitStrategy() {
       }
     };
 
+    // Fetch logos (only once on mount)
+    const fetchLogos = async () => {
+      const symbols = store.holdings.map(h => h.symbol);
+      if (symbols.length === 0) return;
+      try {
+        const logoMap = await aggregator.getLogos(symbols);
+        setLogos(prev => ({ ...prev, ...logoMap }));
+      } catch (error) {
+        console.error('[ExitStrategy] Failed to fetch logos:', error);
+      }
+    };
+
     fetchPrices();
+    fetchLogos();
     const interval = setInterval(fetchPrices, 30000); // Reduced frequency to 30s
 
     return () => clearInterval(interval);
@@ -832,6 +872,7 @@ export function ExitStrategy() {
                 {holdings.map(holding => {
                   const price = prices[holding.symbol];
                   const plan = exitPlans[holding.id];
+                  const logoUrl = logos[holding.symbol.toUpperCase()];
 
                   return (
                     <AssetRow
@@ -840,6 +881,7 @@ export function ExitStrategy() {
                       price={price}
                       category={category}
                       plan={plan}
+                      logoUrl={logoUrl}
                       onPresetChange={(preset) => handlePresetChange(holding.id, category, preset)}
                       onUpdateRung={(rungIndex, field, value) => handleUpdateRung(holding.id, rungIndex, field, value)}
                       onToggleBase={(useBase) => handleToggleBase(holding.id, useBase)}

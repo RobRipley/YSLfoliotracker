@@ -211,6 +211,10 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     store.updateHolding(holding.id, { locked: !(holding.locked ?? false) });
   };
 
+  const handleUpdateNotes = (holdingId: string, notes: string) => {
+    store.updateHolding(holdingId, { notes });
+  };
+
   const displayedCategories = useMemo(() => {
     if (selectedCategory === 'all') {
       // Cash & Stablecoins at top, then by market cap descending
@@ -314,6 +318,7 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
               exitPlans={exitPlans}
               cash={store.cash}
               onUpdateCash={store.setCash}
+              onUpdateNotes={handleUpdateNotes}
             />
           </div>
 
