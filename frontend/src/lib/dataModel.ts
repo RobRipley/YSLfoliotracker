@@ -411,6 +411,7 @@ export interface Store {
   lastSeenCategories: Record<string, CategorySeenRecord>;
   portfolioSnapshots: PortfolioSnapshot[];
   cash: number;
+  cashNotes: string;
 }
 
 export const store: Store = {
@@ -420,6 +421,7 @@ export const store: Store = {
   lastSeenCategories: {},
   portfolioSnapshots: [],
   cash: 0,
+  cashNotes: '',
 };
 
 // ============================================================================

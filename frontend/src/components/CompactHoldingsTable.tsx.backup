@@ -1,12 +1,18 @@
 import { useState, useMemo, useCallback, memo, useRef } from 'react';
-import { useState, useMemo, useCallback, memo, useRef } from 'react';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { ChevronDown, ChevronRight, Edit, Trash2, Info, Target, Plus, Pencil, Check, Loader2, DollarSign } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { ChevronDown, ChevronRight, Edit, Trash2, Info, Settings, Target, Plus, Pencil, Check, Loader2, DollarSign } from 'lucide-react';
 import { type Holding, type Category, valueUsd, share } from '@/lib/dataModel';
 import { type ExtendedPriceQuote } from '@/lib/priceService';
+import { saveUIPreferences, loadUIPreferences } from '@/lib/uiPreferences';
 import { cn } from '@/lib/utils';
+import { Label } from '@/components/ui/label';
+import { Slider } from '@/components/ui/slider';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   CATEGORY_COLORS,
   CATEGORY_LABELS as IMPORTED_LABELS,
@@ -82,8 +88,6 @@ interface CompactHoldingsTableProps {
   exitPlans: Record<string, ExitLadderRung[]>;
   cash: number;
   onUpdateCash: (amount: number) => void;
-  cashNotes: string;
-  onUpdateCashNotes: (notes: string) => void;
   onUpdateNotes?: (holdingId: string, notes: string) => void;
 }
 
@@ -174,13 +178,19 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
   exitPlans,
   cash,
   onUpdateCash,
-  cashNotes,
-  onUpdateCashNotes,
   onUpdateNotes
 }: CompactHoldingsTableProps) {
-  // Show ALL columns by default for now - no column toggling UI
-  // Per requirement: "All columns should be visible by default"
-  const hiddenColumns = useMemo(() => new Set<string>(), []);
+  // Default hidden columns: only "% Change" is hidden by default
+  // All other columns (Price, Tokens, Value, Share, Avg Cost, Exit Ladder, Notes) are visible
+  // Note: Actions is NOT in this list - it's a fixed utility column, always visible
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => {
+    const prefs = loadUIPreferences();
+    // Filter out 'actions' from any persisted state (migration)
+    const filtered = prefs.hiddenColumns.filter(col => col !== 'actions');
+    return new Set(filtered.length > 0 ? filtered : ['%change']);
+  });
+
+  const [columnsOpen, setColumnsOpen] = useState(false);
   const [cashInput, setCashInput] = useState(cash.toString());
   
   // Inline notes editing state
@@ -190,11 +200,6 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
   const [isEditingCash, setIsEditingCash] = useState(false);
   const [cashSaveStatus, setCashSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [previousCash, setPreviousCash] = useState(cash);
-  
-  // Cash notes editing state
-  const [isEditingCashNotes, setIsEditingCashNotes] = useState(false);
-  const [cashNotesInput, setCashNotesInput] = useState(cashNotes || '');
-  const cashNotesInputRef = useRef<HTMLInputElement>(null);
 
   // Sync cash input when external cash changes
   useMemo(() => {
@@ -203,13 +208,6 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
       setPreviousCash(cash);
     }
   }, [cash, isEditingCash]);
-
-  // Sync cash notes when external cashNotes changes
-  useMemo(() => {
-    if (!isEditingCashNotes) {
-      setCashNotesInput(cashNotes || '');
-    }
-  }, [cashNotes, isEditingCashNotes]);
 
   const handleCashSave = useCallback(() => {
     const newCash = parseFloat(cashInput);
@@ -269,35 +267,6 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
     if (totalValue === 0) return 0;
     return (cash / totalValue) * 100;
   }, [cash, totals.totalValue]);
-
-  // Cash notes editing handlers
-  const startCashNotesEdit = useCallback(() => {
-    setIsEditingCashNotes(true);
-    setCashNotesInput(cashNotes || '');
-    setTimeout(() => cashNotesInputRef.current?.focus(), 0);
-  }, [cashNotes]);
-
-  const saveCashNotes = useCallback(() => {
-    onUpdateCashNotes(cashNotesInput);
-    setIsEditingCashNotes(false);
-  }, [cashNotesInput, onUpdateCashNotes]);
-
-  const cancelCashNotesEdit = useCallback(() => {
-    setCashNotesInput(cashNotes || '');
-    setIsEditingCashNotes(false);
-  }, [cashNotes]);
-
-  const handleCashNotesKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      saveCashNotes();
-    } else if (e.key === 'Escape') {
-      cancelCashNotesEdit();
-    }
-  }, [saveCashNotes, cancelCashNotesEdit]);
-
-  const handleCashNotesBlur = useCallback(() => {
-    saveCashNotes();
-  }, [saveCashNotes]);
 
   // Notes inline editing handlers
   const startNotesEdit = useCallback((holding: Holding) => {
@@ -374,7 +343,24 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
     [hiddenColumns]
   );
 
-  // Column toggle function removed - all columns visible by default for now
+  const toggleColumn = useCallback(
+    (columnId: string) => {
+      setHiddenColumns(prev => {
+        const next = new Set(prev);
+        if (next.has(columnId)) {
+          next.delete(columnId);
+        } else {
+          next.add(columnId);
+        }
+        saveUIPreferences({
+          ...loadUIPreferences(),
+          hiddenColumns: Array.from(next)
+        });
+        return next;
+      });
+    },
+    []
+  );
 
   const handleEditHolding = useCallback(
     (holding: Holding) => {
@@ -655,14 +641,76 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           </div>
         </div>
 
-        {/* Per-category controls removed per requirements */}
+        <div className="flex items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button className="flex h-6 w-6 items-center justify-center rounded-full border border-divide/80 bg-black/20 text-muted-foreground transition-smooth hover:bg-black/40">
+                <Info className="h-3 w-3" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="glass-panel border-divide/60 text-[11px] leading-relaxed">
+              Category totals are based on your current holdings and live prices. Exit ladder previews reflect the
+              N/4 strategy configured for this category.
+            </TooltipContent>
+          </Tooltip>
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="flex h-6 items-center gap-1 rounded-full border border-divide/80 bg-black/20 px-2 text-[10px] text-muted-foreground transition-smooth hover:bg-black/40">
+                <Settings className="h-3 w-3" />
+                <span>Settings</span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-72 glass-panel border-divide/60 text-xs">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold text-primary-foreground shadow-sm"
+                    style={{ backgroundColor: color }}
+                  >
+                    {CATEGORY_LABELS[category].charAt(0)}
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-foreground/90">
+                      {CATEGORY_LABELS[category]} Settings
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">
+                      Configure how this category behaves in your exit strategy.
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-3 pt-1">
+                <div className="space-y-1">
+                  <Label className="text-[11px] text-muted-foreground/90">
+                    Risk weighting for N/4 exits
+                  </Label>
+                  <Slider
+                    defaultValue={['60']}
+                    min={20}
+                    max={120}
+                    step={5}
+                    className="py-1"
+                  />
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>More conservative</span>
+                    <span>More aggressive</span>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-dashed border-divide/60 bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+                  Category-level settings will shape the default N/4 ladders for new positions added to this
+                  bucket. You can still customize each ladder at the asset level.
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
     );
   };
 
 
   // Standard holding row for non-stablecoin categories - WITH lock removed, Edit/Delete only
-  // Column order: Symbol | Value | Share | Price | Tokens | Avg Cost | 24H | Exit | Notes | Actions
   const renderHoldingRow = (holding: Holding, category: Category) => {
     const price = prices[holding.symbol]?.priceUsd ?? holding.avgCost ?? 0;
     const value = valueUsd(holding, price);
@@ -672,9 +720,8 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
     return (
       <div
         key={holding.id}
-        className="group grid grid-cols-[1.6fr_1.2fr_0.8fr_1fr_1fr_1fr_0.8fr_1.2fr_1.4fr_auto] items-center gap-2 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth"
+        className="group grid grid-cols-[1.6fr_1fr_1fr_1.2fr_1fr_0.8fr_1.2fr_1.4fr_auto] items-center gap-2 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth"
       >
-        {/* 1. Symbol */}
         <div className="flex items-center gap-3">
           {logos[holding.symbol] ? (
             <img
@@ -682,6 +729,7 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
               alt={holding.symbol}
               className="h-8 w-8 rounded-full object-contain shadow-md"
               onError={(e) => {
+                // Fallback to letter badge on error
                 const target = e.currentTarget;
                 target.style.display = 'none';
                 const fallback = target.nextElementSibling as HTMLElement;
@@ -698,78 +746,110 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           >
             {holding.symbol.charAt(0).toUpperCase()}
           </div>
-          <span className="text-base font-semibold text-foreground">{holding.symbol}</span>
-        </div>
-
-        {/* 2. Value */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/90">{formatUsd(value)}</div>
-        </div>
-
-        {/* 3. Share */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/80">{formatPercent(posShare, 1)}</div>
-        </div>
-
-        {/* 4. Price */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/90">{formatPrice(price)}</div>
-        </div>
-
-        {/* 5. Tokens */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/90">{formatTokens(holding.tokensOwned)}</div>
-        </div>
-
-        {/* 6. Avg Cost */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/90">
-            {holding.avgCost ? formatPrice(holding.avgCost) : '—'}
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-base font-semibold text-foreground">{holding.symbol}</span>
+            </div>
           </div>
         </div>
 
-        {/* 7. 24H % Change */}
+        {/* Price - always render cell, show content only if not hidden */}
         <div className="text-sm">
-          <div
-            className={cn(
-              'font-mono',
-              percentChange > 0 ? 'text-emerald-400' : percentChange < 0 ? 'text-rose-400' : 'text-muted-foreground'
-            )}
-          >
-            {percentChange > 0 ? '+' : ''}
-            {percentChange.toFixed(2)}%
-          </div>
-        </div>
-
-        {/* 8. Exit */}
-        <div className="flex items-center justify-start">
-          {renderExitLadderCompact(holding, category)}
-        </div>
-
-        {/* 9. Notes - inline editable */}
-        <div 
-          className="text-[11px] cursor-pointer rounded px-1 -mx-1 hover:bg-white/5"
-          onClick={() => editingNotesId !== holding.id && startNotesEdit(holding)}
-        >
-          {editingNotesId === holding.id ? (
-            <input
-              ref={notesInputRef}
-              type="text"
-              value={notesInputValue}
-              onChange={(e) => setNotesInputValue(e.target.value)}
-              onKeyDown={(e) => handleNotesKeyDown(e, holding.id)}
-              onBlur={() => handleNotesBlur(holding.id)}
-              className="w-full bg-transparent text-foreground/90 outline-none border-b border-primary/50 focus:border-primary py-0.5"
-              placeholder="Add note..."
-            />
-          ) : (
-            <span className={holding.notes ? 'text-muted-foreground/90' : 'text-muted-foreground/50 italic'}>
-              {holding.notes || 'No notes yet'}
-            </span>
+          {!isColumnHidden('price') && (
+            <>
+              <div className="font-mono text-foreground/90">{formatPrice(price)}</div>
+              <div className="text-[11px] text-muted-foreground/80">
+                Live price
+              </div>
+            </>
           )}
         </div>
 
-        {/* 10. Actions - fixed utility column, always visible */}
+        {/* Tokens - always render cell */}
+        <div className="text-sm">
+          {!isColumnHidden('tokens') && (
+            <>
+              <div className="font-mono text-foreground/90">{formatTokens(holding.tokensOwned)}</div>
+              <div className="text-[11px] text-muted-foreground/80">Tokens</div>
+            </>
+          )}
+        </div>
+
+        {/* Value - always render cell */}
+        <div className="text-sm">
+          {!isColumnHidden('value') && (
+            <>
+              <div className="font-mono text-foreground/90">{formatUsd(value)}</div>
+              <div className="text-[11px] text-muted-foreground/80">
+                {formatPercent(posShare, 1)} of portfolio
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Avg Cost - always render cell */}
+        <div className="text-sm">
+          {!isColumnHidden('avgCost') && (
+            <>
+              <div className="font-mono text-foreground/90">
+                {holding.avgCost ? formatPrice(holding.avgCost) : '—'}
+              </div>
+              <div className="text-[11px] text-muted-foreground/80">
+                {holding.avgCost ? 'Average cost' : 'Using live price'}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* 24H % Change - always render cell */}
+        <div className="text-sm">
+          {!isColumnHidden('%change') && (
+            <div
+              className={cn(
+                'font-mono',
+                percentChange > 0 ? 'text-emerald-400' : percentChange < 0 ? 'text-rose-400' : 'text-muted-foreground'
+              )}
+            >
+              {percentChange > 0 ? '+' : ''}
+              {percentChange.toFixed(2)}%
+            </div>
+          )}
+        </div>
+
+        {/* Exit Ladder - always render cell */}
+        <div className="flex items-center justify-start">
+          {!isColumnHidden('ladder') && renderExitLadderCompact(holding, category)}
+        </div>
+
+        {/* Notes - inline editable */}
+        <div 
+          className={cn(
+            "text-[11px] cursor-pointer rounded px-1 -mx-1",
+            !isColumnHidden('notes') && "hover:bg-white/5"
+          )}
+          onClick={() => !isColumnHidden('notes') && editingNotesId !== holding.id && startNotesEdit(holding)}
+        >
+          {!isColumnHidden('notes') && (
+            editingNotesId === holding.id ? (
+              <input
+                ref={notesInputRef}
+                type="text"
+                value={notesInputValue}
+                onChange={(e) => setNotesInputValue(e.target.value)}
+                onKeyDown={(e) => handleNotesKeyDown(e, holding.id)}
+                onBlur={() => handleNotesBlur(holding.id)}
+                className="w-full bg-transparent text-foreground/90 outline-none border-b border-primary/50 focus:border-primary py-0.5"
+                placeholder="Add note..."
+              />
+            ) : (
+              <span className={holding.notes ? 'text-muted-foreground/90' : 'text-muted-foreground/50 italic'}>
+                {holding.notes || 'No notes yet'}
+              </span>
+            )
+          )}
+        </div>
+
+        {/* Actions - fixed utility column, always visible (not toggleable) */}
         <div className="flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           {/* Edit button - compact icon */}
           <button
@@ -796,19 +876,19 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
   };
 
 
-  // Stablecoin row - uses same column order as regular assets
-  // Column order: Symbol | Value | Share | Price | Tokens | Avg Cost | 24H | Exit | Notes | Actions
+  // Stablecoin row - NOW uses standard full column layout like other assets
   const renderStablecoinRow = (holding: Holding) => {
     const price = prices[holding.symbol]?.priceUsd ?? holding.avgCost ?? 1;
     const value = valueUsd(holding, price);
     const posShare = share(value, totals.totalValue);
+    const percentChange = 0;
 
     return (
       <div
         key={holding.id}
-        className="group grid grid-cols-[1.6fr_1.2fr_0.8fr_1fr_1fr_1fr_0.8fr_1.2fr_1.4fr_auto] items-center gap-2 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth"
+        className="group grid grid-cols-[1.6fr_1fr_1fr_1.2fr_1fr_0.8fr_1.2fr_1.4fr_auto] items-center gap-2 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth"
       >
-        {/* 1. Symbol */}
+        {/* Symbol */}
         <div className="flex items-center gap-3">
           {logos[holding.symbol] ? (
             <img
@@ -832,66 +912,85 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           >
             {holding.symbol.charAt(0).toUpperCase()}
           </div>
-          <span className="text-base font-semibold text-foreground">{holding.symbol}</span>
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-base font-semibold text-foreground">{holding.symbol}</span>
+            </div>
+          </div>
         </div>
 
-        {/* 2. Value */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/90">{formatUsd(value)}</div>
-        </div>
+        {/* Price */}
+        {!isColumnHidden('price') && (
+          <div className="text-sm">
+            <div className="font-mono text-foreground/90">{formatPrice(price)}</div>
+            <div className="text-[11px] text-muted-foreground/80">Live price</div>
+          </div>
+        )}
 
-        {/* 3. Share */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/80">{formatPercent(posShare, 1)}</div>
-        </div>
+        {/* Tokens */}
+        {!isColumnHidden('tokens') && (
+          <div className="text-sm">
+            <div className="font-mono text-foreground/90">{formatTokens(holding.tokensOwned)}</div>
+            <div className="text-[11px] text-muted-foreground/80">Tokens</div>
+          </div>
+        )}
 
-        {/* 4. Price */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/90">{formatPrice(price)}</div>
-        </div>
+        {/* Value */}
+        {!isColumnHidden('value') && (
+          <div className="text-sm">
+            <div className="font-mono text-foreground/90">{formatUsd(value)}</div>
+            <div className="text-[11px] text-muted-foreground/80">
+              {formatPercent(posShare, 1)} of portfolio
+            </div>
+          </div>
+        )}
 
-        {/* 5. Tokens */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/90">{formatTokens(holding.tokensOwned)}</div>
-        </div>
+        {/* Avg Cost - show dash for stablecoins */}
+        {!isColumnHidden('avgCost') && (
+          <div className="text-sm">
+            <div className="font-mono text-muted-foreground">—</div>
+            <div className="text-[11px] text-muted-foreground/80">N/A</div>
+          </div>
+        )}
 
-        {/* 6. Avg Cost - dash for stablecoins */}
-        <div className="text-sm">
-          <div className="font-mono text-muted-foreground">—</div>
-        </div>
+        {/* 24h Change - show dash for stablecoins */}
+        {!isColumnHidden('%change') && (
+          <div className="text-sm">
+            <div className="font-mono text-muted-foreground">—</div>
+          </div>
+        )}
 
-        {/* 7. 24h Change - dash for stablecoins */}
-        <div className="text-sm">
-          <div className="font-mono text-muted-foreground">—</div>
-        </div>
+        {/* Exit Ladder - show "No plan" for stablecoins */}
+        {!isColumnHidden('ladder') && (
+          <div className="text-xs">
+            <div className="text-muted-foreground/60">No plan</div>
+          </div>
+        )}
 
-        {/* 8. Exit - No plan for stablecoins */}
-        <div className="text-xs">
-          <div className="text-muted-foreground/60">No plan</div>
-        </div>
-
-        {/* 9. Notes - inline editable */}
-        <div 
-          className="text-[11px] cursor-pointer rounded px-1 -mx-1 hover:bg-white/5"
-          onClick={() => editingNotesId !== holding.id && startNotesEdit(holding)}
-        >
-          {editingNotesId === holding.id ? (
-            <input
-              ref={notesInputRef}
-              type="text"
-              value={notesInputValue}
-              onChange={(e) => setNotesInputValue(e.target.value)}
-              onKeyDown={(e) => handleNotesKeyDown(e, holding.id)}
-              onBlur={() => handleNotesBlur(holding.id)}
-              className="w-full bg-transparent text-foreground/90 outline-none border-b border-primary/50 focus:border-primary py-0.5"
-              placeholder="Add note..."
-            />
-          ) : (
-            <span className={holding.notes ? 'text-muted-foreground/90' : 'text-muted-foreground/50 italic'}>
-              {holding.notes || 'No notes yet'}
-            </span>
-          )}
-        </div>
+        {/* Notes - inline editable */}
+        {!isColumnHidden('notes') && (
+          <div 
+            className="text-[11px] cursor-pointer rounded px-1 -mx-1 hover:bg-white/5"
+            onClick={() => editingNotesId !== holding.id && startNotesEdit(holding)}
+          >
+            {editingNotesId === holding.id ? (
+              <input
+                ref={notesInputRef}
+                type="text"
+                value={notesInputValue}
+                onChange={(e) => setNotesInputValue(e.target.value)}
+                onKeyDown={(e) => handleNotesKeyDown(e, holding.id)}
+                onBlur={() => handleNotesBlur(holding.id)}
+                className="w-full bg-transparent text-foreground/90 outline-none border-b border-primary/50 focus:border-primary py-0.5"
+                placeholder="Add note..."
+              />
+            ) : (
+              <span className={holding.notes ? 'text-muted-foreground/90' : 'text-muted-foreground/50 italic'}>
+                {holding.notes || 'No notes yet'}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Actions - fixed utility column, always visible (not toggleable) */}
         <div className="flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -918,19 +1017,18 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
   };
 
 
-  // Cash Balance Row - uses same column order as regular assets
-  // Column order: Symbol | Value | Share | Price | Tokens | Avg Cost | 24H | Exit | Notes | Actions
+  // Cash Balance Row - skinny, grid-aligned, big green value in VALUE column
   const renderCashBalanceRow = () => {
     const cashShareValue = cashShare;
 
     return (
       <div 
-        className="grid grid-cols-[1.6fr_1.2fr_0.8fr_1fr_1fr_1fr_0.8fr_1.2fr_1.4fr_auto] items-center gap-2 rounded-lg border border-teal-500/20 px-3 py-2"
+        className="grid grid-cols-[1.6fr_1fr_1fr_1.2fr_1fr_0.8fr_1.2fr_1.4fr_auto] items-center gap-2 rounded-lg border border-teal-500/20 px-3 py-2"
         style={{
           background: 'linear-gradient(135deg, rgba(20, 184, 166, 0.06) 0%, rgba(15, 118, 110, 0.02) 100%)',
         }}
       >
-        {/* 1. Symbol - Cash Balance label with icon */}
+        {/* Column 1: Symbol - Cash Balance label with icon */}
         <div className="flex items-center gap-3">
           <div 
             className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full shadow-md"
@@ -959,8 +1057,14 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           </div>
         </div>
 
-        {/* 2. Value - editable inline */}
-        <div className="flex items-center gap-1">
+        {/* Column 2: Price - empty for cash */}
+        <div></div>
+
+        {/* Column 3: Tokens - empty for cash */}
+        <div></div>
+
+        {/* Column 4: Value - editable inline + share % */}
+        <div className="flex items-center gap-2">
           {isEditingCash ? (
             <div className="flex items-center">
               <span className="text-lg font-bold text-emerald-400 mr-0.5">$</span>
@@ -972,7 +1076,7 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
                 onKeyDown={handleCashKeyDown}
                 onBlur={handleCashBlur}
                 autoFocus
-                className="w-20 bg-transparent text-lg font-bold text-emerald-400 outline-none border-b-2 border-emerald-400/50 focus:border-emerald-400 transition-colors"
+                className="w-24 bg-transparent text-lg font-bold text-emerald-400 outline-none border-b-2 border-emerald-400/50 focus:border-emerald-400 transition-colors"
                 placeholder="0"
               />
               {cashSaveStatus === 'saving' && (
@@ -985,7 +1089,7 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           ) : (
             <button
               onClick={startCashEdit}
-              className="group flex items-center gap-1 rounded-md px-1 py-0.5 hover:bg-white/5 transition-colors cursor-text"
+              className="group flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-white/5 transition-colors cursor-text"
             >
               <span className="text-lg font-bold text-emerald-400 group-hover:underline group-hover:decoration-emerald-400/40 group-hover:underline-offset-2 transition-all">
                 {formatCashDisplay(cash)}
@@ -993,103 +1097,109 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
               <Pencil className="h-3 w-3 text-emerald-400/40 opacity-0 group-hover:opacity-100 transition-opacity" />
             </button>
           )}
+          <span className="text-[11px] text-muted-foreground/60 whitespace-nowrap">
+            {formatPercent(cashShareValue, 1)} of portfolio
+          </span>
         </div>
 
-        {/* 3. Share */}
-        <div className="text-sm">
-          <span className="font-mono text-foreground/80">{formatPercent(cashShareValue, 1)}</span>
-        </div>
-
-        {/* 4. Price - empty for cash */}
+        {/* Column 5: Avg Cost - empty */}
         <div></div>
 
-        {/* 5. Tokens - empty for cash */}
+        {/* Column 6: 24H - empty */}
         <div></div>
 
-        {/* 6. Avg Cost - empty for cash */}
+        {/* Column 7: Exit Ladder - empty */}
         <div></div>
 
-        {/* 7. 24H - empty for cash */}
-        <div></div>
-
-        {/* 8. Exit - empty for cash */}
-        <div></div>
-
-        {/* 9. Notes - Cash supports inline notes editing */}
-        <div 
-          className="text-[11px] cursor-pointer rounded px-1 -mx-1 hover:bg-white/5"
-          onClick={() => !isEditingCashNotes && startCashNotesEdit()}
-        >
-          {isEditingCashNotes ? (
-            <input
-              ref={cashNotesInputRef}
-              type="text"
-              value={cashNotesInput}
-              onChange={(e) => setCashNotesInput(e.target.value)}
-              onKeyDown={handleCashNotesKeyDown}
-              onBlur={handleCashNotesBlur}
-              className="w-full bg-transparent text-foreground/90 outline-none border-b border-primary/50 focus:border-primary py-0.5"
-              placeholder="Add note..."
-            />
-          ) : (
-            <span className={cashNotes ? 'text-muted-foreground/90' : 'text-muted-foreground/50 italic'}>
-              {cashNotes || 'No notes yet'}
-            </span>
-          )}
-        </div>
-
-        {/* 10. Actions - empty for Cash row */}
+        {/* Column 8: Actions - empty */}
         <div></div>
       </div>
     );
   };
 
-  // ColumnToggleMenu removed - all columns visible by default for now
+  const ColumnToggleMenu = () => {
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger>
+          <button
+            className="gradient-outline-btn text-sm inline-flex items-center gap-2"
+            style={{ transition: 'all 150ms ease-out' }}
+            type="button"
+          >
+            <Settings className="h-4 w-4" />
+            <span>Columns</span>
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-52 glass-panel border-divide/60 text-xs">
+          <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Visible columns
+          </div>
+          {[
+            { id: 'price', label: 'Price' },
+            { id: 'tokens', label: 'Tokens' },
+            { id: 'value', label: 'Value' },
+            { id: 'share', label: 'Share' },
+            { id: 'avgCost', label: 'Avg Cost' },
+            { id: '%change', label: '% Change' },
+            { id: 'ladder', label: 'Exit Ladder' },
+            { id: 'notes', label: 'Notes' }
+            // Actions is NOT toggleable - it's a fixed utility column
+          ].map(col => (
+            <DropdownMenuCheckboxItem
+              key={col.id}
+              checked={!hiddenColumns.has(col.id)}
+              onClick={() => toggleColumn(col.id)}
+              className="cursor-pointer text-xs"
+            >
+              {col.label}
+            </DropdownMenuCheckboxItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  };
 
-  const totalPositions = Object.values(groups).reduce((acc, arr) => acc + (arr?.length ?? 0), 0);
 
   return (
     <Card className="glass-panel border-divide/80 shadow-[0_22px_60px_rgba(0,0,0,0.75)]">
       <div className="flex items-center justify-between px-4 pb-2 pt-3">
-        {/* Left side: POSITIONS label + count badge + info icon */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
             Positions
           </span>
           <Badge
             variant="outline"
-            className="border-none bg-black/40 px-2 py-0.5 text-[11px] font-medium text-foreground/80"
+            className="border-none bg-black/30 px-1.5 py-0 text-[10px] text-muted-foreground"
           >
-            {totalPositions} {totalPositions === 1 ? 'position' : 'positions'}
+            {Object.values(groups).reduce((acc, arr) => acc + (arr?.length ?? 0), 0)} total
           </Badge>
-          {/* Info tooltip - positioned after count badge, applies to Positions section */}
+        </div>
+        <div className="flex items-center gap-2">
           <Popover>
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className="flex h-6 w-6 items-center justify-center rounded-full border border-divide/80 bg-black/20 text-muted-foreground transition-smooth hover:bg-black/40 hover:text-foreground"
+                className="flex h-7 w-7 items-center justify-center rounded-full border border-divide/80 bg-black/20 text-muted-foreground transition-smooth hover:bg-black/40 hover:text-foreground"
               >
-                <Info className="h-3 w-3" />
+                <Info className="h-3.5 w-3.5" />
               </button>
             </PopoverTrigger>
             <PopoverContent 
               className="w-80 glass-panel border-divide/60 text-xs"
             >
               <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                How this table works
+                Portfolio view
               </div>
               <p className="mb-2 text-[11px] text-muted-foreground">
-                This table shows your portfolio positions grouped by category (Blue Chip, Mid Cap, Low Cap, etc.) based on market cap. Positions are sorted by value within each category.
+                This table focuses on the essentials: symbol, price, size, value, and how each position fits into your
+                bigger picture. Use the Columns menu to hide details you don&apos;t need right now.
               </p>
               <p className="text-[11px] text-muted-foreground">
                 Exit ladders are configured from the Exit Strategy tab and reflected here once set.
               </p>
             </PopoverContent>
           </Popover>
-        </div>
-        
-        {/* Right side: Add Asset button only (Columns button removed) */}
-        <div className="flex items-center gap-2">
+
           {/* Add Asset CTA - Purple filled pill button */}
           {onAddAsset && (
             <button
@@ -1101,6 +1211,8 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
               <span>Add Asset</span>
             </button>
           )}
+
+          <ColumnToggleMenu />
         </div>
       </div>
 
@@ -1139,17 +1251,16 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
                     {/* Column headers: only show if there are stablecoin assets (below cash row) */}
                     {isCashCategory && hasStablecoinAssets && (
                       <div className="flex items-center justify-between px-1 mt-3 mb-1">
-                        <div className="grid w-full grid-cols-[1.6fr_1.2fr_0.8fr_1fr_1fr_1fr_0.8fr_1.2fr_1.4fr_auto] gap-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">
+                        <div className="grid w-full grid-cols-[1.6fr_1fr_1fr_1.2fr_1fr_0.8fr_1.2fr_1.4fr_auto] gap-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">
                           <span className="pl-10">Symbol</span>
-                          <span>Value</span>
-                          <span>Share</span>
-                          <span>Price</span>
-                          <span>Tokens</span>
-                          <span>Avg Cost</span>
-                          <span>24h</span>
-                          <span>Exit</span>
-                          <span>Notes</span>
-                          {/* Actions column - no header label */}
+                          {!isColumnHidden('price') && <span>Price</span>}
+                          {!isColumnHidden('tokens') && <span>Tokens</span>}
+                          {!isColumnHidden('value') && <span>Value</span>}
+                          {!isColumnHidden('avgCost') && <span>Avg Cost</span>}
+                          {!isColumnHidden('%change') && <span>24h</span>}
+                          {!isColumnHidden('ladder') && <span>Exit</span>}
+                          {!isColumnHidden('notes') && <span>Notes</span>}
+                          {/* Actions column - no header label, fixed utility column */}
                           <span></span>
                         </div>
                       </div>
@@ -1158,17 +1269,16 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
                     {/* For non-stablecoin categories: always show headers */}
                     {!isCashCategory && (
                       <div className="flex items-center justify-between px-1 mt-2 mb-1">
-                        <div className="grid w-full grid-cols-[1.6fr_1.2fr_0.8fr_1fr_1fr_1fr_0.8fr_1.2fr_1.4fr_auto] gap-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">
+                        <div className="grid w-full grid-cols-[1.6fr_1fr_1fr_1.2fr_1fr_0.8fr_1.2fr_1.4fr_auto] gap-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">
                           <span className="pl-10">Symbol</span>
-                          <span>Value</span>
-                          <span>Share</span>
-                          <span>Price</span>
-                          <span>Tokens</span>
-                          <span>Avg Cost</span>
-                          <span>24h</span>
-                          <span>Exit</span>
-                          <span>Notes</span>
-                          {/* Actions column - no header label */}
+                          {!isColumnHidden('price') && <span>Price</span>}
+                          {!isColumnHidden('tokens') && <span>Tokens</span>}
+                          {!isColumnHidden('value') && <span>Value</span>}
+                          {!isColumnHidden('avgCost') && <span>Avg Cost</span>}
+                          {!isColumnHidden('%change') && <span>24h</span>}
+                          {!isColumnHidden('ladder') && <span>Exit</span>}
+                          {!isColumnHidden('notes') && <span>Notes</span>}
+                          {/* Actions column - no header label, fixed utility column */}
                           <span></span>
                         </div>
                       </div>

@@ -318,6 +318,8 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
               exitPlans={exitPlans}
               cash={store.cash}
               onUpdateCash={store.setCash}
+              cashNotes={store.cashNotes}
+              onUpdateCashNotes={store.setCashNotes}
               onUpdateNotes={handleUpdateNotes}
             />
           </div>

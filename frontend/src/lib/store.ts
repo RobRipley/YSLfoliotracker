@@ -153,6 +153,9 @@ export function usePortfolioStore(principal?: string | null) {
   // Cash accessor
   const cash = useMemo(() => store.cash, [store.cash, version]);
   
+  // Cash notes accessor
+  const cashNotes = useMemo(() => store.cashNotes || '', [store.cashNotes, version]);
+  
   // Transactions accessor
   const transactions = useMemo(() => store.transactions, [store.transactions, version]);
   
@@ -249,6 +252,13 @@ export function usePortfolioStore(principal?: string | null) {
     forceUpdate();
   }, [forceUpdate]);
 
+  // Update cash notes
+  const setCashNotes = useCallback((notes: string) => {
+    globalStore.cashNotes = notes;
+    saveStore(globalStore);
+    forceUpdate();
+  }, [forceUpdate]);
+
   // Update settings
   const updateSettings = useCallback((newSettings: Partial<Settings>) => {
     Object.assign(globalStore.settings, newSettings);
@@ -293,6 +303,7 @@ export function usePortfolioStore(principal?: string | null) {
     holdings,
     settings,
     cash,
+    cashNotes,
     transactions,
     snapshots,
     isMockDataCleared: mockDataCleared,
@@ -305,6 +316,7 @@ export function usePortfolioStore(principal?: string | null) {
     recordTransaction,
     recordSnapshot,
     setCash,
+    setCashNotes,
     updateSettings,
     getCategory,
     clearMockData,
