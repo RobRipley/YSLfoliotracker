@@ -5884,3 +5884,132 @@ curl https://ysl-price-cache.robertripleyjunior.workers.dev/health
 ```
 
 ---
+
+
+---
+
+## Session 24 - January 28, 2026
+
+### Context Recovery & Task Analysis
+
+This session was to recover from a lost chat and analyze the current state against the prompt requirements for "Portfolio table polish".
+
+### Original Prompt Requirements Analysis
+
+**Prompt:** "Portfolio table polish (column defaults, header UX, cash notes, remove per-category controls)"
+
+| Requirement | Status | Notes |
+|-------------|--------|-------|
+| **A) Show ALL columns by default** | ✅ DONE | Line ~184 in CompactHoldingsTable.tsx: `const hiddenColumns = useMemo(() => new Set<string>(), []);` - empty set means all columns visible |
+| **A) Remove/hide "Columns" button** | ✅ DONE | No ColumnToggleMenu component being rendered. Only "Add Asset" button in header |
+| **B) Column order: Symbol, Value, Share, Price, Tokens, Avg Cost, 24H, Exit, Notes** | ✅ DONE | Grid columns in renderHoldingRow follow this order |
+| **C) "POSITIONS" header with readable count badge** | ✅ DONE | Badge shows "X positions" with bg-black/40, text-[11px], font-medium styling |
+| **D) Info tooltip after count badge** | ✅ DONE | Info icon is positioned after the count badge in the header |
+| **E) Cash Balance row: add Notes field** | ⚠️ PARTIAL | Cash row has a Notes cell but shows "No notes yet" and is NOT editable (empty div) |
+| **F) Remove per-category Settings/info controls** | ✅ DONE | renderCategoryHeader has comment "Per-category controls removed per requirements" |
+
+### Detailed Findings
+
+#### A) Columns - Default View Only ✅ COMPLETE
+The `hiddenColumns` state is initialized as an empty Set, meaning all columns are visible by default:
+```typescript
+const hiddenColumns = useMemo(() => new Set<string>(), []);
+```
+
+The "Columns" button/dropdown has been completely removed - only "Add Asset" button appears in the header.
+
+#### B) Column Order ✅ COMPLETE
+The grid template in `renderHoldingRow` uses:
+```typescript
+grid-cols-[1.6fr_1.2fr_0.8fr_1fr_1fr_1fr_0.8fr_1.2fr_1.4fr_auto]
+```
+Which maps to: Symbol | Value | Share | Price | Tokens | Avg Cost | 24H | Exit | Notes | Actions
+
+#### C) Positions Header ✅ COMPLETE
+Current implementation shows:
+- "Positions" label (uppercase, tracking, muted)
+- Badge with "X positions" text
+- Info tooltip button
+
+#### D) Info Tooltip Placement ✅ COMPLETE
+The info icon is already positioned after the count badge, not near "Add Asset":
+```tsx
+<div className="flex items-center gap-3">
+  <span>Positions</span>
+  <Badge>...</Badge>
+  <Popover>...</Popover>  {/* Info icon here */}
+</div>
+```
+
+#### E) Cash Balance Notes ⚠️ NEEDS WORK
+The Cash Balance row renders a Notes cell but it's not functional:
+```tsx
+{/* 9. Notes - Cash supports notes */}
+<div className="text-[11px] text-muted-foreground/50 italic">
+  No notes yet
+</div>
+```
+
+**What's needed:**
+1. Add state for cash notes (similar to `editingNotesId` for holdings)
+2. Add inline editing capability for cash notes
+3. Persist cash notes (either in store or localStorage)
+
+#### F) Per-Category Controls ✅ COMPLETE
+The `renderCategoryHeader` function has a comment indicating removal:
+```tsx
+{/* Per-category controls removed per requirements */}
+```
+
+### Work Remaining
+
+**Only one task is incomplete:**
+
+1. **Cash Balance Notes** - The Cash row needs functional notes editing like regular holdings
+
+**Implementation approach:**
+- Add `cashNotes` state to the store (dataModel.ts)
+- Add `setCashNotes` method to persist
+- Make the Notes cell in `renderCashBalanceRow` editable (similar pattern to `renderHoldingRow`)
+
+### Files to Modify
+
+| File | Change Needed |
+|------|--------------|
+| `frontend/src/lib/dataModel.ts` | Add `cashNotes: string` to store, add setter |
+| `frontend/src/components/CompactHoldingsTable.tsx` | Make cash notes editable |
+| `frontend/src/components/PortfolioDashboard.tsx` | Pass cashNotes and handler to CompactHoldingsTable |
+
+### Current Deployment Status
+
+| Component | Canister ID | Status |
+|-----------|-------------|--------|
+| Frontend (local) | `ulvla-h7777-77774-qaacq-cai` | ✅ Running |
+| Backend (local) | `uxrrr-q7777-77774-qaaaq-cai` | ✅ Running |
+| Frontend (IC mainnet) | `t5qhm-myaaa-aaaas-qdwya-cai` | ✅ Live |
+| Backend (IC mainnet) | `ranje-7qaaa-aaaas-qdwxq-cai` | ✅ Live |
+| Cloudflare Worker | ysl-price-cache.robertripleyjunior.workers.dev | ✅ Live |
+| GitHub | RobRipley/YSLfoliotracker | ✅ Pushed |
+
+### Quick Start Commands
+
+```bash
+# Navigate to project
+cd /Users/robertripley/coding/YSLfolioTracker
+
+# Set npm path (nvm)
+export PATH="/Users/robertripley/.nvm/versions/node/v20.20.0/bin:$PATH"
+
+# Start local replica (if not running)
+dfx start --background
+
+# Build and deploy locally
+cd frontend && npm run build && cd ..
+dfx canister install frontend --mode reinstall -y
+
+# Deploy to IC mainnet
+dfx deploy frontend --network ic
+```
+
+---
+
