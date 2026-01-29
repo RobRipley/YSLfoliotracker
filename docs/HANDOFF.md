@@ -5788,3 +5788,99 @@ dfx deploy frontend --network ic
 ```
 
 ---
+
+
+---
+
+## Session 23 - January 29, 2026
+
+### Context Recovery Session
+
+This session was to review what work was done in the previous chat "Reviewing yslfoliotracker handoff documentation" that was lost.
+
+### Verification: Global Cushion Toggle ✅ WORKING
+
+The previous chat noted that the global cushion toggle was "IN PROGRESS" with issues - specifically that "target prices weren't updating when toggled." 
+
+**Verified working in this session:**
+- Toggle is visible in header: "Plan basis ☑ +10% cushion (i)"
+- When toggled ON: BTC Plan Basis = $98,289.40 (= $89,354 × 1.1)
+- When toggled OFF: BTC Plan Basis = $89,354.00 (raw avg cost)
+- Exit ladder target prices recalculate correctly on toggle
+- Toggle state persists in localStorage
+
+**The fix was already committed:**
+- `df0fddc` - Implement global +10% cushion toggle for Exit Strategy
+- `29536cf` - Update HANDOFF.md - mark global cushion toggle as complete
+
+### Current Application State
+
+**Working Features:**
+- ✅ Portfolio page with categories, donut chart, live prices
+- ✅ Exit Strategy with global +10% cushion toggle
+- ✅ Cloudflare Worker price cache (499 coins, 5-min refresh)
+- ✅ IC Mainnet deployment (https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io/)
+- ✅ Internet Identity authentication
+- ✅ All CRUD operations (Add, Edit, Delete assets)
+- ✅ Inline Notes editing
+- ✅ Actions as fixed utility column
+- ✅ Cash & Stablecoins category
+- ✅ Price categorization (Blue Chip ≥$10B, Mid Cap ≥$1B, Low Cap ≥$10M, Micro Cap <$10M)
+
+**Local Development:**
+- Frontend: `ulvla-h7777-77774-qaacq-cai`
+- Backend: `uxrrr-q7777-77774-qaaaq-cai`
+- URL: http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
+
+**IC Mainnet:**
+- Frontend: `t5qhm-myaaa-aaaas-qdwya-cai`
+- Backend: `ranje-7qaaa-aaaas-qdwxq-cai`
+- URL: https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io/
+
+### Git Status
+
+All work is committed and pushed:
+```
+29536cf Update HANDOFF.md - mark global cushion toggle as complete
+df0fddc Implement global +10% cushion toggle for Exit Strategy
+0091fe3 Fix Exit Strategy blank-out race condition
+4eccdea Update HANDOFF.md with Session 22 changes
+bb4e246 Make Actions a fixed utility column + inline-editable Notes
+```
+
+### Remaining Tasks (from spec.md review)
+
+**LOW Priority:**
+1. 24h % change data (currently hardcoded to 0) - needs to wire up `change24h` from price API
+2. Admin Panel blank screen issue - needs debugging
+3. R2 bucket for historical snapshots - infrastructure ready but R2 not enabled on account
+
+**Nice to Have:**
+4. "Nearest Exits" widget for Portfolio page
+5. Autocomplete for Add Asset modal
+6. Performance tracking over time (needs R2 daily snapshots)
+
+### Quick Start Commands
+
+```bash
+# Navigate to project
+cd /Users/robertripley/coding/YSLfolioTracker
+
+# Set npm path (nvm)
+export PATH="/Users/robertripley/.nvm/versions/node/v20.20.0/bin:$PATH"
+
+# Start local replica (if not running)
+dfx start --background
+
+# Build and deploy locally
+cd frontend && npm run build && cd ..
+dfx canister install frontend --mode reinstall -y
+
+# Deploy to IC mainnet
+dfx deploy frontend --network ic
+
+# Check Cloudflare Worker health
+curl https://ysl-price-cache.robertripleyjunior.workers.dev/health
+```
+
+---
