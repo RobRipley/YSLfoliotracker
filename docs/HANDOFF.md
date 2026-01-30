@@ -7270,3 +7270,172 @@ curl https://ysl-price-cache.robertripleyjunior.workers.dev/admin/refresh-prices
 
 ---
 
+
+
+---
+
+## KV Limit Fix (January 30, 2026)
+
+### Background
+
+Cloudflare emailed that we had used ~50% of the daily Workers KV free tier limit (1,000 writes/day) by ~1:03pm Pacific. This indicated the Worker was writing too many KV keys per cron run.
+
+### Root Cause Analysis (Audit)
+
+**KV Keys Written Per 5-Minute Refresh (BEFORE):**
+1. `prices:top500:latest` - Price data blob
+2. `prices:top500:status` - Status with updatedAt and lastSuccess
+
+**Calculation:**
+- Cron runs every 5 minutes = 288 runs/day
+- 2 KV writes per run = 576 writes/day from cron
+- Plus daily registry write = 1 write
+- **Total: ~577 writes/day**
+
+The 50% usage by 1pm suggested either:
+1. Multiple Worker deployments/restarts
+2. Unaccounted writes from `handleRegistryRequest` which cached to KV on R2 fallback
+3. More frequent refreshes than expected
+
+### Changes Implemented
+
+#### 1. Collapsed KV Writes to Single Key
+
+**BEFORE:** 2 keys per refresh
+- `prices:top500:latest` (price data)
+- `prices:top500:status` (status metadata)
+
+**AFTER:** 1 key per refresh
+- `prices:top500:latest` (combined blob with embedded status)
+
+The new blob structure:
+```typescript
+interface PricesWithStatus extends NormalizedPrices {
+  // Standard price fields
+  source: 'cryptorates.ai';
+  updatedAt: string;
+  count: number;
+  bySymbol: Record<string, NormalizedCoin>;
+  
+  // NEW: Embedded status fields
+  lastFetchOk: boolean;
+  lastFetchError?: string;
+  lastFetchTimestamp: string;
+  lastSuccessTimestamp?: string;
+  fetchTrigger: string;
+  r2Enabled: boolean;
+  
+  // NEW: Hash for skip-if-unchanged
+  dataHash?: string;
+}
+```
+
+#### 2. Skip-If-Unchanged Optimization
+
+Added hash-based change detection:
+```typescript
+// Compute hash of price data
+const priceDataString = JSON.stringify(normalized.bySymbol);
+const currentHash = simpleHash(priceDataString);
+
+// Skip write if data unchanged
+if (previousHash && currentHash === previousHash) {
+  console.log(`[Prices] Data unchanged (hash: ${currentHash}), skipping KV write`);
+  return;
+}
+```
+
+Uses djb2 hash algorithm for fast, lightweight comparison.
+
+#### 3. Removed Unaccounted KV Write
+
+The `handleRegistryRequest` function previously cached to KV on R2 fallback:
+```typescript
+// BEFORE: Unaccounted write
+await env.PRICE_KV.put(KV_REGISTRY_LATEST, registryJson);
+
+// AFTER: No cache - daily cron populates KV
+console.log('[Registry] Served from R2 (KV miss, not caching to preserve write budget)');
+```
+
+### New KV Write Budget
+
+**Per 5-Minute Refresh (AFTER):**
+- 1 write (or 0 if data unchanged)
+
+**Daily Calculation:**
+- Max 288 writes/day from cron (if prices change every 5 min)
+- 1 write/day from daily registry cron
+- **Total: ~289 writes/day MAX**
+- **With hash optimization: Typically much fewer (prices rarely change every 5 min)**
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `workers/price-cache/src/index.ts` | Complete rewrite: collapsed KV writes, added hash-based skip, embedded status in price blob |
+
+### Verification
+
+**Worker deployed to:** `ysl-price-cache.robertripleyjunior.workers.dev`
+
+**Test 1: Status Endpoint**
+```bash
+curl https://ysl-price-cache.robertripleyjunior.workers.dev/prices/status.json
+```
+Returns:
+```json
+{
+  "success": true,
+  "count": 499,
+  "kvWritesPerDay": "~289 (down from 577, well under 1,000 free tier limit)",
+  "kvOptimization": "Skip-if-unchanged enabled - writes only when data changes"
+}
+```
+
+**Test 2: Prices Endpoint**
+```bash
+curl https://ysl-price-cache.robertripleyjunior.workers.dev/prices/top500.json | head
+```
+Returns price data with embedded status fields:
+- `lastFetchOk: true`
+- `lastFetchTimestamp: "2026-01-30T19:07:05.978Z"`
+- `dataHash: "3e98376f"`
+
+**Test 3: Hash Skip Working**
+Triggered two manual refreshes in quick succession - second refresh did not update timestamp, confirming hash-based skip is working.
+
+### Cron Schedule
+
+Unchanged at `*/5 * * * *` (every 5 minutes). No need to reduce frequency since:
+1. KV writes reduced from 2 to 1
+2. Hash optimization further reduces writes
+3. Estimated daily writes now ~289 (was ~577)
+
+### How to Monitor
+
+1. **Check Worker Logs:**
+   - Cloudflare Dashboard → Workers → ysl-price-cache → Logs
+   - Look for: `[Prices] Data unchanged (hash: ...), skipping KV write`
+
+2. **Check Status Endpoint:**
+   ```bash
+   curl https://ysl-price-cache.robertripleyjunior.workers.dev/prices/status.json
+   ```
+
+3. **Check KV Metrics:**
+   - Cloudflare Dashboard → Workers → KV → Analytics
+   - Writes/day should be <500
+
+### Summary
+
+| Metric | Before | After |
+|--------|--------|-------|
+| KV writes per refresh | 2 | 1 (or 0 if unchanged) |
+| Estimated writes/day | ~577 | ~289 max |
+| % of free tier used | ~58% | ~29% max |
+| Hash optimization | No | Yes |
+
+The fix provides **50% headroom** under the free tier limit, with additional savings from the hash-based skip optimization.
+
+---

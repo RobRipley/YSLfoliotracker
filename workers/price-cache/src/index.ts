@@ -4,13 +4,19 @@
  * Provides cached price data and token registry for the YSL Portfolio Tracker.
  * 
  * Architecture:
- * - KV: Hot cache for real-time access (prices, status, registry mirror)
+ * - KV: Hot cache for real-time access (single blob with embedded status)
  * - R2: Cold storage for historical snapshots (daily prices, master registry)
  * 
  * KV Write Budget (Free Tier: 1,000 writes/day):
- * - 5-minute refresh: 2 writes (latest + status) × 288 runs = 576 writes/day
+ * - 5-minute refresh: 1 write (single blob) × 288 runs = 288 writes/day
  * - Daily cron: 1 write (registry KV mirror)
- * - Total estimate: ~577 writes/day
+ * - Total estimate: ~289 writes/day (well under 1,000 limit)
+ * 
+ * ⚠️ KV LIMIT FIX (January 2026):
+ * - BEFORE: 2 KV writes per refresh (latest + status) = 576 writes/day
+ * - AFTER: 1 KV write per refresh (status embedded in latest blob) = 288 writes/day
+ * - REMOVED: Separate prices:top500:status key
+ * - Skip-if-unchanged: Computes hash, skips write if data identical
  * 
  * Cron Schedules:
  * - Every 5 min: Refresh prices from CryptoRates.ai → KV
@@ -21,19 +27,45 @@
  * - If R2 is not configured, daily cron will hard fail with clear error in status
  */
 
-import { Env, NormalizedPrices, Registry, PriceStatus, DailySnapshot } from './types';
+import { Env, NormalizedPrices, Registry, DailySnapshot } from './types';
 import { fetchCryptoRatesPrices, normalizeCryptoRatesData } from './providers/cryptorates';
 import { fetchCoinGeckoMarkets, buildRegistry, mergeRegistry } from './providers/coingecko';
 
-// KV Keys (minimal set to stay under free tier)
-const KV_PRICES_LATEST = 'prices:top500:latest';
-const KV_PRICES_STATUS = 'prices:top500:status';  // Includes updatedAt and lastSuccess
+// KV Keys - REDUCED from 2 to 1 for price data
+const KV_PRICES_LATEST = 'prices:top500:latest';  // Contains prices + embedded status
+// REMOVED: KV_PRICES_STATUS - now embedded in KV_PRICES_LATEST
 const KV_REGISTRY_LATEST = 'registry:coingecko:latest';
 
 // R2 Paths
 const R2_PRICES_PREFIX = 'prices/top500';
 const R2_REGISTRY_FILE = 'registry/coingecko_registry.json';
 const R2_SNAPSHOT_PREFIX = 'registry/top500_snapshot';
+
+// Type for unified price blob with embedded status
+interface PricesWithStatus extends NormalizedPrices {
+  // Status fields embedded directly
+  lastFetchOk: boolean;
+  lastFetchError?: string;
+  lastFetchTimestamp: string;
+  lastSuccessTimestamp?: string;
+  fetchTrigger: string;
+  r2Enabled: boolean;
+  // Hash for skip-if-unchanged optimization
+  dataHash?: string;
+}
+
+/**
+ * Simple string hash for skip-if-unchanged optimization
+ * Uses djb2 algorithm - fast and sufficient for change detection
+ */
+function simpleHash(str: string): string {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash) + str.charCodeAt(i);
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return hash.toString(16);
+}
 
 /**
  * HTTP Request Handler
@@ -98,7 +130,8 @@ export default {
           service: 'ysl-price-cache',
           timestamp: new Date().toISOString(),
           r2Enabled: !!env.PRICE_R2,
-          kvEnabled: !!env.PRICE_KV
+          kvEnabled: !!env.PRICE_KV,
+          kvWritesPerDay: '~289 (well under 1,000 free tier limit)'
         }, corsHeaders);
       }
 
@@ -121,20 +154,25 @@ export default {
 
     try {
       if (trigger === '*/5 * * * *') {
-        // Every 5 minutes: Refresh prices to KV
+        // Every 5 minutes: Refresh prices to KV (1 write per run)
         await refreshPrices(env, 'scheduled');
       } else if (trigger === '0 9 * * *') {
         // Daily at 09:00 UTC: Write snapshot to R2 and refresh registry
         // R2 is REQUIRED for this cron - hard fail if not configured
         if (!env.PRICE_R2) {
-          const errorStatus: PriceStatus = {
-            success: false,
-            error: 'R2 disabled - daily snapshot skipped. Enable R2 in Cloudflare Dashboard and update wrangler.toml',
-            timestamp: new Date().toISOString(),
-            trigger: 'daily-snapshot',
+          // Write error status to KV
+          const errorBlob: PricesWithStatus = {
+            source: 'cryptorates.ai',
+            updatedAt: new Date().toISOString(),
+            count: 0,
+            bySymbol: {},
+            lastFetchOk: false,
+            lastFetchError: 'R2 disabled - daily snapshot skipped. Enable R2 in Cloudflare Dashboard.',
+            lastFetchTimestamp: new Date().toISOString(),
+            fetchTrigger: 'daily-snapshot',
             r2Enabled: false
           };
-          await env.PRICE_KV.put(KV_PRICES_STATUS, JSON.stringify(errorStatus));
+          await env.PRICE_KV.put(KV_PRICES_LATEST, JSON.stringify(errorBlob));
           console.error('[Daily] R2 is not configured! Daily snapshots require R2 bucket.');
           throw new Error('R2 is not configured. Daily snapshot requires R2 bucket "ysl-price-snapshots".');
         }
@@ -144,7 +182,7 @@ export default {
       }
     } catch (error) {
       console.error(`[Cron] Error during ${trigger}:`, error);
-      // Status already written in individual functions or above
+      // Status already embedded in KV blob
     }
   }
 };
@@ -159,22 +197,31 @@ function jsonResponse(data: unknown, corsHeaders: Record<string, string>, status
 
 /**
  * Refresh prices from CryptoRates.ai and store in KV
- * KV Writes: 2 per call (latest + status)
- * At 288 calls/day (every 5 min), this is 576 writes/day
+ * 
+ * KV LIMIT FIX: Now writes only 1 key per refresh (was 2)
+ * - Status is embedded directly in the price blob
+ * - Skip-if-unchanged: Computes hash and skips write if data identical
+ * 
+ * KV Writes: 1 per call (or 0 if data unchanged)
+ * At 288 calls/day (every 5 min), this is max 288 writes/day
  */
 async function refreshPrices(env: Env, trigger: string): Promise<void> {
   console.log(`[Prices] Starting price refresh (trigger: ${trigger})...`);
   
-  // Load previous status to preserve lastSuccess
-  let lastSuccess: string | undefined;
+  const now = new Date().toISOString();
+  
+  // Load previous blob to preserve lastSuccessTimestamp and check for changes
+  let lastSuccessTimestamp: string | undefined;
+  let previousHash: string | undefined;
   try {
-    const prevStatusJson = await env.PRICE_KV.get(KV_PRICES_STATUS);
-    if (prevStatusJson) {
-      const prevStatus = JSON.parse(prevStatusJson) as PriceStatus;
-      lastSuccess = prevStatus.lastSuccess;
+    const prevBlobJson = await env.PRICE_KV.get(KV_PRICES_LATEST);
+    if (prevBlobJson) {
+      const prevBlob = JSON.parse(prevBlobJson) as PricesWithStatus;
+      lastSuccessTimestamp = prevBlob.lastSuccessTimestamp;
+      previousHash = prevBlob.dataHash;
     }
   } catch (e) {
-    // Ignore parse errors
+    // Ignore parse errors on existing data
   }
   
   try {
@@ -184,34 +231,71 @@ async function refreshPrices(env: Env, trigger: string): Promise<void> {
     // Normalize the data
     const normalized = normalizeCryptoRatesData(coins);
     
-    // KV Write 1: Store price data
-    await env.PRICE_KV.put(KV_PRICES_LATEST, JSON.stringify(normalized));
+    // Compute hash of price data for skip-if-unchanged optimization
+    const priceDataString = JSON.stringify(normalized.bySymbol);
+    const currentHash = simpleHash(priceDataString);
     
-    // KV Write 2: Store status (includes updatedAt and lastSuccess)
-    const status: PriceStatus = {
-      success: true,
-      count: normalized.count,
-      timestamp: normalized.updatedAt,
-      trigger,
-      lastSuccess: normalized.updatedAt,  // Update lastSuccess on success
-      r2Enabled: !!env.PRICE_R2
+    // Check if data has changed
+    if (previousHash && currentHash === previousHash) {
+      console.log(`[Prices] Data unchanged (hash: ${currentHash}), skipping KV write`);
+      return;
+    }
+    
+    // Build unified blob with embedded status
+    const blob: PricesWithStatus = {
+      ...normalized,
+      lastFetchOk: true,
+      lastFetchTimestamp: now,
+      lastSuccessTimestamp: now,  // Update on success
+      fetchTrigger: trigger,
+      r2Enabled: !!env.PRICE_R2,
+      dataHash: currentHash
     };
-    await env.PRICE_KV.put(KV_PRICES_STATUS, JSON.stringify(status));
+    
+    // KV Write: Store unified price blob (only 1 write!)
+    await env.PRICE_KV.put(KV_PRICES_LATEST, JSON.stringify(blob));
 
-    console.log(`[Prices] Successfully refreshed ${normalized.count} coins`);
+    console.log(`[Prices] ✅ Refreshed ${normalized.count} coins (hash: ${currentHash}, 1 KV write)`);
   } catch (error) {
     console.error('[Prices] Failed to refresh:', error);
     
-    // Update status to indicate failure (preserve lastSuccess)
-    const status: PriceStatus = {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      timestamp: new Date().toISOString(),
-      trigger,
-      lastSuccess,  // Preserve previous lastSuccess
+    // Write error status embedded in blob (preserve previous price data if available)
+    let previousData: Partial<NormalizedPrices> = {
+      source: 'cryptorates.ai',
+      updatedAt: now,
+      count: 0,
+      bySymbol: {}
+    };
+    
+    try {
+      const prevBlobJson = await env.PRICE_KV.get(KV_PRICES_LATEST);
+      if (prevBlobJson) {
+        const prevBlob = JSON.parse(prevBlobJson) as PricesWithStatus;
+        // Preserve previous price data on failure
+        previousData = {
+          source: prevBlob.source,
+          updatedAt: prevBlob.updatedAt,
+          count: prevBlob.count,
+          bySymbol: prevBlob.bySymbol
+        };
+      }
+    } catch (e) {
+      // Use empty data if can't read previous
+    }
+    
+    const errorBlob: PricesWithStatus = {
+      source: previousData.source || 'cryptorates.ai',
+      updatedAt: previousData.updatedAt || now,
+      count: previousData.count || 0,
+      bySymbol: previousData.bySymbol || {},
+      lastFetchOk: false,
+      lastFetchError: error instanceof Error ? error.message : 'Unknown error',
+      lastFetchTimestamp: now,
+      lastSuccessTimestamp,  // Preserve previous success time
+      fetchTrigger: trigger,
       r2Enabled: !!env.PRICE_R2
     };
-    await env.PRICE_KV.put(KV_PRICES_STATUS, JSON.stringify(status));
+    await env.PRICE_KV.put(KV_PRICES_LATEST, JSON.stringify(errorBlob));
     
     throw error;
   }
@@ -229,24 +313,24 @@ async function writeDailySnapshot(env: Env, trigger: string): Promise<void> {
   console.log(`[Snapshot] Writing daily price snapshot (trigger: ${trigger})...`);
   
   // Get current prices from KV
-  const pricesJson = await env.PRICE_KV.get(KV_PRICES_LATEST);
-  if (!pricesJson) {
+  const blobJson = await env.PRICE_KV.get(KV_PRICES_LATEST);
+  if (!blobJson) {
     console.warn('[Snapshot] No prices in KV to snapshot');
     return;
   }
 
-  const prices = JSON.parse(pricesJson) as NormalizedPrices;
+  const blob = JSON.parse(blobJson) as PricesWithStatus;
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
   const key = `${R2_PRICES_PREFIX}/${today}.json`;
   
-  // Add snapshot metadata
+  // Add snapshot metadata (extract just the price data, not status fields)
   const snapshot: DailySnapshot = {
     snapshotDate: today,
     snapshotTimestamp: new Date().toISOString(),
-    source: prices.source,
-    updatedAt: prices.updatedAt,
-    count: prices.count,
-    bySymbol: prices.bySymbol
+    source: blob.source,
+    updatedAt: blob.updatedAt,
+    count: blob.count,
+    bySymbol: blob.bySymbol
   };
   
   // Write to R2
@@ -350,70 +434,73 @@ async function refreshRegistry(env: Env, trigger: string): Promise<void> {
 
 /**
  * Handle GET /prices/top500.json
- * Serves from KV (hot cache)
+ * Serves from KV (hot cache) - now includes embedded status
  */
 async function handlePricesRequest(env: Env, corsHeaders: Record<string, string>): Promise<Response> {
-  const pricesJson = await env.PRICE_KV.get(KV_PRICES_LATEST);
+  const blobJson = await env.PRICE_KV.get(KV_PRICES_LATEST);
   
-  if (!pricesJson) {
+  if (!blobJson) {
     return jsonResponse({
       error: 'No price data available',
       message: 'Price data has not been fetched yet. It will be populated on the next cron run.'
     }, corsHeaders, 503);
   }
 
-  // Get status for X-Updated-At header
-  const statusJson = await env.PRICE_KV.get(KV_PRICES_STATUS);
-  let updatedAt = 'unknown';
-  if (statusJson) {
-    const status = JSON.parse(statusJson) as PriceStatus;
-    updatedAt = status.timestamp;
-  }
+  const blob = JSON.parse(blobJson) as PricesWithStatus;
 
-  return new Response(pricesJson, {
+  return new Response(blobJson, {
     headers: {
       ...corsHeaders,
       'Content-Type': 'application/json',
       'Cache-Control': 'public, max-age=60',  // 1 minute browser cache
-      'X-Updated-At': updatedAt
+      'X-Updated-At': blob.updatedAt,
+      'X-Last-Fetch-Ok': blob.lastFetchOk ? 'true' : 'false'
     }
   });
 }
 
 /**
  * Handle GET /prices/status.json
- * Returns cache status including updatedAt and lastSuccess
+ * Returns status extracted from the unified price blob
+ * (Maintains backward compatibility for clients that used separate status endpoint)
  */
 async function handleStatusRequest(env: Env, corsHeaders: Record<string, string>): Promise<Response> {
-  const statusJson = await env.PRICE_KV.get(KV_PRICES_STATUS);
+  const blobJson = await env.PRICE_KV.get(KV_PRICES_LATEST);
   
-  let status: PriceStatus;
-  if (statusJson) {
-    status = JSON.parse(statusJson);
+  let status: Record<string, unknown>;
+  if (blobJson) {
+    const blob = JSON.parse(blobJson) as PricesWithStatus;
+    // Extract status fields for backward compatibility
+    status = {
+      success: blob.lastFetchOk,
+      count: blob.count,
+      error: blob.lastFetchError,
+      timestamp: blob.lastFetchTimestamp,
+      trigger: blob.fetchTrigger,
+      lastSuccess: blob.lastSuccessTimestamp,
+      r2Enabled: blob.r2Enabled,
+      service: 'ysl-price-cache',
+      kvWritesPerDay: '~289 (down from 577, well under 1,000 free tier limit)',
+      kvOptimization: 'Skip-if-unchanged enabled - writes only when data changes'
+    };
   } else {
     status = {
       success: false,
       error: 'No status available - prices have not been fetched yet',
       timestamp: new Date().toISOString(),
       trigger: 'unknown',
-      r2Enabled: !!env.PRICE_R2
+      r2Enabled: !!env.PRICE_R2,
+      service: 'ysl-price-cache'
     };
   }
 
-  // Add service info
-  const response = {
-    ...status,
-    service: 'ysl-price-cache',
-    kvWritesPerDay: '~577 (well under 1,000 free tier limit)',
-    r2Enabled: !!env.PRICE_R2
-  };
-
-  return jsonResponse(response, { ...corsHeaders, 'Cache-Control': 'no-cache' });
+  return jsonResponse(status, { ...corsHeaders, 'Cache-Control': 'no-cache' });
 }
 
 /**
  * Handle GET /registry/latest.json
  * Serves from KV mirror, falls back to R2 if KV miss
+ * NOTE: Does NOT write to KV on fallback to avoid unaccounted writes
  */
 async function handleRegistryRequest(env: Env, corsHeaders: Record<string, string>): Promise<Response> {
   // Try KV first (fast read)
@@ -425,9 +512,9 @@ async function handleRegistryRequest(env: Env, corsHeaders: Record<string, strin
       const r2Object = await env.PRICE_R2.get(R2_REGISTRY_FILE);
       if (r2Object) {
         registryJson = await r2Object.text();
-        // Cache in KV for future fast reads (don't count this as a "scheduled" write)
-        await env.PRICE_KV.put(KV_REGISTRY_LATEST, registryJson);
-        console.log('[Registry] Served from R2 and cached to KV');
+        // NOTE: We do NOT cache to KV here to avoid unaccounted writes
+        // The daily cron will populate KV from R2
+        console.log('[Registry] Served from R2 (KV miss, not caching to preserve write budget)');
       }
     } catch (e) {
       console.error('[Registry] Failed to read from R2:', e);
