@@ -4,9 +4,12 @@
  * Data Storage Architecture:
  * 
  * KV (Hot Cache - Real-time Access):
- * - prices:top500:latest      - Current price data blob (written every 5 min)
- * - prices:top500:status      - Status with updatedAt and lastSuccess (written every 5 min)
+ * - prices:top500:latest      - Current price data blob WITH EMBEDDED STATUS (written every 5 min)
+ *                               Contains: prices + lastFetchOk + lastFetchError + timestamps + dataHash
  * - registry:coingecko:latest - Mirror of registry for fast reads (written daily)
+ * 
+ * ⚠️ REMOVED (Jan 2026 KV Limit Fix):
+ * - prices:top500:status      - REMOVED - status now embedded in prices:top500:latest
  * 
  * R2 (Cold Storage - Historical Snapshots):
  * - prices/top500/YYYY-MM-DD.json          - Daily price snapshots
@@ -14,9 +17,14 @@
  * - registry/top500_snapshot/YYYY-MM-DD.json - Daily top 500 composition
  * 
  * KV Write Budget (Free Tier: 1,000 writes/day):
- * - 5-minute refresh: 2 writes per run (latest + status) × 288 runs = 576 writes
+ * - 5-minute refresh: 1 write per run (or 0 if unchanged) × 288 runs = ≤288 writes
  * - Daily cron: 1 write (registry mirror to KV) = 1 write
- * - Total estimate: ~577 writes/day (under 1,000 limit)
+ * - Total estimate: ≤289 writes/day (~29% of free tier)
+ * 
+ * Optimization: Skip-if-unchanged (djb2 hash comparison)
+ * - Computes hash of price data before write
+ * - Skips KV write if hash matches previous blob
+ * - Typically reduces daily writes significantly
  */
 
 // Cloudflare Worker Environment bindings
