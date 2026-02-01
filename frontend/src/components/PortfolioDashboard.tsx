@@ -367,15 +367,28 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
 
           <div className="space-y-4">
             {/* Allocation Overview with Total Value prominently displayed */}
-            <Card className="glass-panel border-divide/80">
+            <Card className="glass-panel border-divide/80 !p-0">
               {/* Total Value Header */}
-              <div className="px-4 pt-4 pb-2">
+              <div className="px-4 pt-3 pb-1.5">
                 <div className="flex items-start justify-between">
                   <div>
-                    <div className="text-3xl font-bold tracking-tight text-foreground">
-                      {formattedTotalValue}
+                    <div 
+                      className="inline-block rounded-lg px-3 py-1 -mx-3 -my-1"
+                      style={{ 
+                        background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(59, 130, 246, 0.05) 100%)',
+                        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 0 20px rgba(139, 92, 246, 0.15)'
+                      }}
+                    >
+                      <span 
+                        className="text-4xl font-bold tracking-tight text-foreground"
+                        style={{ 
+                          textShadow: '0 0 8px rgba(139, 92, 246, 0.6), 0 0 20px rgba(139, 92, 246, 0.4), 0 0 40px rgba(99, 102, 241, 0.25)'
+                        }}
+                      >
+                        {formattedTotalValue}
+                      </span>
                     </div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
+                    <div className="text-xs text-muted-foreground mt-1">
                       Total value
                     </div>
                   </div>

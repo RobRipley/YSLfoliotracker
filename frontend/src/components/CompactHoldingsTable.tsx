@@ -1049,11 +1049,11 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
   const totalPositions = Object.values(groups).reduce((acc, arr) => acc + (arr?.length ?? 0), 0);
 
   return (
-    <Card className="glass-panel border-divide/80 shadow-[0_22px_60px_rgba(0,0,0,0.75)]">
-      <div className="flex items-center justify-between px-4 pb-2 pt-3">
+    <Card className="glass-panel border-divide/80 shadow-[0_22px_60px_rgba(0,0,0,0.75)] !p-0">
+      <div className="flex items-center justify-between px-4 py-2">
         {/* Left side: POSITIONS label + count badge + info icon */}
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+        <div className="flex items-center gap-2.5">
+          <span className="text-xl font-bold uppercase tracking-[0.10em] text-foreground">
             Positions
           </span>
           <Badge
@@ -1067,7 +1067,7 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className="flex h-6 w-6 items-center justify-center rounded-full border border-divide/80 bg-black/20 text-muted-foreground transition-smooth hover:bg-black/40 hover:text-foreground"
+                className="flex h-5 w-5 items-center justify-center rounded-full border border-divide/80 bg-black/20 text-muted-foreground transition-smooth hover:bg-black/40 hover:text-foreground"
               >
                 <Info className="h-3 w-3" />
               </button>
@@ -1088,16 +1088,15 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           </Popover>
         </div>
         
-        {/* Right side: Add Asset button only (Columns button removed) */}
-        <div className="flex items-center gap-2">
-          {/* Add Asset CTA - Purple filled pill button */}
+        {/* Right side: Add Asset button */}
+        <div className="flex items-center">
           {onAddAsset && (
             <button
               type="button"
               onClick={onAddAsset}
-              className="flex h-10 items-center gap-2 rounded-full bg-[#6366f1] px-5 text-sm font-medium text-white transition-all hover:bg-[#5558e3] active:scale-[0.98]"
+              className="flex h-8 items-center gap-1.5 rounded-full bg-[#6366f1] px-4 text-sm font-medium text-white transition-all hover:bg-[#5558e3] active:scale-[0.98]"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-3.5 w-3.5" />
               <span>Add Asset</span>
             </button>
           )}
@@ -1106,7 +1105,7 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
 
       <div className="border-t border-divide/60" />
 
-      <div className="px-3 py-2">
+      <div className="px-4 py-3">
         <div className="space-y-4">
           {displayedCategories.map(category => {
             const holdings = groups[category] || [];

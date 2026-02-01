@@ -447,3 +447,141 @@ yslfolio:categoryState:abc123-xyz789-...
 
 - Deployed to IC mainnet: https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io/
 - Build completed successfully with no errors
+
+
+
+---
+
+## Positions Header Row Polish (February 2026)
+
+### Summary
+Tightened the Positions card header row spacing, increased POSITIONS label prominence, and centered all header contents.
+
+### Changes Made (CompactHoldingsTable.tsx)
+
+1. **Removed Card's default padding**
+   - Added `!p-0` to Card className to override the built-in `p-4` padding
+   - This eliminates the extra space at the top of the card
+
+2. **Increased POSITIONS label prominence**
+   - Font size: `text-sm` → `text-lg` (14px → 18px)
+   - Font weight: `font-bold` (maintained)
+   - Color: `text-foreground` (full brightness, no opacity)
+   - Letter spacing: `tracking-[0.12em]` (tighter for larger size)
+
+3. **Header row padding**
+   - Set to `py-2` for symmetric vertical padding
+   - Combined with removing Card padding, creates a tight, clean header
+
+4. **Content area padding**
+   - Increased from `px-3 py-2` to `px-4 py-3` to restore appropriate content spacing
+
+5. **Vertical centering maintained**
+   - `items-center` on parent flex container ensures all elements vertically align
+
+6. **Additional prominence tweak (follow-up)**
+   - Font size: `text-lg` → `text-xl` (18px → 20px)
+   - Letter spacing: `tracking-[0.12em]` → `tracking-[0.10em]` (slightly tighter at larger size)
+   - No changes to pill, info icon, or Add Asset button sizing
+
+---
+
+## Navbar Brand Lockup Polish (February 2026)
+
+### Summary
+Slightly increased navbar brand lockup contrast/weight; no size changes.
+
+### Changes Made (Layout.tsx)
+
+1. **"Yieldschool" text weight bump**
+   - Font weight: `font-semibold` → `font-bold` (one step increase)
+
+2. **"Portfolio Tracker" contrast increase**
+   - Color: `text-muted-foreground` → `text-foreground/60` (slightly brighter)
+
+3. **Improved text alignment**
+   - Changed inner container from `items-center` → `items-baseline` for cleaner typography alignment
+
+4. **Tightened lockup spacing**
+   - Logo-to-text gap: `space-x-3` → `space-x-2.5`
+   - Text elements gap: `gap-2` → `gap-1.5`
+
+5. **No size changes**
+   - Logo remains `w-9 h-9`
+   - "Yieldschool" remains `text-base`
+   - "Portfolio Tracker" remains `text-sm`
+
+---
+
+## Allocation Card Total Value Polish (February 2026)
+
+### Summary
+Tightened Allocation card header spacing, increased total value prominence, and added subtle professional glow.
+
+### Changes Made (PortfolioDashboard.tsx)
+
+1. **Reduced header vertical padding**
+   - Changed from `pt-4 pb-2` to `pt-3 pb-1.5` (tighter, matches Positions card feel)
+   - Added `!p-0` to Card to override default padding
+
+2. **Increased total value font size**
+   - Font size: `text-3xl` → `text-4xl` (30px → 36px, one step up)
+   - Font weight remains `font-bold`
+
+3. **Added subtle purple glow to dollar amount**
+   - Applied restrained text-shadow: `0 0 8px rgba(139, 92, 246, 0.6), 0 0 20px rgba(139, 92, 246, 0.4), 0 0 40px rgba(99, 102, 241, 0.25)`
+   - Added subtle highlight panel behind number with purple/blue gradient background
+   - Panel has `inset` highlight and soft outer glow for "lit" effect
+   - Color matches existing violet/purple accent family
+   - Effect is professional, not neon - draws eye without being "shouty"
+
+4. **Unchanged elements**
+   - "Total value" label remains `text-xs text-muted-foreground`
+   - "ALLOCATION" label unchanged
+   - Donut chart and legend unchanged
+
+
+---
+
+## Settings/Admin Navigation Fix (February 2026)
+
+### Summary
+Fixed the non-clickable Admin pill and correctly implemented two-level Settings navigation with proper sub-tab filtering.
+
+### Problem
+The "Admin" pill was rendered as a non-interactive `<div>` element, and the sub-tab row showed BOTH user tabs and admin tabs in one continuous 7-tab row regardless of section. Clicking "Admin" did nothing.
+
+### Solution
+1. **Added `activeSection` state** to track which top-level section is selected (`'settings'` | `'admin'`)
+2. **Made top pills clickable `<button>` elements** with proper `aria-pressed` attributes
+3. **Sub-tabs now filter based on `activeSection`**:
+   - Settings section → Theme, Formatting, Data
+   - Admin section → Thresholds, Providers, Tools, Strategy Library
+4. **Section switching resets sub-tab** to first tab of that section
+5. **Safety guard**: if `isAdmin` becomes false while on admin section, automatically reset to settings
+
+### Admin Gating
+**Current implementation (temporary for dev testing):**
+```typescript
+const IS_ADMIN = import.meta.env.VITE_ADMIN_MODE === 'true' || import.meta.env.DEV;
+```
+
+**Environment variable added to `/frontend/.env`:**
+```
+VITE_ADMIN_MODE=true
+```
+
+**To wire to real auth later:**
+1. Import auth hook: `import { useInternetIdentity } from '@/hooks/useInternetIdentity';`
+2. Get principal: `const { principal } = useInternetIdentity();`
+3. Check against admin list or backend: `const isAdmin = ADMIN_PRINCIPALS.includes(principal);`
+
+### Files Changed
+- `/frontend/src/pages/SettingsPage.tsx` - Added activeSection state, clickable pills, filtered sub-tabs
+- `/frontend/.env` - Added `VITE_ADMIN_MODE=true`
+
+### Verification
+- Clicking "Admin" pill switches to admin tab set (Thresholds/Providers/Tools/Strategy Library)
+- Clicking "Settings" pill switches to user tab set (Theme/Formatting/Data)
+- No combined 7-tab row
+- No `|| true` always-admin logic remains

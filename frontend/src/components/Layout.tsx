@@ -209,16 +209,17 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
         <div className="container mx-auto px-6 h-full">
           <div className="flex items-center justify-between h-full">
             {/* Left: Minimal Brand */}
-            <div className="flex items-center space-x-3">
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center relative">
-                <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-[#22d3ee] to-[#a78bfa] opacity-12"></div>
-                <span className="relative text-foreground font-bold text-xl">Y</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base font-semibold font-heading tracking-tight gradient-underline">
+            <div className="flex items-center space-x-2.5">
+              <img 
+                src="/yieldschool-logo.jpeg" 
+                alt="Yieldschool" 
+                className="w-9 h-9 rounded-lg object-cover"
+              />
+              <div className="flex items-baseline gap-1.5">
+                <h1 className="text-base font-bold font-heading tracking-tight gradient-underline">
                   Yieldschool
                 </h1>
-                <span className="text-sm text-muted-foreground font-medium">Portfolio Tracker</span>
+                <span className="text-sm text-foreground/60 font-medium">Portfolio Tracker</span>
               </div>
             </div>
 

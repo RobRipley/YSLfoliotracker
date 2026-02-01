@@ -24,17 +24,11 @@ import { PREDEFINED_THEMES, loadThemeSettings, saveThemeSettings, applyTheme, ge
 // =============================================================================
 // ADMIN GATING CONFIGURATION
 // =============================================================================
-// Set this to true to enable admin features, or wire to real auth later
-// Options for real auth:
-// 1. Check principal against admin list: principal === 'your-admin-principal-here'
-// 2. Environment variable: import.meta.env.VITE_ADMIN_MODE === 'true'
-// 3. Backend role check: await actor.is_admin()
+// TODO: Replace with backend role check / claim-admin flow
+// For now, use VITE_ADMIN_MODE env var or DEV mode as temporary admin flag
 // =============================================================================
 
-// For now, use environment variable with fallback to true for development
-const IS_ADMIN = import.meta.env.VITE_ADMIN_MODE === 'true' || 
-                 import.meta.env.DEV || 
-                 true; // Hardcode to true for now - change this when wiring real auth
+const IS_ADMIN = import.meta.env.VITE_ADMIN_MODE === 'true' || import.meta.env.DEV;
 
 // =============================================================================
 
@@ -94,12 +88,16 @@ function saveSettings(settings: AdminSettings): void {
   }
 }
 
+// Top-level section type
+type TopSection = 'settings' | 'admin';
+
 // Sub-tab types
 type UserSubTab = 'theme' | 'formatting' | 'data';
 type AdminSubTab = 'thresholds' | 'providers' | 'tools' | 'strategy-library';
 type SubTab = UserSubTab | AdminSubTab;
 
 export function SettingsPage() {
+  const [activeSection, setActiveSection] = useState<TopSection>('settings');
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('theme');
   const [settings, setSettings] = useState<AdminSettings>(loadSettings);
   const [themeSettings, setThemeSettings] = useState<ThemeSettings>(loadThemeSettings);
@@ -133,6 +131,24 @@ export function SettingsPage() {
     { id: 'tools', label: 'Tools', icon: <FlaskConical className="h-4 w-4" /> },
     { id: 'strategy-library', label: 'Strategy Library', icon: <Library className="h-4 w-4" /> },
   ];
+
+  // Safety guard: if admin becomes false while on admin section, reset to settings
+  useEffect(() => {
+    if (activeSection === 'admin' && !isAdmin) {
+      setActiveSection('settings');
+      setActiveSubTab('theme');
+    }
+  }, [isAdmin, activeSection]);
+
+  // Handle section change - also switch to first sub-tab of that section
+  const handleSectionChange = (section: TopSection) => {
+    setActiveSection(section);
+    if (section === 'settings') {
+      setActiveSubTab('theme');
+    } else if (section === 'admin') {
+      setActiveSubTab('thresholds');
+    }
+  };
 
   // Apply theme on mount and when theme settings change
   useEffect(() => {
@@ -463,6 +479,10 @@ export function SettingsPage() {
     }
   };
 
+
+  // Determine which sub-tabs to show based on active section
+  const currentSubTabs = activeSection === 'settings' ? userTabs : adminTabs;
+
   return (
     <div className="space-y-6">
       <div>
@@ -472,52 +492,50 @@ export function SettingsPage() {
 
       {/* Two-level navigation */}
       <div className="flex flex-col gap-4">
-        {/* Main section pills */}
+        {/* Main section pills - now clickable buttons */}
         <div className="flex gap-2 border-b border-border/30 pb-4">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/10 text-sm font-medium">
+          <button
+            onClick={() => handleSectionChange('settings')}
+            aria-pressed={activeSection === 'settings'}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-smooth ${
+              activeSection === 'settings'
+                ? 'bg-secondary/20 text-foreground shadow-xs'
+                : 'text-muted-foreground hover:text-foreground hover:bg-secondary/10'
+            }`}
+          >
             <Settings className="h-4 w-4" />
             Settings
-          </div>
+          </button>
           {isAdmin && (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 text-amber-500 text-sm font-medium">
+            <button
+              onClick={() => handleSectionChange('admin')}
+              aria-pressed={activeSection === 'admin'}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-smooth ${
+                activeSection === 'admin'
+                  ? 'bg-amber-500/20 text-amber-500 shadow-xs'
+                  : 'text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10'
+              }`}
+            >
               <ShieldCheck className="h-4 w-4" />
               Admin
-            </div>
+            </button>
           )}
         </div>
 
-        {/* Sub-tabs */}
+        {/* Sub-tabs - filtered by active section */}
         <div className="flex flex-wrap gap-1">
-          {/* User tabs */}
-          {userTabs.map(tab => (
+          {currentSubTabs.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveSubTab(tab.id)}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-smooth ${
                 activeSubTab === tab.id
-                  ? 'text-foreground bg-secondary/12 shadow-xs'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/6'
-              }`}
-            >
-              {tab.icon}
-              {tab.label}
-            </button>
-          ))}
-
-          {/* Divider */}
-          {isAdmin && (
-            <div className="w-px h-6 bg-border/30 mx-2 self-center" />
-          )}
-
-          {/* Admin tabs (only visible to admins) */}
-          {isAdmin && adminTabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveSubTab(tab.id)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-smooth ${
-                activeSubTab === tab.id
-                  ? 'text-amber-500 bg-amber-500/12 shadow-xs'
-                  : 'text-muted-foreground hover:text-amber-500 hover:bg-amber-500/6'
+                  ? activeSection === 'admin'
+                    ? 'text-amber-500 bg-amber-500/12 shadow-xs'
+                    : 'text-foreground bg-secondary/12 shadow-xs'
+                  : activeSection === 'admin'
+                    ? 'text-muted-foreground hover:text-amber-500 hover:bg-amber-500/6'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary/6'
               }`}
             >
               {tab.icon}
@@ -992,7 +1010,6 @@ function ThresholdsContent({ settings, pendingThresholds, thresholdErrors, handl
   );
 }
 
-
 interface ProvidersContentProps {
   settings: AdminSettings;
   handleFallbackToggle: (checked: boolean) => void;
@@ -1046,6 +1063,7 @@ function ProvidersContent({ settings, handleFallbackToggle, handleCacheTTLChange
     </Card>
   );
 }
+
 
 // Tools Content - moved from DataModelTest page (admin-only)
 function ToolsContent() {
