@@ -8,9 +8,8 @@ import { getPriceAggregator, type ExtendedPriceQuote } from '@/lib/priceService'
 import { getMarketDataService } from '@/lib/marketDataService';
 import { usePortfolioSnapshots } from '@/hooks/usePortfolioSnapshots';
 import { AllocationDonutChart } from './AllocationDonutChart';
-import { CategoryTrendCharts } from './CategoryTrendCharts';
 import { Button } from '@/components/ui/button';
-import { Plus, TrendingUp } from 'lucide-react';
+import { Plus, TrendingUp, PieChart } from 'lucide-react';
 import { UnifiedAssetModal } from './UnifiedAssetModal';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -18,7 +17,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-// import { loadExitPlans, type ExitPlanState } from '@/lib/exitPlanPersistence'; // Now reading directly from localStorage
+import { 
+  loadCategoryExpandState, 
+  saveCategoryExpandState, 
+  getDefaultExpandedCategories 
+} from '@/lib/categoryExpandState';
 
 const aggregator = getPriceAggregator();
 const marketDataService = getMarketDataService();
@@ -161,19 +164,30 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     return result;
   }, [store.holdings, prices]);
 
-  // Default expanded: Cash & Stablecoins always visible, others collapsed for new portfolios
-  // For portfolios with holdings, also expand categories that have positions
+  // Category expand/collapse state with persistence
+  // Load from localStorage on mount, save on change
   const [expandedCategories, setExpandedCategories] = useState<Set<Category>>(() => {
-    const defaults = new Set<Category>(['stablecoin']);
-    // If there are holdings, also expand their categories
-    if (store.holdings.length > 0) {
-      defaults.add('blue-chip');
-      defaults.add('mid-cap');
+    // Load persisted state or use defaults (all expanded)
+    const persisted = loadCategoryExpandState(principal ?? null);
+    if (persisted) {
+      return new Set(persisted.expandedCategories);
     }
-    return defaults;
+    // First load: all categories expanded by default
+    return new Set(getDefaultExpandedCategories());
   });
 
-  const toggleCategory = (category: Category) => {
+  // Re-load category state when principal changes (user logs in/out)
+  useEffect(() => {
+    const persisted = loadCategoryExpandState(principal ?? null);
+    if (persisted) {
+      setExpandedCategories(new Set(persisted.expandedCategories));
+    } else {
+      // First load for this user: all categories expanded
+      setExpandedCategories(new Set(getDefaultExpandedCategories()));
+    }
+  }, [principal]);
+
+  const toggleCategory = useCallback((category: Category) => {
     setExpandedCategories(prev => {
       const next = new Set(prev);
       if (next.has(category)) {
@@ -181,9 +195,11 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
       } else {
         next.add(category);
       }
+      // Persist the new state
+      saveCategoryExpandState(principal ?? null, Array.from(next));
       return next;
     });
-  };
+  }, [principal]);
 
   const handleAddAssetClick = () => {
     setPrefilledSymbol(undefined);
@@ -288,16 +304,19 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
   // Show table even when empty - category shells always visible
   const showEmptyState = false; // Always show the table structure
 
+  // Format total value for display
+  const formattedTotalValue = useMemo(() => {
+    return totals.totalValue.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }, [totals.totalValue]);
+
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-foreground">Portfolio</h2>
-          <p className="text-sm text-muted-foreground">
-            A calm view of your holdings, with live prices and exit ladders woven in.
-          </p>
-        </div>
-      </div>
+    <div className="space-y-4">
+      {/* Header removed per requirement - nav tab already indicates location */}
 
       {showEmptyState ? (
         <Card className="glass-panel border-divide/80 py-10 shadow-[0_22px_60px_rgba(0,0,0,0.8)]">
@@ -347,16 +366,22 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
           </div>
 
           <div className="space-y-4">
-            {/* Allocation Overview - moved to top */}
+            {/* Allocation Overview with Total Value prominently displayed */}
             <Card className="glass-panel border-divide/80">
-              <div className="flex items-center justify-between px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-primary" />
+              {/* Total Value Header */}
+              <div className="px-4 pt-4 pb-2">
+                <div className="flex items-start justify-between">
                   <div>
-                    <div className="text-xs font-semibold text-foreground/90">Allocation overview</div>
-                    <div className="text-[11px] text-muted-foreground">
-                      See how your categories stack up over time.
+                    <div className="text-3xl font-bold tracking-tight text-foreground">
+                      {formattedTotalValue}
                     </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      Total value
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-muted-foreground/60">
+                    <PieChart className="h-4 w-4" />
+                    <span className="text-[10px] font-medium uppercase tracking-wider">Allocation</span>
                   </div>
                 </div>
               </div>
@@ -369,11 +394,6 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
                   cashValue={store.cash}
                   stablecoinsOnlyValue={totals.byCategory['stablecoin'] - store.cash}
                 />
-
-                {/* CategoryTrendCharts hidden - shows incorrect/stale snapshot data 
-                    TODO: Implement proper daily snapshot recording before re-enabling
-                <CategoryTrendCharts snapshots={store.snapshots} />
-                */}
               </div>
             </Card>
 

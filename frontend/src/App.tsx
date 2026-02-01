@@ -6,8 +6,7 @@ import { Layout } from '@/components/Layout';
 import { Landing } from '@/pages/Landing';
 import { Portfolio } from '@/components/Portfolio';
 import { Market } from '@/components/Market';
-import { AdminPanel } from '@/components/AdminPanel';
-import { DataModelTest } from '@/pages/DataModelTest';
+import { SettingsPage } from '@/pages/SettingsPage';
 import { ExitStrategy } from '@/pages/ExitStrategy';
 import { useInternetIdentity } from '@/hooks/useInternetIdentity';
 import { loadThemeSettings, applyTheme } from '@/lib/themes';
@@ -23,10 +22,10 @@ const queryClient = new QueryClient({
   },
 });
 
-type Tab = 'landing' | 'portfolio' | 'exit-strategy' | 'market' | 'admin' | 'test';
+type Tab = 'landing' | 'portfolio' | 'exit-strategy' | 'market' | 'settings';
 
 const TAB_STORAGE_KEY = 'ysl-active-tab';
-const VALID_TABS: Tab[] = ['landing', 'portfolio', 'exit-strategy', 'market', 'admin', 'test'];
+const VALID_TABS: Tab[] = ['landing', 'portfolio', 'exit-strategy', 'market', 'settings'];
 
 // Load persisted tab from localStorage
 function loadPersistedTab(): Tab {
@@ -122,8 +121,7 @@ function AppContent() {
         {activeTab === 'portfolio' && <Portfolio />}
         {activeTab === 'exit-strategy' && <ExitStrategy />}
         {activeTab === 'market' && <Market />}
-        {activeTab === 'admin' && <AdminPanel />}
-        {activeTab === 'test' && <DataModelTest />}
+        {activeTab === 'settings' && <SettingsPage />}
       </ErrorBoundary>
     </Layout>
   );

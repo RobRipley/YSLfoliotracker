@@ -2,11 +2,11 @@ import { ReactNode, useEffect, useState, useCallback } from 'react';
 import { useInternetIdentity } from '@/hooks/useInternetIdentity';
 import { useActor, type UserProfile } from '@/hooks/useActor';
 import { useQueryClient } from '@tanstack/react-query';
-import { Wallet, TrendingUp, Settings, FlaskConical, Loader2, Target, Pencil } from 'lucide-react';
+import { Wallet, TrendingUp, Settings, Loader2, Target, Pencil, Cog } from 'lucide-react';
 import { NamePromptModal } from './NamePromptModal';
 import { toast } from 'sonner';
 
-type Tab = 'landing' | 'portfolio' | 'exit-strategy' | 'market' | 'admin' | 'test';
+type Tab = 'landing' | 'portfolio' | 'exit-strategy' | 'market' | 'settings';
 
 interface LayoutProps {
   children: ReactNode;
@@ -259,26 +259,15 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
                   Market
                 </button>
                 <button
-                  onClick={() => onTabChange('admin')}
+                  onClick={() => onTabChange('settings')}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-smooth ${
-                    activeTab === 'admin' 
+                    activeTab === 'settings' 
                       ? 'text-foreground bg-secondary/12 shadow-xs' 
                       : 'text-muted-foreground hover:text-foreground hover:bg-secondary/6'
                   }`}
                 >
-                  <Settings className="h-4 w-4" />
-                  Admin
-                </button>
-                <button
-                  onClick={() => onTabChange('test')}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-smooth ${
-                    activeTab === 'test' 
-                      ? 'text-foreground bg-secondary/12 shadow-xs' 
-                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary/6'
-                  }`}
-                >
-                  <FlaskConical className="h-4 w-4" />
-                  Test
+                  <Cog className="h-4 w-4" />
+                  Settings
                 </button>
               </nav>
             )}
