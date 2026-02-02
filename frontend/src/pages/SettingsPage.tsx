@@ -21,6 +21,7 @@ import { DEFAULT_SETTINGS, type Settings as AppSettings, getStore, categorize } 
 import { exportJSON, exportHoldingsCSV, exportTransactionsCSV, exportLadderPlansCSV, importJSON, importHoldingsCSV, generateCSVImportPreview, applyJSONImport, type ImportPreview } from '@/lib/importExport';
 import { PREDEFINED_THEMES, loadThemeSettings, saveThemeSettings, applyTheme, getThemePreviewColors, type ThemeSettings } from '@/lib/themes';
 import { SegmentedControl, type SegmentedTab } from '@/components/ui/segmented-control';
+import { cn } from '@/lib/utils';
 
 // =============================================================================
 // ADMIN GATING CONFIGURATION
@@ -97,6 +98,84 @@ type UserSubTab = 'theme' | 'formatting' | 'data';
 type AdminSubTab = 'thresholds' | 'providers' | 'tools' | 'strategy-library';
 type SubTab = UserSubTab | AdminSubTab;
 
+// =============================================================================
+// Top-Level Tab Navigation Component
+// =============================================================================
+// Tabs feel like "page navigation" - flat, underline indicator, no pill container
+// =============================================================================
+
+interface TabItem {
+  id: string;
+  label: string;
+  icon?: React.ReactNode;
+}
+
+interface TopLevelTabsProps {
+  value: string;
+  onChange: (value: string) => void;
+  tabs: TabItem[];
+}
+
+function TopLevelTabs({ value, onChange, tabs }: TopLevelTabsProps) {
+  return (
+    <div className="flex items-center gap-1 border-b border-border/50">
+      {tabs.map((tab) => {
+        const isActive = tab.id === value;
+        const isAdmin = tab.id === 'admin';
+        
+        return (
+          <button
+            key={tab.id}
+            onClick={() => onChange(tab.id)}
+            role="tab"
+            aria-selected={isActive}
+            className={cn(
+              "relative flex items-center gap-2 px-4 py-3 text-sm font-medium",
+              "transition-colors duration-150",
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2",
+              // Active state: stronger text, visible underline
+              isActive
+                ? isAdmin
+                  ? "text-amber-400"
+                  : "text-foreground"
+                : "text-muted-foreground hover:text-foreground/80"
+            )}
+          >
+            {tab.icon && (
+              <span className={cn(
+                "transition-colors duration-150",
+                isActive
+                  ? isAdmin
+                    ? "text-amber-400"
+                    : "text-primary"
+                  : "text-muted-foreground"
+              )}>
+                {tab.icon}
+              </span>
+            )}
+            <span>{tab.label}</span>
+            
+            {/* Active indicator - underline */}
+            {isActive && (
+              <span 
+                className={cn(
+                  "absolute bottom-0 left-0 right-0 h-0.5",
+                  isAdmin ? "bg-amber-400" : "bg-primary"
+                )}
+                aria-hidden="true"
+              />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// =============================================================================
+// Main Settings Page Component
+// =============================================================================
+
 export function SettingsPage() {
   const [activeSection, setActiveSection] = useState<TopSection>('settings');
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('theme');
@@ -119,18 +198,24 @@ export function SettingsPage() {
 
   const isAdmin = IS_ADMIN;
 
-  // Define sub-tabs
-  const userTabs: SegmentedTab[] = [
+  // Define sub-tabs for each section
+  const userSubTabs: SegmentedTab[] = [
     { id: 'theme', label: 'Theme', icon: <Palette className="h-4 w-4" /> },
     { id: 'formatting', label: 'Formatting', icon: <Hash className="h-4 w-4" /> },
     { id: 'data', label: 'Data', icon: <Download className="h-4 w-4" /> },
   ];
 
-  const adminTabs: SegmentedTab[] = [
+  const adminSubTabs: SegmentedTab[] = [
     { id: 'thresholds', label: 'Thresholds', icon: <TrendingUp className="h-4 w-4" /> },
     { id: 'providers', label: 'Providers', icon: <Wifi className="h-4 w-4" /> },
     { id: 'tools', label: 'Tools', icon: <FlaskConical className="h-4 w-4" /> },
     { id: 'strategy-library', label: 'Strategy Library', icon: <Library className="h-4 w-4" /> },
+  ];
+
+  // Top-level tabs (Settings always visible, Admin only for admins)
+  const topLevelTabs: TabItem[] = [
+    { id: 'settings', label: 'Settings', icon: <Settings className="h-4 w-4" /> },
+    ...(isAdmin ? [{ id: 'admin', label: 'Admin', icon: <ShieldCheck className="h-4 w-4" /> }] : []),
   ];
 
   // Safety guard: if admin becomes false while on admin section, reset to settings
@@ -142,11 +227,12 @@ export function SettingsPage() {
   }, [isAdmin, activeSection]);
 
   // Handle section change - also switch to first sub-tab of that section
-  const handleSectionChange = (section: TopSection) => {
-    setActiveSection(section);
-    if (section === 'settings') {
+  const handleSectionChange = (section: string) => {
+    const newSection = section as TopSection;
+    setActiveSection(newSection);
+    if (newSection === 'settings') {
       setActiveSubTab('theme');
-    } else if (section === 'admin') {
+    } else if (newSection === 'admin') {
       setActiveSubTab('thresholds');
     }
   };
@@ -482,7 +568,7 @@ export function SettingsPage() {
 
 
   // Determine which sub-tabs to show based on active section
-  const currentSubTabs = activeSection === 'settings' ? userTabs : adminTabs;
+  const currentSubTabs = activeSection === 'settings' ? userSubTabs : adminSubTabs;
 
   return (
     <div className="space-y-6">
@@ -491,20 +577,16 @@ export function SettingsPage() {
         <p className="text-muted-foreground">Customize application settings and preferences</p>
       </div>
 
-      {/* Two-level navigation using SegmentedControl */}
+      {/* Two-level navigation: Tabs (top) + SegmentedControl (sub) */}
       <div className="flex flex-col gap-4">
-        {/* Main section navigation */}
-        <SegmentedControl
+        {/* Level 1: Top-level section navigation as TABS */}
+        <TopLevelTabs
           value={activeSection}
-          onChange={(v) => handleSectionChange(v as TopSection)}
-          tabs={[
-            { id: 'settings', label: 'Settings', icon: <Settings className="h-4 w-4" /> },
-            ...(isAdmin ? [{ id: 'admin', label: 'Admin', icon: <ShieldCheck className="h-4 w-4" /> }] : []),
-          ]}
-          variant={activeSection === 'admin' ? 'amber' : 'default'}
+          onChange={handleSectionChange}
+          tabs={topLevelTabs}
         />
 
-        {/* Sub-tabs navigation */}
+        {/* Level 2: Sub-tabs as SEGMENTED CONTROL */}
         <SegmentedControl
           value={activeSubTab}
           onChange={(v) => setActiveSubTab(v as SubTab)}
