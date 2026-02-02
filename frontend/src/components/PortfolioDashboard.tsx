@@ -26,11 +26,32 @@ import {
 const aggregator = getPriceAggregator();
 const marketDataService = getMarketDataService();
 
+// Logo cache helpers
+const LOGO_CACHE_KEY = 'ysl-logo-cache';
+function loadLogoCache(): Record<string, string> {
+  try {
+    const cached = localStorage.getItem(LOGO_CACHE_KEY);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+  } catch (e) {
+    console.warn('[LogoCache] Failed to load:', e);
+  }
+  return {};
+}
+function saveLogoCache(logos: Record<string, string>): void {
+  try {
+    localStorage.setItem(LOGO_CACHE_KEY, JSON.stringify(logos));
+  } catch (e) {
+    console.warn('[LogoCache] Failed to save:', e);
+  }
+}
+
 export const PortfolioDashboard = memo(function PortfolioDashboard() {
   const { principal } = useInternetIdentity();
   const store = usePortfolioStore(principal);
   const [prices, setPrices] = useState<Record<string, ExtendedPriceQuote>>({});
-  const [logos, setLogos] = useState<Record<string, string>>({});
+  const [logos, setLogos] = useState<Record<string, string>>(() => loadLogoCache());
   const [selectedPreset, setSelectedPreset] = useState<'n4' | 'custom'>('n4');
   const [selectedCategory, setSelectedCategory] = useState<Category | 'all'>('all');
   const [showUnifiedModal, setShowUnifiedModal] = useState(false);
@@ -106,11 +127,14 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
         }
       }
       
+      // Collect all logos before updating state (avoid race conditions)
+      let allLogos: Record<string, string> = {};
+      
       // Fetch logos using CoinGecko IDs for holdings that have them
       const idsToFetch = Object.keys(symbolToIdMap);
       if (idsToFetch.length > 0) {
         const idBasedLogos = await aggregator.getLogosWithIds(symbolToIdMap);
-        setLogos(prev => ({ ...prev, ...idBasedLogos }));
+        allLogos = { ...allLogos, ...idBasedLogos };
       }
       
       // For symbols without stored IDs, use the standard symbol-based lookup
@@ -118,8 +142,17 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
       if (symbolsWithoutIds.length > 0) {
         console.log(`[PortfolioDashboard] Fetching logos for symbols without stored IDs: ${symbolsWithoutIds.join(', ')}`);
         const symbolBasedLogos = await aggregator.getLogos(symbolsWithoutIds);
-        setLogos(prev => ({ ...prev, ...symbolBasedLogos }));
+        allLogos = { ...allLogos, ...symbolBasedLogos };
       }
+      
+      // Update state once with all logos combined
+      // ID-based logos take priority (applied first, then symbol-based)
+      setLogos(prev => {
+        const updated = { ...prev, ...allLogos };
+        saveLogoCache(updated);  // Persist to localStorage
+        return updated;
+      });
+      console.log(`[PortfolioDashboard] Set ${Object.keys(allLogos).length} logos total`);
     } catch (err) {
       console.error('Failed to fetch logos', err);
     }
