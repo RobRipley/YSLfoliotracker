@@ -585,3 +585,149 @@ VITE_ADMIN_MODE=true
 - Clicking "Settings" pill switches to user tab set (Theme/Formatting/Data)
 - No combined 7-tab row
 - No `|| true` always-admin logic remains
+
+
+
+---
+
+## Segmented Control Research (February 2026)
+
+### Current Tab Styling Analysis
+
+**Location:** `/frontend/src/components/ui/tabs.tsx`
+
+The existing Tabs component is a custom implementation (not Radix):
+
+**Current TabsList Styling:**
+```tsx
+"inline-flex items-center rounded-full bg-slate-900/80 p-1 border border-slate-800 "
+```
+
+**Current TabsTrigger Styling:**
+```tsx
+"px-3 py-1 text-xs rounded-full transition-colors " +
+(active
+  ? "bg-indigo-500 text-white"
+  : "text-slate-300 hover:bg-slate-800")
+```
+
+**Issues with Current Implementation:**
+1. Uses hardcoded colors (`bg-indigo-500`, `bg-slate-900/80`) instead of theme tokens
+2. Text is very small (`text-xs`) - user requested "slightly larger label text"
+3. No animated transition for active state changes
+4. No icon support built into the component
+5. Active state is just a background fill - user wants "confident filled state (one highlight)"
+6. No reduced letter-spacing as requested
+
+### Settings Page Navigation Structure
+
+**Location:** `/frontend/src/pages/SettingsPage.tsx` (lines ~150-210)
+
+The SettingsPage currently has **two levels of navigation**:
+
+**Level 1 - Section Pills:** Settings | Admin (admin-only)
+- Styled as clickable `<button>` elements
+- Settings active: `bg-secondary/20 text-foreground shadow-xs`
+- Admin active: `bg-amber-500/20 text-amber-500 shadow-xs`
+
+**Level 2 - Sub-Tabs:** Theme/Formatting/Data OR Thresholds/Providers/Tools/Strategy Library
+- Styled with inline classes
+- No container bar - just flex-wrapped buttons
+- Active state uses similar pattern to section pills
+
+### Design Requirements from Task
+
+1. **Container:** One rounded container bar with tabs inside
+2. **Inactive tabs:** Flatter appearance (less border/shine)
+3. **Active tab:** Confident filled state with single highlight
+4. **Typography:** Slightly larger label text, reduced letter-spacing
+5. **Animation:** Subtle animated transition when switching (slide or fade)
+6. **Icons:** Keep icons with labels, feel like tabs not buttons
+7. **Reusability:** One component with different tab sets via props
+
+### Implementation Plan
+
+1. Create new `SegmentedControl` component in `/frontend/src/components/ui/segmented-control.tsx`
+2. Use CSS custom properties from existing theme system for consistency
+3. Implement sliding pill animation using CSS transforms
+4. Support icon + label combination
+5. Apply to both Settings section navigation and Admin sub-tabs
+6. Use `framer-motion` or pure CSS for smooth transitions
+
+### Theme Tokens Available (from index.css)
+
+```css
+--primary: 189 94% 43%;        /* Cyan accent */
+--secondary: 215 20% 20%;      /* Dark background */
+--muted: 215 20% 22%;          /* Slightly lighter */
+--muted-foreground: 210 15% 65%; /* Dimmed text */
+--foreground: 210 20% 88%;     /* Primary text */
+--border: 215 20% 25%;         /* Border color */
+```
+
+### Files to Modify
+
+1. **Create:** `/frontend/src/components/ui/segmented-control.tsx` - New reusable component
+2. **Modify:** `/frontend/src/pages/SettingsPage.tsx` - Replace inline tab styling with SegmentedControl
+3. **Optional:** `/frontend/src/index.css` - Add any necessary animation keyframes
+
+
+
+---
+
+## Segmented Control Implementation - COMPLETED (February 2026)
+
+### Summary
+Implemented a reusable SegmentedControl component with animated sliding pill for the Settings page navigation.
+
+### New Component
+**Location:** `/frontend/src/components/ui/segmented-control.tsx`
+
+**Usage:**
+```tsx
+import { SegmentedControl, type SegmentedTab } from '@/components/ui/segmented-control';
+
+const tabs: SegmentedTab[] = [
+  { id: 'theme', label: 'Theme', icon: <Palette className="h-4 w-4" /> },
+  { id: 'data', label: 'Data', icon: <Download className="h-4 w-4" /> },
+];
+
+<SegmentedControl
+  value={activeTab}
+  onChange={setActiveTab}
+  tabs={tabs}
+  variant="default"  // or "amber" for admin sections
+  size="md"          // or "sm" for sub-tabs
+/>
+```
+
+**Props:**
+- `value: string` - Currently active tab ID
+- `onChange: (value: string) => void` - Callback when tab changes
+- `tabs: SegmentedTab[]` - Array of tab definitions with id, label, and optional icon
+- `variant?: 'default' | 'amber'` - Color variant (amber for admin sections)
+- `size?: 'sm' | 'md'` - Size variant for different hierarchy levels
+- `className?: string` - Additional CSS classes
+
+### Features
+1. **Animated sliding pill** - Smooth 200ms transition when switching tabs
+2. **Two color variants** - Default (cyan/primary) and amber (for admin)
+3. **Two size variants** - md for top-level, sm for sub-tabs
+4. **Icon + label support** - Icons change color based on active state
+5. **Proper width** - Uses `w-fit` to size to content, not stretch
+6. **Theme-aware** - Uses CSS variables for colors and shadows
+
+### Styling Details
+- Container: `bg-secondary/40 border-border/50 backdrop-blur-sm rounded-full p-1`
+- Active pill: `bg-primary/15` with subtle glow shadow
+- Amber variant: `bg-amber-500/20` with amber glow
+- Text: `text-[14px] tracking-[-0.01em]` (md), `text-[13px]` (sm)
+
+### Files Modified
+- `/frontend/src/components/ui/segmented-control.tsx` - NEW component
+- `/frontend/src/pages/SettingsPage.tsx` - Updated to use SegmentedControl
+
+### Applied To
+- Settings > Settings/Admin section toggle
+- Settings > Sub-tabs (Theme/Formatting/Data)
+- Admin > Sub-tabs (Thresholds/Providers/Tools/Strategy Library)

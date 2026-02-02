@@ -20,6 +20,7 @@ import {
 import { DEFAULT_SETTINGS, type Settings as AppSettings, getStore } from '@/lib/dataModel';
 import { exportJSON, exportHoldingsCSV, exportTransactionsCSV, exportLadderPlansCSV, importJSON, importHoldingsCSV, generateCSVImportPreview, applyJSONImport, type ImportPreview } from '@/lib/importExport';
 import { PREDEFINED_THEMES, loadThemeSettings, saveThemeSettings, applyTheme, getThemePreviewColors, type ThemeSettings } from '@/lib/themes';
+import { SegmentedControl, type SegmentedTab } from '@/components/ui/segmented-control';
 
 // =============================================================================
 // ADMIN GATING CONFIGURATION
@@ -119,13 +120,13 @@ export function SettingsPage() {
   const isAdmin = IS_ADMIN;
 
   // Define sub-tabs
-  const userTabs: { id: UserSubTab; label: string; icon: React.ReactNode }[] = [
+  const userTabs: SegmentedTab[] = [
     { id: 'theme', label: 'Theme', icon: <Palette className="h-4 w-4" /> },
     { id: 'formatting', label: 'Formatting', icon: <Hash className="h-4 w-4" /> },
     { id: 'data', label: 'Data', icon: <Download className="h-4 w-4" /> },
   ];
 
-  const adminTabs: { id: AdminSubTab; label: string; icon: React.ReactNode }[] = [
+  const adminTabs: SegmentedTab[] = [
     { id: 'thresholds', label: 'Thresholds', icon: <TrendingUp className="h-4 w-4" /> },
     { id: 'providers', label: 'Providers', icon: <Wifi className="h-4 w-4" /> },
     { id: 'tools', label: 'Tools', icon: <FlaskConical className="h-4 w-4" /> },
@@ -490,59 +491,27 @@ export function SettingsPage() {
         <p className="text-muted-foreground">Customize application settings and preferences</p>
       </div>
 
-      {/* Two-level navigation */}
+      {/* Two-level navigation using SegmentedControl */}
       <div className="flex flex-col gap-4">
-        {/* Main section pills - now clickable buttons */}
-        <div className="flex gap-2 border-b border-border/30 pb-4">
-          <button
-            onClick={() => handleSectionChange('settings')}
-            aria-pressed={activeSection === 'settings'}
-            className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-smooth ${
-              activeSection === 'settings'
-                ? 'bg-secondary/20 text-foreground shadow-xs'
-                : 'text-muted-foreground hover:text-foreground hover:bg-secondary/10'
-            }`}
-          >
-            <Settings className="h-4 w-4" />
-            Settings
-          </button>
-          {isAdmin && (
-            <button
-              onClick={() => handleSectionChange('admin')}
-              aria-pressed={activeSection === 'admin'}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-smooth ${
-                activeSection === 'admin'
-                  ? 'bg-amber-500/20 text-amber-500 shadow-xs'
-                  : 'text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10'
-              }`}
-            >
-              <ShieldCheck className="h-4 w-4" />
-              Admin
-            </button>
-          )}
-        </div>
+        {/* Main section navigation */}
+        <SegmentedControl
+          value={activeSection}
+          onChange={(v) => handleSectionChange(v as TopSection)}
+          tabs={[
+            { id: 'settings', label: 'Settings', icon: <Settings className="h-4 w-4" /> },
+            ...(isAdmin ? [{ id: 'admin', label: 'Admin', icon: <ShieldCheck className="h-4 w-4" /> }] : []),
+          ]}
+          variant={activeSection === 'admin' ? 'amber' : 'default'}
+        />
 
-        {/* Sub-tabs - filtered by active section */}
-        <div className="flex flex-wrap gap-1">
-          {currentSubTabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveSubTab(tab.id)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-smooth ${
-                activeSubTab === tab.id
-                  ? activeSection === 'admin'
-                    ? 'text-amber-500 bg-amber-500/12 shadow-xs'
-                    : 'text-foreground bg-secondary/12 shadow-xs'
-                  : activeSection === 'admin'
-                    ? 'text-muted-foreground hover:text-amber-500 hover:bg-amber-500/6'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary/6'
-              }`}
-            >
-              {tab.icon}
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {/* Sub-tabs navigation */}
+        <SegmentedControl
+          value={activeSubTab}
+          onChange={(v) => setActiveSubTab(v as SubTab)}
+          tabs={currentSubTabs}
+          variant={activeSection === 'admin' ? 'amber' : 'default'}
+          size="sm"
+        />
       </div>
 
       {/* Content */}
