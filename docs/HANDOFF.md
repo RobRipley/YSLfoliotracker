@@ -889,6 +889,10 @@ const tabs: SegmentedTab[] = [
 | Thousands separators toggle | `/frontend/src/pages/SettingsPage.tsx` (FormattingContent) | Disabled switch in Number Formatting card. Wire to formatCurrency/formatTokens functions |
 | Compact notation toggle | `/frontend/src/pages/SettingsPage.tsx` (FormattingContent) | Disabled switch in Number Formatting card. Implement Intl.NumberFormat compact notation |
 | Text Size (Small/Default/Large) | `/frontend/src/pages/SettingsPage.tsx` (FormattingContent) | Disabled segmented control in Typography card. Wire to CSS variable or root font-size scaling |
+| Provider Priority | `/frontend/src/pages/SettingsPage.tsx` (ProvidersContent) | Disabled in Advanced Settings card. Drag to reorder fallback chain |
+| Rate Limiting | `/frontend/src/pages/SettingsPage.tsx` (ProvidersContent) | Disabled in Advanced Settings card. Per-provider request limits |
+| Custom Endpoints | `/frontend/src/pages/SettingsPage.tsx` (ProvidersContent) | Disabled in Advanced Settings card. Add custom price API endpoints |
+| Strategy Library | `/frontend/src/pages/SettingsPage.tsx` (StrategyLibraryContent) | Full UI scaffolding present but disabled. Requires backend storage, template CRUD, and user-selectable presets in Exit Strategy |
 
 
 
@@ -1088,4 +1092,179 @@ After thorough examination of the codebase and live testing on the IC mainnet de
 - `/frontend/src/components/ui/segmented-control.tsx` - Navigation component
 
 **No code changes were required** as the task was already completed in a previous session.
+
+
+
+---
+
+## Admin Sections Research (February 2026)
+
+### Current Admin Tab Structure (SettingsPage.tsx)
+
+The Settings page has a two-level navigation using SegmentedControl components:
+
+**Level 1 - Top Section Pills:**
+- Settings (user-accessible): Theme, Formatting, Data
+- Admin (admin-only, gated by `IS_ADMIN`): Thresholds, Providers, Tools, Strategy Library
+
+**Level 2 - Sub-tabs per section**
+
+### Thresholds Tab (Lines ~1188-1250)
+
+**Component:** `ThresholdsContent`
+
+**Functionality:**
+- Three input fields for market cap boundaries:
+  - Blue Chip Minimum (default: $10B)
+  - Mid Cap Minimum (default: $500M → actually $1B per spec)
+  - Low Cap Minimum (default: $10M)
+- Validation with error display (must be in descending order)
+- "Preview Changes" button opens AlertDialog showing old vs new values
+- "Reset to Defaults" button restores DEFAULT_SETTINGS thresholds
+- "Current Definitions" section shows human-readable threshold ranges
+
+**Styling:**
+- Uses Card/CardHeader/CardContent pattern
+- Standard Input fields with Labels
+- AlertTriangle icon for validation errors
+- Badge components for category labels
+- Already matches general Settings aesthetic
+
+### Providers Tab (Lines ~1252-1300)
+
+**Component:** `ProvidersContent`
+
+**Functionality:**
+- **Enable Fallback Provider** - Switch toggle for CryptoRates.ai as backup
+- **Cache TTL** - Input field (minimum 10 seconds)
+- **Provider Status** - Visual status indicators:
+  - CoinGecko (Primary) - always active
+  - CryptoRates.ai (Fallback) - shows Enabled/Disabled based on toggle
+
+**Styling:**
+- Uses Card/CardHeader/CardContent pattern
+- Switch component for toggle
+- Input with min value validation
+- Status cards with colored dots (green=active, gray=disabled)
+- Badge for status labels
+- Already matches general Settings aesthetic
+
+**Advanced Settings (candidates for "Coming Soon"):**
+- Provider priority ordering
+- Per-provider rate limiting
+- Manual provider selection
+- API key management
+- Custom endpoint configuration
+
+### Tools Tab (Lines ~1302-1340)
+
+**Component:** `ToolsContent`
+
+**Current Implementation:**
+- Informational card explaining admin-only tools
+- List of available tools (bullet points)
+- "Open Full Test Panel" button that dispatches `openTestPanel` event
+
+**Issue:**
+- The button dispatches an event but nothing listens for it
+- The actual DataModelTest content is in a separate page file
+
+### DataModelTest Page (frontend/src/pages/DataModelTest.tsx)
+
+**Full Content (429 lines):**
+- Test suite with 14 automated tests for data model functions
+- Sample data generator with BTC, ETH, SOL holdings
+- Tabbed interface showing:
+  - **Holdings** - Current holdings list with details
+  - **Transactions** - Transaction history
+  - **Settings** - Current threshold/hysteresis/ladder settings
+  - **Category Tracking** - Hysteresis state per symbol
+- Uses custom Tabs component (not SegmentedControl)
+
+**Tests Included:**
+1. `categorize()` with different thresholds
+2. `stableCategorize()` hysteresis behavior
+3. `buildExitLadder()` rung generation
+4. `valueUsd()` calculation
+5. `initialCostUsd()` calculation
+6. `share()` percentage calculation
+7. `addHolding()` store mutation
+8. `updateHolding()` modification
+9. `recordTransaction()` sell behavior
+10. `portfolioTotals()` calculation
+11. `lockCategory()` function
+
+### Strategy Library Tab (Lines ~1342-1373)
+
+**Component:** `StrategyLibraryContent`
+
+**Current Implementation:**
+- Informational card with "Feature Preview" notice
+- List of planned features (bullet points)
+- Two disabled buttons: "Import Strategies" and "Export Strategies"
+
+**Current State:** Already a placeholder with Coming Soon messaging
+
+### Required Changes
+
+Based on the task requirements, the following changes are needed:
+
+1. **Thresholds** - Already functional, just verify it uses segmented nav style (it does via parent SettingsPage)
+
+2. **Providers** - Already functional, add disabled "Advanced Provider Settings" section with Coming Soon items
+
+3. **Tools** - Move DataModelTest.tsx content inline (or embed component), remove broken event dispatch
+
+4. **Strategy Library** - Expand UI scaffolding with disabled fields:
+   - Table/list of strategy templates (empty state)
+   - Disabled "Create Strategy" button
+   - Disabled fields for: name, description, parameters, ladder rules
+   - Empty state text as specified
+
+
+
+
+---
+
+## Admin Sections Restructure - COMPLETED (February 2026)
+
+### Summary
+
+Restructured the Admin sections in Settings with enhanced functionality and UI scaffolding for future features.
+
+### Changes Made
+
+1. **Thresholds Tab** - Already functional, uses new segmented nav style (no changes needed)
+
+2. **Providers Tab** - Enhanced with disabled "Advanced Settings" card:
+   - Provider Priority (Coming Soon)
+   - Rate Limiting (Coming Soon)
+   - Custom Endpoints (Coming Soon)
+
+3. **Tools Tab** - Moved DataModelTest.tsx content inline:
+   - Embedded test runner with categorization tests
+   - Tabbed interface for Tests, Holdings, Transactions, Settings
+   - "Run Categorization Tests" button shows pass/fail results
+   - Live store state viewer
+   - Removed broken `openTestPanel` event dispatch
+
+4. **Strategy Library Tab** - Created comprehensive UI scaffolding (all disabled):
+   - "Coming Soon: Strategy Library" notice with proper messaging
+   - Strategy Templates table with empty state
+   - Disabled "Create Strategy" button
+   - Create Strategy form with disabled fields:
+     - Strategy Name input
+     - Description input
+     - Target Category dropdown
+     - Ladder Rules table (4 rungs: 2x/3x/5x/10x at 25% each)
+     - Save Strategy and Cancel buttons
+   - Import/Export section with disabled buttons
+
+### Files Modified
+- `/frontend/src/pages/SettingsPage.tsx` - Updated ProvidersContent, ToolsContent, and StrategyLibraryContent components
+- Added `categorize` import from dataModel for test runner
+
+### Deployment
+- Deployed to local canister: http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
+
 

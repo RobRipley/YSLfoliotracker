@@ -17,7 +17,7 @@ import {
   Download, Upload, FileJson, FileSpreadsheet, Loader2,
   FlaskConical, Library, Settings, ShieldCheck
 } from 'lucide-react';
-import { DEFAULT_SETTINGS, type Settings as AppSettings, getStore } from '@/lib/dataModel';
+import { DEFAULT_SETTINGS, type Settings as AppSettings, getStore, categorize } from '@/lib/dataModel';
 import { exportJSON, exportHoldingsCSV, exportTransactionsCSV, exportLadderPlansCSV, importJSON, importHoldingsCSV, generateCSVImportPreview, applyJSONImport, type ImportPreview } from '@/lib/importExport';
 import { PREDEFINED_THEMES, loadThemeSettings, saveThemeSettings, applyTheme, getThemePreviewColors, type ThemeSettings } from '@/lib/themes';
 import { SegmentedControl, type SegmentedTab } from '@/components/ui/segmented-control';
@@ -1240,131 +1240,429 @@ interface ProvidersContentProps {
 
 function ProvidersContent({ settings, handleFallbackToggle, handleCacheTTLChange }: ProvidersContentProps) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Price Provider Settings</CardTitle>
-        <CardDescription>Configure price data sources and caching behavior</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <Label>Enable Fallback Provider</Label>
-            <p className="text-sm text-muted-foreground">Use CryptoRates.ai as backup when CoinGecko fails</p>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Price Provider Settings</CardTitle>
+          <CardDescription>Configure price data sources and caching behavior</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>Enable Fallback Provider</Label>
+              <p className="text-sm text-muted-foreground">Use CryptoRates.ai as backup when CoinGecko fails</p>
+            </div>
+            <Switch checked={settings.priceProviderSettings.fallbackEnabled} onCheckedChange={handleFallbackToggle} />
           </div>
-          <Switch checked={settings.priceProviderSettings.fallbackEnabled} onCheckedChange={handleFallbackToggle} />
-        </div>
-        <Separator />
-        <div className="space-y-2">
-          <Label>Cache TTL (seconds)</Label>
-          <Input type="number" value={settings.priceProviderSettings.cacheTTL} onChange={(e) => handleCacheTTLChange(e.target.value)} min="10" step="5" />
-          <p className="text-xs text-muted-foreground">Minimum: 10 seconds. Price data will be cached for this duration.</p>
-        </div>
-        <Separator />
-        <div className="space-y-3">
-          <Label>Provider Status</Label>
+          <Separator />
           <div className="space-y-2">
-            <div className="flex items-center justify-between p-3 rounded-lg border glass-panel">
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-green-500" />
-                <span className="font-medium">CoinGecko (Primary)</span>
+            <Label>Cache TTL (seconds)</Label>
+            <Input type="number" value={settings.priceProviderSettings.cacheTTL} onChange={(e) => handleCacheTTLChange(e.target.value)} min="10" step="5" />
+            <p className="text-xs text-muted-foreground">Minimum: 10 seconds. Price data will be cached for this duration.</p>
+          </div>
+          <Separator />
+          <div className="space-y-3">
+            <Label>Provider Status</Label>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between p-3 rounded-lg border glass-panel">
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-green-500" />
+                  <span className="font-medium">CoinGecko (Primary)</span>
+                </div>
+                <Badge variant="outline">Active</Badge>
               </div>
-              <Badge variant="outline">Active</Badge>
-            </div>
-            <div className="flex items-center justify-between p-3 rounded-lg border glass-panel">
-              <div className="flex items-center gap-2">
-                <div className={`h-2 w-2 rounded-full ${settings.priceProviderSettings.fallbackEnabled ? 'bg-green-500' : 'bg-gray-400'}`} />
-                <span className="font-medium">CryptoRates.ai (Fallback)</span>
+              <div className="flex items-center justify-between p-3 rounded-lg border glass-panel">
+                <div className="flex items-center gap-2">
+                  <div className={`h-2 w-2 rounded-full ${settings.priceProviderSettings.fallbackEnabled ? 'bg-green-500' : 'bg-gray-400'}`} />
+                  <span className="font-medium">CryptoRates.ai (Fallback)</span>
+                </div>
+                <Badge variant={settings.priceProviderSettings.fallbackEnabled ? 'outline' : 'secondary'}>
+                  {settings.priceProviderSettings.fallbackEnabled ? 'Enabled' : 'Disabled'}
+                </Badge>
               </div>
-              <Badge variant={settings.priceProviderSettings.fallbackEnabled ? 'outline' : 'secondary'}>
-                {settings.priceProviderSettings.fallbackEnabled ? 'Enabled' : 'Disabled'}
-              </Badge>
             </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+
+      {/* Advanced Provider Settings - Future */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            Advanced Settings
+            <Badge variant="outline" className="text-[10px] font-normal">Future</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Provider Priority */}
+          <div className="flex items-center justify-between opacity-50">
+            <div className="space-y-0.5">
+              <Label className="text-sm">Provider Priority</Label>
+              <p className="text-[10px] text-muted-foreground">Coming Soon · Drag to reorder fallback chain</p>
+            </div>
+            <Button variant="outline" size="sm" disabled>Configure</Button>
+          </div>
+
+          {/* Rate Limiting */}
+          <div className="flex items-center justify-between opacity-50">
+            <div className="space-y-0.5">
+              <Label className="text-sm">Rate Limiting</Label>
+              <p className="text-[10px] text-muted-foreground">Coming Soon · Per-provider request limits</p>
+            </div>
+            <Switch disabled />
+          </div>
+
+          {/* Custom Endpoints */}
+          <div className="flex items-center justify-between opacity-50">
+            <div className="space-y-0.5">
+              <Label className="text-sm">Custom Endpoints</Label>
+              <p className="text-[10px] text-muted-foreground">Coming Soon · Add custom price API endpoints</p>
+            </div>
+            <Button variant="outline" size="sm" disabled>Add</Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
 
-// Tools Content - moved from DataModelTest page (admin-only)
+// Tools Content - embedded admin-only debugging tools
 function ToolsContent() {
+  const [testResults, setTestResults] = useState<{name: string; passed: boolean; message: string}[]>([]);
+  const [storeState, setStoreState] = useState(getStore());
+  const [activeToolTab, setActiveToolTab] = useState<'tests' | 'holdings' | 'transactions' | 'settings'>('tests');
+
+  const runTests = () => {
+    const results: {name: string; passed: boolean; message: string}[] = [];
+    
+    // Import test functions from dataModel
+    const thresholds = DEFAULT_SETTINGS.thresholds;
+    
+    // Test categorize function
+    const blueChipCat = categorize(12e9, thresholds);
+    results.push({
+      name: 'categorize(12e9) → blue-chip',
+      passed: blueChipCat === 'blue-chip',
+      message: `Expected: blue-chip, Got: ${blueChipCat}`,
+    });
+    
+    const midCapCat = categorize(5e9, thresholds);
+    results.push({
+      name: 'categorize(5e9) → mid-cap',
+      passed: midCapCat === 'mid-cap',
+      message: `Expected: mid-cap, Got: ${midCapCat}`,
+    });
+    
+    const lowCapCat = categorize(300e6, thresholds);
+    results.push({
+      name: 'categorize(300e6) → low-cap',
+      passed: lowCapCat === 'low-cap',
+      message: `Expected: low-cap, Got: ${lowCapCat}`,
+    });
+    
+    const microCapCat = categorize(5e6, thresholds);
+    results.push({
+      name: 'categorize(5e6) → micro-cap',
+      passed: microCapCat === 'micro-cap',
+      message: `Expected: micro-cap, Got: ${microCapCat}`,
+    });
+
+    setTestResults(results);
+    setStoreState({ ...getStore() });
+  };
+
+  const refreshStoreState = () => {
+    setStoreState({ ...getStore() });
+  };
+
+  const passedTests = testResults.filter(t => t.passed).length;
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Developer Tools</CardTitle>
-        <CardDescription>Debug utilities and data model testing (admin-only)</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="p-4 rounded-lg border border-amber-500/20 bg-amber-500/5">
-          <div className="flex items-start gap-3">
-            <FlaskConical className="h-5 w-5 text-amber-500 mt-0.5" />
-            <div>
-              <p className="font-medium text-amber-500">Admin Tools</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                This section contains developer/debugging tools that were previously in the Test tab.
-                These tools allow testing of the data model, viewing store state, and running diagnostics.
-              </p>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Developer Tools</CardTitle>
+          <CardDescription>Debug utilities and data model testing (admin-only)</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="p-4 rounded-lg border border-amber-500/20 bg-amber-500/5">
+            <div className="flex items-start gap-3">
+              <FlaskConical className="h-5 w-5 text-amber-500 mt-0.5" />
+              <div>
+                <p className="font-medium text-amber-500">Admin Tools</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Test data model functions, view store state, and run diagnostics.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="text-sm text-muted-foreground">
-          <p>Available tools:</p>
-          <ul className="list-disc list-inside mt-2 space-y-1">
-            <li>Data model helper function tests</li>
-            <li>Sample data generator</li>
-            <li>Live store state viewer (holdings, transactions, settings)</li>
-            <li>Category assignment diagnostics</li>
-          </ul>
-        </div>
-        <Button variant="outline" className="w-full" onClick={() => window.dispatchEvent(new CustomEvent('openTestPanel'))}>
-          Open Full Test Panel
-        </Button>
-      </CardContent>
-    </Card>
+
+          {/* Tool Tabs */}
+          <div className="flex gap-2 flex-wrap">
+            {(['tests', 'holdings', 'transactions', 'settings'] as const).map(tab => (
+              <Button
+                key={tab}
+                variant={activeToolTab === tab ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => { setActiveToolTab(tab); refreshStoreState(); }}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === 'holdings' && ` (${storeState.holdings.length})`}
+                {tab === 'transactions' && ` (${storeState.transactions.length})`}
+              </Button>
+            ))}
+          </div>
+
+          {/* Test Runner Tab */}
+          {activeToolTab === 'tests' && (
+            <div className="space-y-4">
+              <Button onClick={runTests} size="sm">
+                <FlaskConical className="h-4 w-4 mr-2" />
+                Run Categorization Tests
+              </Button>
+              {testResults.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Results: {passedTests}/{testResults.length} Passed</p>
+                  {testResults.map((result, index) => (
+                    <div
+                      key={index}
+                      className={`flex items-start gap-2 p-2 rounded-lg border text-sm ${
+                        result.passed
+                          ? 'bg-green-500/10 border-green-500/20'
+                          : 'bg-red-500/10 border-red-500/20'
+                      }`}
+                    >
+                      {result.passed ? '✓' : '✗'}
+                      <div>
+                        <div className="font-medium">{result.name}</div>
+                        <div className="text-xs text-muted-foreground">{result.message}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Holdings Tab */}
+          {activeToolTab === 'holdings' && (
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {storeState.holdings.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No holdings in store.</p>
+              ) : (
+                storeState.holdings.map(h => (
+                  <div key={h.id} className="p-2 rounded-lg border glass-panel text-sm">
+                    <div className="flex justify-between">
+                      <span className="font-medium">{h.symbol}</span>
+                      <span>{h.tokensOwned.toLocaleString()} tokens</span>
+                    </div>
+                    {h.avgCost && <div className="text-xs text-muted-foreground">Avg: ${h.avgCost.toFixed(2)}</div>}
+                  </div>
+                ))
+              )}
+              <div className="p-2 rounded-lg border glass-panel text-sm">
+                <div className="font-medium">Cash Balance</div>
+                <div className="text-lg">${storeState.cash.toLocaleString()}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Transactions Tab */}
+          {activeToolTab === 'transactions' && (
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {storeState.transactions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No transactions recorded.</p>
+              ) : (
+                storeState.transactions.map(tx => (
+                  <div key={tx.id} className="p-2 rounded-lg border glass-panel text-sm flex justify-between">
+                    <div>
+                      <span className="font-medium">{tx.type.toUpperCase()}</span> {tx.tokens} {tx.symbol}
+                      <div className="text-xs text-muted-foreground">{new Date(tx.timestamp).toLocaleDateString()}</div>
+                    </div>
+                    {tx.totalUsd && <div>${tx.totalUsd.toFixed(2)}</div>}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* Settings Tab */}
+          {activeToolTab === 'settings' && (
+            <div className="space-y-3 text-sm">
+              <div>
+                <p className="font-medium mb-1">Market Cap Thresholds</p>
+                <div className="space-y-0.5 text-muted-foreground">
+                  <p>Blue Chip: ≥${(storeState.settings.thresholds.blueChipMin / 1e9).toFixed(1)}B</p>
+                  <p>Mid Cap: ≥${(storeState.settings.thresholds.midCapMin / 1e6).toFixed(0)}M</p>
+                  <p>Low Cap: ≥${(storeState.settings.thresholds.lowCapMin / 1e6).toFixed(0)}M</p>
+                </div>
+              </div>
+              <div>
+                <p className="font-medium mb-1">Hysteresis</p>
+                <div className="space-y-0.5 text-muted-foreground">
+                  <p>Buffer: {storeState.settings.hysteresis.percentBuffer}%</p>
+                  <p>Min Hours: {storeState.settings.hysteresis.minHours}h</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
-// Strategy Library Content - UI placeholder (admin-only)
+// Strategy Library Content - UI scaffolding with disabled fields (admin-only)
 function StrategyLibraryContent() {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Strategy Library</CardTitle>
-        <CardDescription>Manage and share exit strategy presets (coming soon)</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="p-4 rounded-lg border border-primary/20 bg-primary/5">
-          <div className="flex items-start gap-3">
-            <Library className="h-5 w-5 text-primary mt-0.5" />
-            <div>
-              <p className="font-medium">Feature Preview</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                The Strategy Library will allow you to create, save, and share exit strategy templates
-                across your portfolio. This feature is currently under development.
-              </p>
+    <div className="space-y-4">
+      {/* Feature Preview Notice */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="p-4 rounded-lg border border-primary/20 bg-primary/5">
+            <div className="flex items-start gap-3">
+              <Library className="h-5 w-5 text-primary mt-0.5" />
+              <div>
+                <p className="font-medium">Coming Soon: Strategy Library</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Admin-defined strategy templates that users can select in Exit Strategy.
+                  Create reusable exit ladder presets and share them across your portfolio.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="text-sm text-muted-foreground">
-          <p>Planned features:</p>
-          <ul className="list-disc list-inside mt-2 space-y-1">
-            <li>Create custom ladder presets with named templates</li>
-            <li>Apply presets to multiple assets at once</li>
-            <li>Export/import strategy configurations</li>
-            <li>Community-shared strategy templates</li>
-          </ul>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" disabled className="flex-1">
-            <Upload className="h-4 w-4 mr-2" />Import Strategies
-          </Button>
-          <Button variant="outline" disabled className="flex-1">
-            <Download className="h-4 w-4 mr-2" />Export Strategies
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+
+      {/* Strategy Templates Table (Empty State) */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-lg">Strategy Templates</CardTitle>
+              <CardDescription>Saved exit ladder configurations</CardDescription>
+            </div>
+            <Button variant="outline" size="sm" disabled>
+              <Upload className="h-4 w-4 mr-2" />
+              Create Strategy
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {/* Empty State Table */}
+          <div className="border rounded-lg overflow-hidden opacity-60">
+            <div className="grid grid-cols-4 gap-4 p-3 bg-muted/30 text-xs font-medium text-muted-foreground">
+              <div>Name</div>
+              <div>Category</div>
+              <div>Rungs</div>
+              <div>Actions</div>
+            </div>
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              <Library className="h-8 w-8 mx-auto mb-2 opacity-30" />
+              <p>No strategy templates yet</p>
+              <p className="text-xs mt-1">Templates will appear here once the feature is enabled</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Create Strategy Form (Disabled Scaffolding) */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            Create Strategy
+            <Badge variant="outline" className="text-[10px] font-normal">Future</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Strategy Name */}
+          <div className="space-y-2 opacity-50">
+            <Label className="text-sm">Strategy Name</Label>
+            <Input placeholder="e.g., Conservative Blue Chip" disabled />
+          </div>
+
+          {/* Description */}
+          <div className="space-y-2 opacity-50">
+            <Label className="text-sm">Description</Label>
+            <Input placeholder="Brief description of this strategy..." disabled />
+          </div>
+
+          {/* Target Category */}
+          <div className="space-y-2 opacity-50">
+            <Label className="text-sm">Target Category</Label>
+            <Select disabled>
+              <SelectTrigger>
+                <SelectValue placeholder="Select category..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="blue-chip">Blue Chip</SelectItem>
+                <SelectItem value="mid-cap">Mid Cap</SelectItem>
+                <SelectItem value="low-cap">Low Cap</SelectItem>
+                <SelectItem value="all">All Categories</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Ladder Rules Preview */}
+          <div className="space-y-2 opacity-50">
+            <Label className="text-sm">Ladder Rules</Label>
+            <div className="border rounded-lg p-3 bg-muted/20">
+              <div className="grid grid-cols-3 gap-2 text-xs font-medium text-muted-foreground mb-2">
+                <div>Multiplier</div>
+                <div>% to Sell</div>
+                <div>Action</div>
+              </div>
+              {[
+                { mult: '2x', pct: '25%' },
+                { mult: '3x', pct: '25%' },
+                { mult: '5x', pct: '25%' },
+                { mult: '10x', pct: '25%' },
+              ].map((rung, i) => (
+                <div key={i} className="grid grid-cols-3 gap-2 py-1 text-sm border-t border-border/30">
+                  <div>{rung.mult}</div>
+                  <div>{rung.pct}</div>
+                  <Button variant="ghost" size="sm" disabled className="h-6 px-2">Edit</Button>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground">Coming Soon · Configure exit rungs with multipliers and percentages</p>
+          </div>
+
+          <Separator />
+
+          {/* Action Buttons */}
+          <div className="flex gap-2">
+            <Button disabled className="flex-1">
+              Save Strategy
+            </Button>
+            <Button variant="outline" disabled>
+              Cancel
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Import/Export Section */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            Import / Export
+            <Badge variant="outline" className="text-[10px] font-normal">Future</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2">
+            <Button variant="outline" disabled className="flex-1">
+              <Upload className="h-4 w-4 mr-2" />Import Strategies
+            </Button>
+            <Button variant="outline" disabled className="flex-1">
+              <Download className="h-4 w-4 mr-2" />Export Strategies
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
