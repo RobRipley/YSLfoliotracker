@@ -17,7 +17,7 @@ import {
   Download, Upload, FileJson, FileSpreadsheet, Loader2,
   FlaskConical, Library, Settings, ShieldCheck
 } from 'lucide-react';
-import { DEFAULT_SETTINGS, type Settings as AppSettings, getStore, categorize } from '@/lib/dataModel';
+import { DEFAULT_SETTINGS, getStore, categorize } from '@/lib/dataModel';
 import { exportJSON, exportHoldingsCSV, exportTransactionsCSV, exportLadderPlansCSV, importJSON, importHoldingsCSV, generateCSVImportPreview, applyJSONImport, type ImportPreview } from '@/lib/importExport';
 import { PREDEFINED_THEMES, loadThemeSettings, saveThemeSettings, applyTheme, getThemePreviewColors, type ThemeSettings } from '@/lib/themes';
 import { SegmentedControl, type SegmentedTab } from '@/components/ui/segmented-control';
