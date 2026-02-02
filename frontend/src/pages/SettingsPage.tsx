@@ -641,108 +641,270 @@ interface ThemeContentProps {
   previewColors: { primary: string; secondary: string; background: string };
 }
 
+// Reordered theme keys to separate visually similar themes (Slate Minimal and Ocean Flux)
+const THEME_GRID_ORDER = [
+  'midnight-neon',    // Row 1
+  'carbon-shadow',    // Row 1
+  'slate-minimal',    // Row 2
+  'aurora-mist',      // Row 2
+  'graphite-lumina',  // Row 3
+  'velvet-dusk',      // Row 3
+  'ocean-flux',       // Row 4
+  'ember-glow',       // Row 4
+];
+
 function ThemeContent({ themeSettings, handleThemeChange, handleHueChange, currentTheme, previewColors }: ThemeContentProps) {
+  const handleResetHue = () => {
+    handleHueChange([0]);
+  };
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Theme Selector</CardTitle>
-        <CardDescription>Choose from predefined themes and customize accent colors</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Select Theme</Label>
-            <Select value={themeSettings.selectedTheme} onValueChange={handleThemeChange}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(PREDEFINED_THEMES).map(([key, theme]) => (
-                  <SelectItem key={key} value={key}>{theme.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {currentTheme && (
-              <p className="text-sm text-muted-foreground">{currentTheme.description}</p>
-            )}
-          </div>
-
-          <Separator />
-
-          <div className="space-y-3">
-            <Label>Theme Preview Cards</Label>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {Object.entries(PREDEFINED_THEMES).map(([key, theme]) => {
-                const colors = getThemePreviewColors(key, themeSettings.hueAdjustment);
-                const isSelected = themeSettings.selectedTheme === key;
-                return (
-                  <button
-                    key={key}
-                    onClick={() => handleThemeChange(key)}
-                    className={`p-3 rounded-lg border-2 transition-all ${
-                      isSelected ? 'border-primary shadow-glow' : 'border-border hover:border-primary/50'
-                    }`}
-                  >
-                    <div className="space-y-2">
-                      <div className="flex gap-1 h-8">
-                        <div className="flex-1 rounded" style={{ backgroundColor: colors.primary }} />
-                        <div className="flex-1 rounded" style={{ backgroundColor: colors.secondary }} />
-                      </div>
-                      <div className="h-6 rounded" style={{ backgroundColor: colors.background }} />
-                      <p className="text-xs font-medium truncate">{theme.name}</p>
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Left Column: Theme Cards Grid */}
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg">Select Theme</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-3">
+            {THEME_GRID_ORDER.map((key) => {
+              const theme = PREDEFINED_THEMES[key];
+              if (!theme) return null;
+              const colors = getThemePreviewColors(key, themeSettings.hueAdjustment);
+              const isSelected = themeSettings.selectedTheme === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => handleThemeChange(key)}
+                  className={`p-3 rounded-lg border-2 transition-all text-left ${
+                    isSelected 
+                      ? 'border-primary shadow-glow bg-primary/5' 
+                      : 'border-border/50 hover:border-primary/50 hover:bg-secondary/30'
+                  }`}
+                >
+                  <div className="space-y-2">
+                    <div className="flex gap-1 h-6">
+                      <div className="flex-1 rounded-sm" style={{ backgroundColor: colors.primary }} />
+                      <div className="flex-1 rounded-sm" style={{ backgroundColor: colors.secondary }} />
                     </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-2">
-            <Label>Hue Adjustment</Label>
-            <div className="flex items-center gap-4">
-              <Slider
-                value={[themeSettings.hueAdjustment]}
-                onValueChange={handleHueChange}
-                min={-180}
-                max={180}
-                step={1}
-                className="flex-1"
-              />
-              <span className="text-sm font-mono w-16 text-right">
-                {themeSettings.hueAdjustment > 0 ? '+' : ''}{themeSettings.hueAdjustment}°
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground">Shift the hue of accent colors to customize the theme</p>
-            <div className="flex gap-2 mt-2">
-              <div className="h-12 flex-1 rounded border" style={{ backgroundColor: previewColors.primary }} />
-              <div className="h-12 flex-1 rounded border" style={{ backgroundColor: previewColors.secondary }} />
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-3">
-            <Label>Live Preview</Label>
-            <div className="space-y-2 p-4 rounded-lg border glass-panel">
-              <h3 className="text-xl font-bold">Heading Example</h3>
-              <p className="text-base">This is regular paragraph text with the selected theme.</p>
-              <p className="text-sm text-muted-foreground">This is smaller muted text.</p>
-              <div className="flex gap-2 mt-4">
-                <button className="gradient-outline-btn text-sm">
-                  <span className="bg-gradient-to-r from-[var(--accent-cyan)] to-[var(--accent-violet)] bg-clip-text text-transparent">
-                    Primary Button
-                  </span>
+                    <div className="h-4 rounded-sm" style={{ backgroundColor: colors.background }} />
+                    <p className="text-xs font-medium truncate">{theme.name}</p>
+                  </div>
                 </button>
-                <Button size="sm" variant="secondary">Secondary</Button>
-                <Button size="sm" variant="outline">Outline</Button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Right Column: Preview + Accent Adjustment + Customization */}
+      <div className="space-y-4">
+        {/* Preview Section */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">Preview</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Mini header bar strip */}
+            <div className="rounded-md overflow-hidden border border-border/50">
+              <div 
+                className="h-8 px-3 flex items-center justify-between"
+                style={{ backgroundColor: previewColors.background }}
+              >
+                <div className="flex items-center gap-2">
+                  <div 
+                    className="w-4 h-4 rounded-full"
+                    style={{ 
+                      background: `linear-gradient(135deg, ${previewColors.primary}, ${previewColors.secondary})` 
+                    }}
+                  />
+                  <span className="text-xs font-medium text-foreground/80">YSL Portfolio</span>
+                </div>
+                <div className="flex gap-1.5">
+                  <div className="w-8 h-4 rounded-full bg-secondary/50" />
+                  <div className="w-8 h-4 rounded-full bg-secondary/50" />
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+
+            {/* Button sample */}
+            <div className="flex gap-2 items-center">
+              <span className="text-xs text-muted-foreground w-14">Button</span>
+              <button 
+                className="px-3 py-1.5 rounded-full text-xs font-medium border transition-all"
+                style={{ 
+                  borderColor: previewColors.primary,
+                  background: `linear-gradient(135deg, ${previewColors.primary}15, ${previewColors.secondary}15)`,
+                  color: previewColors.primary
+                }}
+              >
+                Add Asset
+              </button>
+            </div>
+
+            {/* Category pill sample */}
+            <div className="flex gap-2 items-center">
+              <span className="text-xs text-muted-foreground w-14">Category</span>
+              <div className="flex gap-1.5">
+                <span 
+                  className="px-2 py-0.5 rounded-full text-[10px] font-medium"
+                  style={{ 
+                    backgroundColor: `${previewColors.primary}20`,
+                    color: previewColors.primary
+                  }}
+                >
+                  Blue Chip
+                </span>
+                <span 
+                  className="px-2 py-0.5 rounded-full text-[10px] font-medium"
+                  style={{ 
+                    backgroundColor: `${previewColors.secondary}20`,
+                    color: previewColors.secondary
+                  }}
+                >
+                  Mid Cap
+                </span>
+              </div>
+            </div>
+
+            {/* Table row sample */}
+            <div className="flex gap-2 items-center">
+              <span className="text-xs text-muted-foreground w-14">Table</span>
+              <div 
+                className="flex-1 rounded-md border border-border/30 overflow-hidden"
+                style={{ backgroundColor: `${previewColors.background}80` }}
+              >
+                <div className="px-3 py-2 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <div 
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold"
+                      style={{ backgroundColor: `${previewColors.primary}30`, color: previewColors.primary }}
+                    >
+                      B
+                    </div>
+                    <span className="font-medium">BTC</span>
+                  </div>
+                  <span className="text-muted-foreground">$97,542.00</span>
+                  <span style={{ color: '#22c55e' }}>+2.4%</span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Accent Adjustment Section */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">Accent Adjustment</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <Slider
+                  value={[themeSettings.hueAdjustment]}
+                  onValueChange={handleHueChange}
+                  min={-180}
+                  max={180}
+                  step={1}
+                  className="flex-1"
+                />
+                <span className="text-sm font-mono w-12 text-right tabular-nums">
+                  {themeSettings.hueAdjustment > 0 ? '+' : ''}{themeSettings.hueAdjustment}°
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex gap-2">
+                  <div 
+                    className="h-6 w-12 rounded border border-border/50" 
+                    style={{ backgroundColor: previewColors.primary }} 
+                  />
+                  <div 
+                    className="h-6 w-12 rounded border border-border/50" 
+                    style={{ backgroundColor: previewColors.secondary }} 
+                  />
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={handleResetHue}
+                  disabled={themeSettings.hueAdjustment === 0}
+                  className="h-7 text-xs"
+                >
+                  Reset
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Customization Section - Future Options */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              Customization
+              <Badge variant="outline" className="text-[10px] font-normal">Future</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* High contrast mode */}
+            <div className="flex items-center justify-between opacity-50">
+              <div className="space-y-0.5">
+                <Label className="text-sm">High contrast mode</Label>
+                <p className="text-[10px] text-muted-foreground">Coming Soon</p>
+              </div>
+              <Switch disabled />
+            </div>
+
+            {/* Reduced motion */}
+            <div className="flex items-center justify-between opacity-50">
+              <div className="space-y-0.5">
+                <Label className="text-sm">Reduced motion</Label>
+                <p className="text-[10px] text-muted-foreground">Coming Soon</p>
+              </div>
+              <Switch disabled />
+            </div>
+
+            {/* Density */}
+            <div className="space-y-2 opacity-50">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Density</Label>
+                <span className="text-[10px] text-muted-foreground">Coming Soon</span>
+              </div>
+              <div className="flex gap-1 p-1 rounded-full bg-secondary/40 border border-border/50 w-fit">
+                <button 
+                  disabled
+                  className="px-3 py-1 text-xs rounded-full bg-primary/15 text-foreground/50"
+                >
+                  Compact
+                </button>
+                <button 
+                  disabled
+                  className="px-3 py-1 text-xs rounded-full text-muted-foreground"
+                >
+                  Roomy
+                </button>
+              </div>
+            </div>
+
+            {/* Accent intensity */}
+            <div className="space-y-2 opacity-50">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Accent intensity</Label>
+                <span className="text-[10px] text-muted-foreground">Coming Soon</span>
+              </div>
+              <Slider
+                value={[50]}
+                min={0}
+                max={100}
+                step={1}
+                disabled
+                className="opacity-50"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   );
 }
 

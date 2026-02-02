@@ -731,3 +731,94 @@ const tabs: SegmentedTab[] = [
 - Settings > Settings/Admin section toggle
 - Settings > Sub-tabs (Theme/Formatting/Data)
 - Admin > Sub-tabs (Thresholds/Providers/Tools/Strategy Library)
+
+
+
+---
+
+## Theme Tab Redesign Research (February 2026)
+
+### Current Theme Tab Implementation
+
+**Location:** `/frontend/src/pages/SettingsPage.tsx` (ThemeContent component, lines ~580-675)
+
+**Current Layout:**
+1. **Card header** with title "Theme Selector" and description
+2. **Theme dropdown** - Select component for choosing theme
+3. **Theme description** - Text below dropdown showing current theme's description
+4. **Separator**
+5. **Theme Preview Cards** - 2x4 grid of clickable theme preview cards
+6. **Separator**
+7. **Hue Adjustment** - Slider (-180 to +180) with numeric readout and color preview bars
+8. **Separator**
+9. **Live Preview** - Shows heading, paragraph, muted text, and buttons
+
+### Current Theme Card Order (in PREDEFINED_THEMES object)
+1. midnight-neon - Midnight Neon
+2. graphite-lumina - Graphite Lumina
+3. slate-minimal - Slate Minimal
+4. aurora-mist - Aurora Mist
+5. velvet-dusk - Velvet Dusk
+6. carbon-shadow - Carbon Shadow
+7. ocean-flux - Ocean Flux
+8. ember-glow - Ember Glow
+
+**Note:** Slate Minimal and Ocean Flux are in positions 3 and 7, not directly adjacent.
+
+### Available Themes (from themes.ts)
+| Key | Name | Description | Base Hue |
+|-----|------|-------------|----------|
+| midnight-neon | Midnight Neon | Deep blue-black base with electric cyan/magenta accents | 195 |
+| graphite-lumina | Graphite Lumina | Charcoal gray base with silver/white luminous accents | 0 |
+| slate-minimal | Slate Minimal | Cool gray base with subtle blue/teal accents | 200 |
+| aurora-mist | Aurora Mist | Dark purple base with green/pink aurora-like accents | 280 |
+| velvet-dusk | Velvet Dusk | Rich burgundy base with gold/amber accents | 340 |
+| carbon-shadow | Carbon Shadow | Pure black base with red/orange ember accents | 10 |
+| ocean-flux | Ocean Flux | Deep navy base with aqua/turquoise accents | 190 |
+| ember-glow | Ember Glow | Dark brown base with orange/yellow fire accents | 30 |
+
+### Current Preview Implementation
+- **Theme cards**: Show 2 color bars (primary/secondary accents) + 1 background bar + theme name
+- **Hue adjustment preview**: Shows 2 color bars at the bottom
+- **Live preview section**: Shows heading, paragraph, muted text, and 3 buttons (gradient-outline, secondary, outline)
+
+### Issues to Address
+1. **Dropdown redundancy**: Theme can be selected both via dropdown AND clicking theme cards
+2. **Descriptive text redundancy**: The description below dropdown repeats what the cards show visually
+3. **Layout is single-column**: Doesn't use available horizontal space well
+4. **Hue adjustment UI**: Currently uses a Slider component with basic numeric readout; could use a real slider control with Reset button
+5. **Live preview is basic**: Shows text and buttons but not actual UI elements like header bars, category pills, or table rows
+
+### Redesign Plan
+
+**New Two-Column Layout:**
+- Left column: Theme cards in 4x2 grid
+- Right column: Preview section + Accent adjustment section + Customization section
+
+**Card Grid Reorder (to separate Slate Minimal and Ocean Flux):**
+1. Midnight Neon (row 1)
+2. Carbon Shadow (row 1) - moved from position 6
+3. Slate Minimal (row 2)
+4. Aurora Mist (row 2)
+5. Graphite Lumina (row 3)
+6. Velvet Dusk (row 3)
+7. Ocean Flux (row 4)
+8. Ember Glow (row 4)
+
+**New Preview Section:**
+- Mini header bar strip
+- Button sample
+- Category pill sample
+- Table row/card sample
+- All reflecting current theme tokens
+
+**Accent Adjustment Section:**
+- Real slider with numeric readout
+- "Reset" button (can be disabled)
+
+**Customization Section (all disabled with "Coming Soon"):**
+- High contrast mode toggle
+- Reduced motion toggle
+- Density: Compact vs Roomy segmented toggle
+- Accent intensity slider
+

@@ -19,6 +19,23 @@ interface LayoutProps {
 const NAME_PROMPT_SKIPPED_KEY = 'ysl-name-prompt-skipped';
 const LOCAL_PROFILE_KEY = 'ysl-local-profile';
 
+// Helper to serialize profile with BigInt support
+function serializeProfile(profile: UserProfile): string {
+  return JSON.stringify({
+    ...profile,
+    updatedAt: profile.updatedAt.toString(), // Convert BigInt to string
+  });
+}
+
+// Helper to deserialize profile with BigInt support
+function deserializeProfile(json: string): UserProfile {
+  const parsed = JSON.parse(json);
+  return {
+    ...parsed,
+    updatedAt: BigInt(parsed.updatedAt), // Convert string back to BigInt
+  };
+}
+
 export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: LayoutProps) {
   const { login, clear, identity, principal, isLoggingIn, loginStatus } = useInternetIdentity();
   const { actor, isFetching: actorFetching, error: actorError } = useActor();
@@ -51,7 +68,7 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
       const localProfile = localStorage.getItem(localProfileKey);
       if (localProfile) {
         try {
-          const parsed = JSON.parse(localProfile);
+          const parsed = deserializeProfile(localProfile);
           setProfile(parsed);
           console.log('[Layout] Profile loaded from localStorage:', parsed);
         } catch (e) {
@@ -66,7 +83,7 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
           if (result && result.length > 0) {
             setProfile(result[0]);
             // Sync to localStorage
-            localStorage.setItem(localProfileKey, JSON.stringify(result[0]));
+            localStorage.setItem(localProfileKey, serializeProfile(result[0]));
             console.log('[Layout] Profile loaded from backend:', result[0]);
             setUseLocalStorage(false);
           } else {
@@ -139,15 +156,24 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
       updatedAt: BigInt(Date.now() * 1000000), // nanoseconds
     };
 
-    // Try to save to backend first
+    let savedToBackend = false;
+
+    // Try to save to backend first (with timeout)
     if (actor && !useLocalStorage) {
       try {
-        const updatedProfile = await actor.upsert_profile(firstName, lastName);
+        // Add a 5-second timeout to prevent hanging
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Backend timeout')), 5000)
+        );
+        const savePromise = actor.upsert_profile(firstName, lastName);
+        
+        const updatedProfile = await Promise.race([savePromise, timeoutPromise]) as UserProfile;
         setProfile(updatedProfile);
         // Also save to localStorage as backup
         const localProfileKey = `${LOCAL_PROFILE_KEY}-${principal}`;
-        localStorage.setItem(localProfileKey, JSON.stringify(updatedProfile));
+        localStorage.setItem(localProfileKey, serializeProfile(updatedProfile));
         console.log('[Layout] Profile saved to backend');
+        savedToBackend = true;
       } catch (error) {
         console.error('[Layout] Failed to save profile to backend, using localStorage:', error);
         setUseLocalStorage(true);
@@ -156,9 +182,9 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
     }
     
     // Save to localStorage (either as primary or as fallback)
-    if (useLocalStorage || !actor) {
+    if (!savedToBackend) {
       const localProfileKey = `${LOCAL_PROFILE_KEY}-${principal}`;
-      localStorage.setItem(localProfileKey, JSON.stringify(newProfile));
+      localStorage.setItem(localProfileKey, serializeProfile(newProfile));
       setProfile(newProfile);
       console.log('[Layout] Profile saved to localStorage');
     }
@@ -185,7 +211,7 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
       };
 
       const localProfileKey = `${LOCAL_PROFILE_KEY}-${principal}`;
-      localStorage.setItem(localProfileKey, JSON.stringify(emptyProfile));
+      localStorage.setItem(localProfileKey, serializeProfile(emptyProfile));
       setProfile(emptyProfile);
     }
     
@@ -195,6 +221,11 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
   const handleEditName = () => {
     setIsEditMode(true);
     setShowNamePrompt(true);
+  };
+
+  const handleCloseNamePrompt = () => {
+    setShowNamePrompt(false);
+    setIsEditMode(false);
   };
 
   // Get display name
@@ -362,6 +393,7 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
         open={showNamePrompt}
         onSave={handleSaveProfile}
         onSkip={handleSkipProfile}
+        onClose={handleCloseNamePrompt}
         isLoading={isSavingProfile}
         initialFirstName={profile?.firstName || ''}
         initialLastName={profile?.lastName || ''}

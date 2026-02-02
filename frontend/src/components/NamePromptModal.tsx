@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import {
   Dialog,
@@ -15,6 +15,7 @@ interface NamePromptModalProps {
   open: boolean;
   onSave: (firstName: string, lastName: string) => Promise<void>;
   onSkip: () => void;
+  onClose?: () => void;
   isLoading?: boolean;
   initialFirstName?: string;
   initialLastName?: string;
@@ -25,6 +26,7 @@ export function NamePromptModal({
   open,
   onSave,
   onSkip,
+  onClose,
   isLoading = false,
   initialFirstName = '',
   initialLastName = '',
@@ -32,6 +34,14 @@ export function NamePromptModal({
 }: NamePromptModalProps) {
   const [firstName, setFirstName] = useState(initialFirstName);
   const [lastName, setLastName] = useState(initialLastName);
+
+  // Sync state with props when modal opens or initial values change
+  useEffect(() => {
+    if (open) {
+      setFirstName(initialFirstName);
+      setLastName(initialLastName);
+    }
+  }, [open, initialFirstName, initialLastName]);
 
   const handleSave = async () => {
     await onSave(firstName.trim(), lastName.trim());
@@ -41,9 +51,42 @@ export function NamePromptModal({
     onSkip();
   };
 
+  const handleClose = () => {
+    // In edit mode, allow closing; in initial prompt mode, use skip
+    if (isEditMode && onClose) {
+      onClose();
+    } else if (!isEditMode) {
+      // For initial prompt, clicking outside does nothing (must use Skip button)
+    }
+  };
+
+  const handleOpenChange = (newOpen: boolean) => {
+    // In edit mode, always allow closing (even during loading)
+    // In initial prompt mode, only close via Skip button
+    if (!newOpen) {
+      if (isEditMode && onClose) {
+        onClose();
+      }
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={() => {}}>
-      <DialogContent className="glass-panel sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent 
+        className="glass-panel sm:max-w-md" 
+        onPointerDownOutside={(e) => {
+          // Only prevent closing on initial prompt, allow in edit mode
+          if (!isEditMode) {
+            e.preventDefault();
+          }
+        }}
+        onEscapeKeyDown={(e) => {
+          // Only prevent escape on initial prompt, allow in edit mode
+          if (!isEditMode) {
+            e.preventDefault();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="text-xl font-heading">
             {isEditMode ? 'Edit Your Name' : 'Welcome!'}
@@ -81,7 +124,15 @@ export function NamePromptModal({
         </div>
 
         <div className="flex justify-end gap-3">
-          {!isEditMode && (
+          {isEditMode ? (
+            <Button
+              variant="ghost"
+              onClick={onClose}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              Cancel
+            </Button>
+          ) : (
             <Button
               variant="ghost"
               onClick={handleSkip}
