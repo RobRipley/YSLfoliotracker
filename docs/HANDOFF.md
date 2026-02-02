@@ -822,3 +822,141 @@ const tabs: SegmentedTab[] = [
 - Density: Compact vs Roomy segmented toggle
 - Accent intensity slider
 
+
+
+### Theme Tab Redesign - COMPLETED (February 2026)
+
+**Summary:** Redesigned the Theme tab in Settings with a two-column layout and enhanced preview.
+
+**Changes Made:**
+
+1. **Two-Column Layout**
+   - Left column: Theme cards in 4x2 grid
+   - Right column: Preview + Accent Adjustment + Customization sections
+
+2. **New Theme Card Order** (to separate visually similar themes):
+   1. Midnight Neon
+   2. Carbon Shadow
+   3. Slate Minimal
+   4. Aurora Mist
+   5. Graphite Lumina
+   6. Velvet Dusk
+   7. Ocean Flux
+   8. Ember Glow
+
+3. **Enhanced Preview Section** showing:
+   - Mini header bar strip with logo and nav placeholders
+   - Button sample ("Add Asset")
+   - Category pills (Blue Chip, Mid Cap)
+   - Table row with symbol, price, and percentage
+
+4. **Accent Adjustment Section**
+   - Slider with numeric readout (-180° to +180°)
+   - Color preview swatches
+   - Reset button (functional)
+
+5. **Customization Section** (disabled with "Coming Soon" labels):
+   - High contrast mode toggle
+   - Reduced motion toggle
+   - Density: Compact vs Roomy segmented toggle
+   - Accent intensity slider
+
+**Files Modified:**
+- `/frontend/src/pages/SettingsPage.tsx` - Added THEME_GRID_ORDER constant and rewrote ThemeContent component
+
+**Bug Fixes Also Included:**
+- Fixed name edit modal Cancel button to work during save operation
+- Fixed click-outside to close modal in edit mode
+- Fixed BigInt serialization error when saving profile to localStorage
+- Added 5-second timeout for backend profile save with localStorage fallback
+- Fixed modal to pre-populate with existing name values when editing
+
+**Files Modified for Bug Fixes:**
+- `/frontend/src/components/NamePromptModal.tsx` - Added useEffect to sync state with props, enabled Cancel during loading
+- `/frontend/src/components/Layout.tsx` - Added serializeProfile/deserializeProfile helpers, added timeout for backend calls
+
+---
+
+## Low Priority / Future Work
+
+| Feature | Location | Notes |
+|---------|----------|-------|
+| High contrast mode | `/frontend/src/pages/SettingsPage.tsx` (ThemeContent) | Disabled toggle in Customization section |
+| Reduced motion | `/frontend/src/pages/SettingsPage.tsx` (ThemeContent) | Disabled toggle in Customization section |
+| Density (Compact/Roomy) | `/frontend/src/pages/SettingsPage.tsx` (ThemeContent) | Disabled segmented control in Customization section |
+| Accent intensity | `/frontend/src/pages/SettingsPage.tsx` (ThemeContent) | Disabled slider in Customization section |
+| Currency display (USD/EUR/CAD/JPY) | `/frontend/src/pages/SettingsPage.tsx` (FormattingContent) | Disabled dropdown in Currency Display card. Wire to settings store, add conversion rates |
+| Thousands separators toggle | `/frontend/src/pages/SettingsPage.tsx` (FormattingContent) | Disabled switch in Number Formatting card. Wire to formatCurrency/formatTokens functions |
+| Compact notation toggle | `/frontend/src/pages/SettingsPage.tsx` (FormattingContent) | Disabled switch in Number Formatting card. Implement Intl.NumberFormat compact notation |
+| Text Size (Small/Default/Large) | `/frontend/src/pages/SettingsPage.tsx` (FormattingContent) | Disabled segmented control in Typography card. Wire to CSS variable or root font-size scaling |
+
+
+
+---
+
+## Formatting Tab Research (February 2026)
+
+### Current Formatting Tab Implementation
+
+**Location:** `/frontend/src/pages/SettingsPage.tsx` (FormattingContent component, lines ~918-1072)
+
+**Functional Controls:**
+1. **Price Decimal Precision** - Select dropdown (0-8 decimal places) - WORKING
+2. **Token Decimal Precision** - Select dropdown (0-8 decimal places) - WORKING
+3. **Live Preview** - Shows formatted examples using current settings - WORKING
+
+**Previously Placeholder (non-functional):**
+- Default Currency dropdown - Was disabled with "Additional currencies will be available in future updates" note
+
+### Controls Added as Disabled UI
+
+| Control | Type | Card | Notes |
+|---------|------|------|-------|
+| Currency Display | Select dropdown (USD, EUR, CAD, JPY) | Currency Display | Disabled with "Coming Soon" |
+| Thousands separators | Switch toggle (default: checked) | Number Formatting | Disabled with "Coming Soon" |
+| Compact notation | Switch toggle (example: 12,345 → 12.3K) | Number Formatting | Disabled with "Coming Soon" |
+| Text Size | Segmented control (Small / Default / Large) | Typography | Disabled with "Coming Soon" |
+
+### Visual Treatment for Disabled Controls
+- `opacity-50` on the control wrapper
+- `pointer-events-none` on interactive elements where needed
+- "Coming Soon" subtitle text in `text-[10px] text-muted-foreground`
+- "Future" Badge on card headers using `<Badge variant="outline">` 
+- Switch and Select components use native `disabled` prop
+
+
+
+---
+
+## Formatting Tab Disabled UI Controls - COMPLETED (February 2026)
+
+### Summary
+Added disabled UI controls to the Formatting tab for planned future functionality, following the same visual pattern established in the Theme tab's Customization section.
+
+### Changes Made
+
+1. **Reorganized FormattingContent into separate cards:**
+   - **Decimal Precision** (functional) - existing price/token precision controls
+   - **Currency Display** (future) - new disabled currency dropdown
+   - **Number Formatting** (future) - new disabled toggles
+   - **Typography** (future) - new disabled text size control
+
+2. **New Disabled Controls Added:**
+   - **Currency Display dropdown:** USD, EUR, CAD, JPY options (disabled)
+   - **Thousands separators toggle:** Switch defaulting to checked (disabled)
+   - **Compact notation toggle:** Switch with "12,345 → 12.3K" example (disabled)
+   - **Text Size segmented control:** Small / Default / Large (disabled, Default selected)
+
+3. **Visual Treatment:**
+   - `opacity-50` wrapper for reduced visual emphasis
+   - `pointer-events-none` to prevent interaction
+   - "Future" Badge on card headers
+   - "Coming Soon" subtitle on each control
+   - Consistent with Theme tab's Customization section styling
+
+### Files Modified
+- `/frontend/src/pages/SettingsPage.tsx` - Rewrote FormattingContent component
+
+### Deployment
+- Deployed to IC mainnet: https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io/
+

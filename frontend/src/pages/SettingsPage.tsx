@@ -918,65 +918,156 @@ interface FormattingContentProps {
 
 function FormattingContent({ settings, handlePricePrecisionChange, handleTokenPrecisionChange, formatCurrency, formatTokens }: FormattingContentProps) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Number Formatting</CardTitle>
-        <CardDescription>Configure decimal precision and currency display</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-2">
-            <Label>Price Decimal Precision</Label>
-            <Select value={settings.numberFormatting.pricePrecision.toString()} onValueChange={handlePricePrecisionChange}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+    <div className="space-y-4">
+      {/* Decimal Precision Card - Functional */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Decimal Precision</CardTitle>
+          <CardDescription>Configure how many decimal places to display</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label>Price Decimal Precision</Label>
+              <Select value={settings.numberFormatting.pricePrecision.toString()} onValueChange={handlePricePrecisionChange}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[0, 1, 2, 3, 4, 5, 6, 7, 8].map(n => (
+                    <SelectItem key={n} value={n.toString()}>{n} decimal places</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Token Decimal Precision</Label>
+              <Select value={settings.numberFormatting.tokenPrecision.toString()} onValueChange={handleTokenPrecisionChange}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[0, 1, 2, 3, 4, 5, 6, 7, 8].map(n => (
+                    <SelectItem key={n} value={n.toString()}>{n} decimal places</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <Separator />
+          <div className="space-y-3">
+            <Label>Live Preview</Label>
+            <div className="p-4 rounded-lg border glass-panel space-y-2">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Price Example:</span>
+                <span className="font-mono">{formatCurrency(1234.56789)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Token Example:</span>
+                <span className="font-mono">{formatTokens(123.456789)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Small Price:</span>
+                <span className="font-mono">{formatCurrency(0.00123456)}</span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Currency Display Card - Future */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            Currency Display
+            <Badge variant="outline" className="text-[10px] font-normal">Future</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2 opacity-50">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Display Currency</Label>
+              <span className="text-[10px] text-muted-foreground">Coming Soon</span>
+            </div>
+            <Select value="USD" disabled>
+              <SelectTrigger className="pointer-events-none">
+                <SelectValue placeholder="USD ($)" />
+              </SelectTrigger>
               <SelectContent>
-                {[0, 1, 2, 3, 4, 5, 6, 7, 8].map(n => (
-                  <SelectItem key={n} value={n.toString()}>{n} decimal places</SelectItem>
-                ))}
+                <SelectItem value="USD">USD ($)</SelectItem>
+                <SelectItem value="EUR">EUR (€)</SelectItem>
+                <SelectItem value="CAD">CAD (C$)</SelectItem>
+                <SelectItem value="JPY">JPY (¥)</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label>Token Decimal Precision</Label>
-            <Select value={settings.numberFormatting.tokenPrecision.toString()} onValueChange={handleTokenPrecisionChange}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {[0, 1, 2, 3, 4, 5, 6, 7, 8].map(n => (
-                  <SelectItem key={n} value={n.toString()}>{n} decimal places</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        </CardContent>
+      </Card>
+
+      {/* Number Formatting Options Card - Future */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            Number Formatting
+            <Badge variant="outline" className="text-[10px] font-normal">Future</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Thousands separators toggle */}
+          <div className="flex items-center justify-between opacity-50">
+            <div className="space-y-0.5">
+              <Label className="text-sm">Thousands separators</Label>
+              <p className="text-[10px] text-muted-foreground">Coming Soon</p>
+            </div>
+            <Switch disabled checked />
           </div>
-        </div>
-        <Separator />
-        <div className="space-y-2">
-          <Label>Default Currency</Label>
-          <Select value={settings.numberFormatting.defaultCurrency} disabled>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="USD">USD ($)</SelectItem></SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">Additional currencies will be available in future updates</p>
-        </div>
-        <Separator />
-        <div className="space-y-3">
-          <Label>Live Preview</Label>
-          <div className="p-4 rounded-lg border glass-panel space-y-2">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Price Example:</span>
-              <span className="font-mono">{formatCurrency(1234.56789)}</span>
+
+          {/* Compact notation toggle */}
+          <div className="flex items-center justify-between opacity-50">
+            <div className="space-y-0.5">
+              <Label className="text-sm">Compact notation</Label>
+              <p className="text-[10px] text-muted-foreground">Coming Soon · 12,345 → 12.3K</p>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Token Example:</span>
-              <span className="font-mono">{formatTokens(123.456789)}</span>
+            <Switch disabled />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Typography Card - Future */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            Typography
+            <Badge variant="outline" className="text-[10px] font-normal">Future</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Text size segmented control */}
+          <div className="space-y-2 opacity-50">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm">Text Size</Label>
+              <span className="text-[10px] text-muted-foreground">Coming Soon</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Small Price:</span>
-              <span className="font-mono">{formatCurrency(0.00123456)}</span>
+            <div className="flex gap-1 p-1 rounded-full bg-secondary/40 border border-border/50 w-fit pointer-events-none">
+              <button 
+                disabled
+                className="px-3 py-1 text-xs rounded-full text-muted-foreground"
+              >
+                Small
+              </button>
+              <button 
+                disabled
+                className="px-3 py-1 text-xs rounded-full bg-primary/15 text-foreground/50"
+              >
+                Default
+              </button>
+              <button 
+                disabled
+                className="px-3 py-1 text-xs rounded-full text-muted-foreground"
+              >
+                Large
+              </button>
             </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
