@@ -1372,3 +1372,60 @@ The complete original Market.tsx implementation is preserved at:
 
 This includes all state management, sorting logic, filtering, table rendering, and styling.
 
+
+
+---
+
+## Settings Navigation Redesign - COMPLETED (February 2026)
+
+### Summary
+
+Redesigned the Settings page navigation to use tabs for top-level sections and segmented control for sub-sections, creating clear visual hierarchy.
+
+### Problem Solved
+
+Previously, both the Settings/Admin section toggle AND the sub-tabs (Theme/Formatting/Data) used identical pill-style segmented controls, causing visual confusion about navigation hierarchy.
+
+### Solution Implemented
+
+**Two-level navigation with distinct visual treatments:**
+
+1. **Top-level tabs (Settings | Admin):**
+   - Flat tab style with no rounded container
+   - Underline indicator for active tab
+   - Admin tab uses amber accent color
+   - Feels like "page navigation"
+
+2. **Sub-tabs (Theme/Formatting/Data or Thresholds/Providers/Tools/Strategy Library):**
+   - Segmented control with rounded pill container
+   - Animated sliding pill for active state
+   - Admin sub-tabs use amber variant
+   - Feels like "mode switching within a section"
+
+### Files Changed
+
+- `/frontend/src/pages/SettingsPage.tsx` - Added `TopLevelTabs` component, restructured navigation
+
+### Technical Details
+
+New `TopLevelTabs` component (lines 98-180):
+- Uses `border-b border-border/50` for bottom border
+- Active tab has underline via `absolute bottom-0` positioned span
+- Admin tab uses amber colors (`text-amber-400`, `bg-amber-400`)
+- No rounded container or background (flat tabs)
+
+### Visual Hierarchy
+
+| Level | Control | Style | Purpose |
+|-------|---------|-------|---------|
+| 1 | TopLevelTabs | Flat + underline | Section navigation |
+| 2 | SegmentedControl | Rounded pills | Mode switching |
+
+### Checklist Verification
+
+- ✅ Settings / Admin rendered as tabs (not pills)
+- ✅ Sub-tabs rendered as segmented control (pills)
+- ✅ Only one segmented control visible at a time
+- ✅ Clear visual hierarchy
+- ✅ No stacked pill confusion
+- ✅ Admin tab hidden for non-admin users
