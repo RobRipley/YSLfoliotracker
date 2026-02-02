@@ -92,15 +92,38 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
   }, [symbols]);
 
   // Fetch logos for all symbols (only once when symbols change)
+  // Uses stored CoinGecko IDs when available for more reliable logo resolution
   const fetchLogos = useCallback(async () => {
     if (!symbols.length) return;
     try {
-      const logoMap = await aggregator.getLogos(symbols);
-      setLogos(prev => ({ ...prev, ...logoMap }));
+      // Build symbol -> CoinGecko ID map from holdings that have stored IDs
+      const symbolToIdMap: Record<string, string> = {};
+      for (const holding of store.holdings) {
+        const symbol = holding.symbol.toUpperCase();
+        if (holding.coingeckoId) {
+          symbolToIdMap[symbol] = holding.coingeckoId;
+          console.log(`[PortfolioDashboard] Using stored CoinGecko ID for ${symbol}: ${holding.coingeckoId}`);
+        }
+      }
+      
+      // Fetch logos using CoinGecko IDs for holdings that have them
+      const idsToFetch = Object.keys(symbolToIdMap);
+      if (idsToFetch.length > 0) {
+        const idBasedLogos = await aggregator.getLogosWithIds(symbolToIdMap);
+        setLogos(prev => ({ ...prev, ...idBasedLogos }));
+      }
+      
+      // For symbols without stored IDs, use the standard symbol-based lookup
+      const symbolsWithoutIds = symbols.filter(s => !symbolToIdMap[s]);
+      if (symbolsWithoutIds.length > 0) {
+        console.log(`[PortfolioDashboard] Fetching logos for symbols without stored IDs: ${symbolsWithoutIds.join(', ')}`);
+        const symbolBasedLogos = await aggregator.getLogos(symbolsWithoutIds);
+        setLogos(prev => ({ ...prev, ...symbolBasedLogos }));
+      }
     } catch (err) {
       console.error('Failed to fetch logos', err);
     }
-  }, [symbols]);
+  }, [symbols, store.holdings]);
 
   useEffect(() => {
     fetchPrices();
@@ -207,11 +230,13 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
   };
 
   const handleUnifiedSubmit = (holding: Holding) => {
-    // Call addHolding with separate parameters as expected by the store
+    // Call addHolding with all parameters including CoinGecko ID and logo
     store.addHolding(holding.symbol, holding.tokensOwned, {
       avgCost: holding.avgCost,
       purchaseDate: holding.purchaseDate,
       notes: holding.notes,
+      coingeckoId: holding.coingeckoId,
+      logoUrl: holding.logoUrl,
     });
     // Note: Do NOT close modal here - let UnifiedAssetModal control this
     // based on whether user clicked "Add Asset" vs "Add & Add Another"

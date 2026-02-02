@@ -4,11 +4,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
-import { TrendingUp, Loader2 } from 'lucide-react';
+import { TrendingUp, Loader2, Search, AlertCircle, Check } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getPriceAggregator } from '@/lib/priceService';
 import { store, calculateWeightedAverage, type Holding } from '@/lib/dataModel';
+import { 
+  searchCoinGecko, 
+  getBestCoinGeckoId, 
+  SYMBOL_TO_COINGECKO_ID,
+  type CoinGeckoSearchResult 
+} from '@/lib/coinGeckoSearch';
 import { toast } from 'sonner';
 
 interface UnifiedAssetModalProps {
@@ -36,17 +41,139 @@ export function UnifiedAssetModal({
   });
   const [notes, setNotes] = useState('');
   
+  // CoinGecko resolution state
+  const [searchResults, setSearchResults] = useState<CoinGeckoSearchResult[]>([]);
+  const [selectedCoinGeckoId, setSelectedCoinGeckoId] = useState<string | null>(null);
+  const [selectedLogoUrl, setSelectedLogoUrl] = useState<string | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showDisambiguation, setShowDisambiguation] = useState(false);
+  const [disambiguationNeeded, setDisambiguationNeeded] = useState(false);
+  
   // UI state
   const [isFetchingPrice, setIsFetchingPrice] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [existingHolding, setExistingHolding] = useState<Holding | null>(null);
-  const [quickAddMode, setQuickAddMode] = useState(false);
   const [priceMode, setPriceMode] = useState<PriceMode>('market');
   
   // Refs for focus management
   const symbolInputRef = useRef<HTMLInputElement>(null);
   const tokensInputRef = useRef<HTMLInputElement>(null);
   const priceInputRef = useRef<HTMLInputElement>(null);
+  
+  // Debounce timer for symbol search
+  const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Search CoinGecko when symbol changes (debounced)
+  useEffect(() => {
+    if (!symbol || symbol.length < 2) {
+      setSearchResults([]);
+      setSelectedCoinGeckoId(null);
+      setSelectedLogoUrl(null);
+      setDisambiguationNeeded(false);
+      setShowDisambiguation(false);
+      return;
+    }
+
+    // Clear previous timer
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+    }
+
+    // Check if we have an explicit mapping - no search needed
+    const normalizedSymbol = symbol.toUpperCase().trim();
+    if (SYMBOL_TO_COINGECKO_ID[normalizedSymbol]) {
+      const explicitId = SYMBOL_TO_COINGECKO_ID[normalizedSymbol];
+      console.log(`[UnifiedAssetModal] Using explicit CoinGecko ID for ${normalizedSymbol}: ${explicitId}`);
+      setSelectedCoinGeckoId(explicitId);
+      setDisambiguationNeeded(false);
+      setShowDisambiguation(false);
+      // Fetch the logo for this coin
+      fetchLogoForId(explicitId, normalizedSymbol);
+      return;
+    }
+
+    // Debounced search
+    searchTimerRef.current = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const results = await searchCoinGecko(symbol);
+        setSearchResults(results);
+        
+        // Check if disambiguation is needed
+        const exactMatches = results.filter(r => r.symbol.toUpperCase() === normalizedSymbol);
+        
+        if (exactMatches.length > 1) {
+          // Multiple exact matches - disambiguation needed
+          console.log(`[UnifiedAssetModal] Disambiguation needed for ${normalizedSymbol}: ${exactMatches.length} matches`);
+          setDisambiguationNeeded(true);
+          setShowDisambiguation(true);
+          setSelectedCoinGeckoId(null);
+          setSelectedLogoUrl(null);
+        } else if (exactMatches.length === 1) {
+          // Single exact match - use it
+          const match = exactMatches[0];
+          console.log(`[UnifiedAssetModal] Single match for ${normalizedSymbol}: ${match.id}`);
+          setSelectedCoinGeckoId(match.id);
+          setSelectedLogoUrl(match.large || match.thumb || null);
+          setDisambiguationNeeded(false);
+          setShowDisambiguation(false);
+        } else if (results.length > 0) {
+          // No exact match - use best result
+          const bestId = getBestCoinGeckoId(symbol, results);
+          console.log(`[UnifiedAssetModal] No exact match for ${normalizedSymbol}, using best: ${bestId}`);
+          setSelectedCoinGeckoId(bestId);
+          setSelectedLogoUrl(results[0]?.large || results[0]?.thumb || null);
+          setDisambiguationNeeded(false);
+          setShowDisambiguation(false);
+        } else {
+          // No results
+          console.log(`[UnifiedAssetModal] No CoinGecko results for ${normalizedSymbol}`);
+          setSelectedCoinGeckoId(null);
+          setSelectedLogoUrl(null);
+          setDisambiguationNeeded(false);
+          setShowDisambiguation(false);
+        }
+      } catch (error) {
+        console.error('[UnifiedAssetModal] Search error:', error);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 500);
+
+    return () => {
+      if (searchTimerRef.current) {
+        clearTimeout(searchTimerRef.current);
+      }
+    };
+  }, [symbol]);
+
+  // Fetch logo for a specific CoinGecko ID
+  const fetchLogoForId = async (coinId: string, symbolForLogging: string) => {
+    try {
+      const response = await fetch(
+        `https://api.coingecko.com/api/v3/coins/${coinId}?localization=false&tickers=false&community_data=false&developer_data=false`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const logoUrl = data.image?.large || data.image?.small || data.image?.thumb;
+        if (logoUrl) {
+          console.log(`[UnifiedAssetModal] Got logo for ${symbolForLogging} (${coinId}): ${logoUrl.substring(0, 50)}...`);
+          setSelectedLogoUrl(logoUrl);
+        }
+      }
+    } catch (e) {
+      console.warn(`[UnifiedAssetModal] Failed to fetch logo for ${coinId}:`, e);
+    }
+  };
+
+  // Handle disambiguation selection
+  const handleSelectCoin = (coin: CoinGeckoSearchResult) => {
+    console.log(`[UnifiedAssetModal] User selected: ${coin.name} (${coin.id})`);
+    setSelectedCoinGeckoId(coin.id);
+    setSelectedLogoUrl(coin.large || coin.thumb || null);
+    setShowDisambiguation(false);
+    toast.success(`Selected: ${coin.name}`);
+  };
 
   // Detect existing holding when symbol changes
   useEffect(() => {
@@ -59,6 +186,13 @@ export function UnifiedAssetModal({
         setTokens(holding.tokensOwned.toString());
         setAvgCost(holding.avgCost?.toString() || '');
         setNotes(holding.notes || '');
+        // Use existing CoinGecko ID if available
+        if (holding.coingeckoId) {
+          setSelectedCoinGeckoId(holding.coingeckoId);
+        }
+        if (holding.logoUrl) {
+          setSelectedLogoUrl(holding.logoUrl);
+        }
       }
     } else {
       setExistingHolding(null);
@@ -72,10 +206,9 @@ export function UnifiedAssetModal({
     }
   }, [prefilledSymbol, open]);
 
-  // Focus symbol input when modal opens (especially in Quick Add mode)
+  // Focus symbol input when modal opens
   useEffect(() => {
     if (open) {
-      // Small delay to ensure modal is rendered
       const timer = setTimeout(() => {
         symbolInputRef.current?.focus();
       }, 100);
@@ -96,6 +229,11 @@ export function UnifiedAssetModal({
       setNotes('');
       setExistingHolding(null);
       setPriceMode('market');
+      setSearchResults([]);
+      setSelectedCoinGeckoId(null);
+      setSelectedLogoUrl(null);
+      setDisambiguationNeeded(false);
+      setShowDisambiguation(false);
     }
   }, [open]);
 
@@ -129,20 +267,20 @@ export function UnifiedAssetModal({
 
   // Reset fields for "Add & Add Another" flow
   const resetForNextEntry = useCallback(() => {
-    // Clear per-asset fields
     setSymbol('');
     setTokens('');
     setNotes('');
     setExistingHolding(null);
+    setSearchResults([]);
+    setSelectedCoinGeckoId(null);
+    setSelectedLogoUrl(null);
+    setDisambiguationNeeded(false);
+    setShowDisambiguation(false);
     
-    // Keep: date, priceMode
-    // Clear avgCost only if mode is 'market' (will re-fetch for next asset)
     if (priceMode === 'market') {
       setAvgCost('');
     }
-    // If manual mode, keep the avgCost value
     
-    // Focus symbol input for next entry
     setTimeout(() => {
       symbolInputRef.current?.focus();
     }, 50);
@@ -161,10 +299,17 @@ export function UnifiedAssetModal({
       return { valid: false };
     }
 
+    // Check if disambiguation is still needed
+    if (disambiguationNeeded && !selectedCoinGeckoId) {
+      toast.error('Please select which coin you mean');
+      setShowDisambiguation(true);
+      return { valid: false };
+    }
+
     return { valid: true, tokensOwned };
   };
 
-  // Core submit function - reusable for both buttons
+  // Core submit function
   const submitHolding = useCallback(async (keepOpen: boolean): Promise<boolean> => {
     const validation = validateForm();
     if (!validation.valid || !validation.tokensOwned) {
@@ -174,7 +319,7 @@ export function UnifiedAssetModal({
     setIsSubmitting(true);
 
     try {
-      // Create Holding object
+      // Create Holding object with CoinGecko ID and logo
       const newHolding: Holding = {
         id: existingHolding?.id || crypto.randomUUID(),
         symbol: symbol.toUpperCase(),
@@ -182,17 +327,22 @@ export function UnifiedAssetModal({
         avgCost: avgCost ? parseFloat(avgCost) : undefined,
         purchaseDate: date ? new Date(date).getTime() : undefined,
         notes: notes || undefined,
+        coingeckoId: selectedCoinGeckoId || undefined,
+        logoUrl: selectedLogoUrl || undefined,
       };
 
-      // Call the parent's onSubmit
+      console.log(`[UnifiedAssetModal] Submitting holding:`, {
+        symbol: newHolding.symbol,
+        coingeckoId: newHolding.coingeckoId,
+        logoUrl: newHolding.logoUrl?.substring(0, 50),
+      });
+
       onSubmit(newHolding);
 
       if (keepOpen) {
-        // "Add & Add Another" flow
         toast.success('Added. Ready for next asset.');
         resetForNextEntry();
       } else {
-        // Standard "Add Asset" flow - close modal
         onOpenChange(false);
       }
 
@@ -204,13 +354,11 @@ export function UnifiedAssetModal({
     } finally {
       setIsSubmitting(false);
     }
-  }, [symbol, tokens, avgCost, date, notes, existingHolding, onSubmit, onOpenChange, resetForNextEntry]);
+  }, [symbol, tokens, avgCost, date, notes, existingHolding, selectedCoinGeckoId, selectedLogoUrl, onSubmit, onOpenChange, resetForNextEntry, disambiguationNeeded]);
 
-  // Button handlers
   const handleAddOnce = () => submitHolding(false);
   const handleAddAndAnother = () => submitHolding(true);
 
-  // Keyboard handling for Quick Add mode
   const handleSymbolKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -219,22 +367,17 @@ export function UnifiedAssetModal({
   };
 
   const handleTokensKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && quickAddMode) {
+    if (e.key === 'Enter') {
       e.preventDefault();
-      if (priceMode === 'market' || avgCost) {
-        // Submit with "Add & Add Another"
-        handleAddAndAnother();
-      } else if (priceMode === 'manual' && !avgCost) {
-        // Focus price input if manual and no price set
+      if (priceMode === 'manual' && !avgCost) {
         priceInputRef.current?.focus();
       }
     }
   };
 
   const handlePriceKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && quickAddMode) {
+    if (e.key === 'Enter') {
       e.preventDefault();
-      handleAddAndAnother();
     }
   };
 
@@ -253,6 +396,9 @@ export function UnifiedAssetModal({
   const primaryButtonText = isMerging ? 'Merge Position' : 'Add Asset';
   const secondaryButtonText = isMerging ? 'Merge & Add Another' : 'Add & Add Another';
 
+  // Get exact matches for disambiguation display
+  const exactMatches = searchResults.filter(r => r.symbol.toUpperCase() === symbol.toUpperCase().trim());
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="glass-panel border-divide/50 shadow-[0_4px_24px_rgba(0,0,0,0.3)] max-w-md">
@@ -270,43 +416,104 @@ export function UnifiedAssetModal({
         </DialogHeader>
         
         <div className="space-y-4 py-4">
-          {/* Quick Add Toggle - HIDDEN: needs UX rework, see handoff.md LOW PRIORITY section
-          <div className="flex items-center justify-between p-2 rounded-lg bg-muted/30 border border-divide/30">
-            <div className="flex flex-col">
-              <Label htmlFor="quick-add-toggle" className="text-sm font-medium cursor-pointer">
-                Quick Add
-              </Label>
-              <span className="text-[10px] text-muted-foreground">
-                Keep modal open and focus Asset for rapid entry
-              </span>
-            </div>
-            <Switch
-              id="quick-add-toggle"
-              checked={quickAddMode}
-              onCheckedChange={setQuickAddMode}
-            />
-          </div>
-          */}
-
-          {/* Symbol Input */}
+          {/* Symbol Input with logo preview */}
           <div>
             <Label htmlFor="unified-symbol">Symbol *</Label>
-            <Input
-              ref={symbolInputRef}
-              id="unified-symbol"
-              placeholder="e.g., BTC, ETH, SOL"
-              value={symbol}
-              onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-              onKeyDown={handleSymbolKeyDown}
-              className="glass-panel transition-smooth"
-              disabled={isMerging || isSubmitting}
-            />
+            <div className="relative">
+              <Input
+                ref={symbolInputRef}
+                id="unified-symbol"
+                placeholder="e.g., BTC, ETH, SOL"
+                value={symbol}
+                onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+                onKeyDown={handleSymbolKeyDown}
+                className="glass-panel transition-smooth pr-12"
+                disabled={isMerging || isSubmitting}
+              />
+              {/* Logo preview */}
+              {selectedLogoUrl && (
+                <img 
+                  src={selectedLogoUrl} 
+                  alt={symbol}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 h-6 w-6 rounded-full"
+                />
+              )}
+              {isSearching && (
+                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+              )}
+            </div>
+            
+            {/* CoinGecko ID indicator */}
+            {selectedCoinGeckoId && !showDisambiguation && (
+              <div className="flex items-center gap-1.5 mt-1.5 text-xs text-emerald-400">
+                <Check className="h-3 w-3" />
+                <span>Matched: {selectedCoinGeckoId}</span>
+              </div>
+            )}
+            
+            {/* Disambiguation needed warning */}
+            {disambiguationNeeded && !selectedCoinGeckoId && (
+              <button
+                type="button"
+                onClick={() => setShowDisambiguation(true)}
+                className="flex items-center gap-1.5 mt-1.5 text-xs text-amber-400 hover:text-amber-300"
+              >
+                <AlertCircle className="h-3 w-3" />
+                <span>Multiple coins found - click to choose</span>
+              </button>
+            )}
+            
             {isMerging && (
               <p className="text-xs text-muted-foreground mt-1">
                 Existing position: {existingHolding.tokensOwned.toLocaleString()} tokens
               </p>
             )}
           </div>
+
+          {/* Disambiguation picker */}
+          {showDisambiguation && exactMatches.length > 1 && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+              <div className="flex items-center gap-2 mb-2 text-sm text-amber-400">
+                <Search className="h-4 w-4" />
+                <span>Multiple "{symbol}" coins found. Which do you mean?</span>
+              </div>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {exactMatches.map((coin) => (
+                  <button
+                    key={coin.id}
+                    type="button"
+                    onClick={() => handleSelectCoin(coin)}
+                    className={`w-full flex items-center gap-3 p-2 rounded-lg border transition-all ${
+                      selectedCoinGeckoId === coin.id
+                        ? 'border-primary bg-primary/10'
+                        : 'border-divide/50 hover:border-divide hover:bg-white/5'
+                    }`}
+                  >
+                    {coin.thumb || coin.large ? (
+                      <img 
+                        src={coin.large || coin.thumb} 
+                        alt={coin.name}
+                        className="h-8 w-8 rounded-full"
+                      />
+                    ) : (
+                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-xs font-bold">
+                        {coin.symbol.charAt(0)}
+                      </div>
+                    )}
+                    <div className="flex-1 text-left">
+                      <div className="text-sm font-medium">{coin.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {coin.symbol} • Rank #{coin.market_cap_rank || '?'}
+                      </div>
+                    </div>
+                    {selectedCoinGeckoId === coin.id && (
+                      <Check className="h-4 w-4 text-primary" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Tokens Input */}
           <div>
@@ -393,7 +600,6 @@ export function UnifiedAssetModal({
             />
           </div>
 
-          {/* Required fields note */}
           <p className="text-xs text-muted-foreground">* Required fields</p>
         </div>
 
@@ -409,7 +615,6 @@ export function UnifiedAssetModal({
             </span>
           </Button>
           
-          {/* Add & Add Another button (secondary) */}
           <Button 
             variant="outline"
             onClick={handleAddAndAnother}
@@ -425,7 +630,6 @@ export function UnifiedAssetModal({
             )}
           </Button>
           
-          {/* Primary Add/Merge button */}
           <Button 
             onClick={handleAddOnce}
             disabled={isSubmitting}

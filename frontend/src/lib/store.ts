@@ -174,6 +174,8 @@ export function usePortfolioStore(principal?: string | null) {
       avgCost?: number;
       purchaseDate?: number;
       notes?: string;
+      coingeckoId?: string;
+      logoUrl?: string;
     }
   ) => {
     const holding = addHoldingToStore(symbol, tokensOwned, options);

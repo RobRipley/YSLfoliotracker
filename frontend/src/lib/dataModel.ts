@@ -480,6 +480,8 @@ export function addHolding(
     avgCost?: number;
     purchaseDate?: number;
     notes?: string;
+    coingeckoId?: string;  // CoinGecko ID for reliable logo/price lookup
+    logoUrl?: string;      // Direct logo URL
   }
 ): Holding {
   const normalizedSymbol = symbol.toUpperCase();
@@ -505,6 +507,15 @@ export function addHolding(
       existingHolding.notes = options.notes;
     }
     
+    // Update coingeckoId and logoUrl if provided (allows fixing bad data)
+    if (options?.coingeckoId) {
+      existingHolding.coingeckoId = options.coingeckoId;
+      console.log(`[DataModel] Updated CoinGecko ID for ${normalizedSymbol}: ${options.coingeckoId}`);
+    }
+    if (options?.logoUrl) {
+      existingHolding.logoUrl = options.logoUrl;
+    }
+    
     return existingHolding;
   }
   
@@ -516,7 +527,13 @@ export function addHolding(
     avgCost: options?.avgCost,
     purchaseDate: options?.purchaseDate || Date.now(),
     notes: options?.notes,
+    coingeckoId: options?.coingeckoId,
+    logoUrl: options?.logoUrl,
   };
+
+  if (options?.coingeckoId) {
+    console.log(`[DataModel] Created holding for ${normalizedSymbol} with CoinGecko ID: ${options.coingeckoId}`);
+  }
 
   store.holdings.push(holding);
   return holding;

@@ -926,6 +926,56 @@ export class PriceAggregator {
     // Fall back to CoinGecko
     return this.fallbackProvider.getLogos(symbols);
   }
+
+  /**
+   * Fetch logos using CoinGecko IDs directly (more reliable than symbol lookup)
+   * symbolToIdMap: Maps symbol -> CoinGecko ID for holdings that have stored IDs
+   */
+  async getLogosWithIds(symbolToIdMap: Record<string, string>): Promise<Record<string, string>> {
+    const result: Record<string, string> = {};
+    const ids = Object.values(symbolToIdMap).filter(Boolean);
+    
+    if (ids.length === 0) {
+      console.log('[Aggregator] No CoinGecko IDs provided for logo fetch');
+      return result;
+    }
+    
+    console.log(`[Aggregator] Fetching logos for ${ids.length} CoinGecko IDs:`, ids.join(', '));
+    
+    try {
+      const idsParam = ids.join(',');
+      const response = await fetch(
+        `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${idsParam}&order=market_cap_desc&sparkline=false`
+      );
+      
+      if (!response.ok) {
+        console.warn(`[Aggregator] CoinGecko markets API error: ${response.status}`);
+        return result;
+      }
+      
+      const data = await response.json();
+      
+      // Build reverse map: CoinGecko ID -> symbol
+      const idToSymbol: Record<string, string> = {};
+      for (const [symbol, id] of Object.entries(symbolToIdMap)) {
+        if (id) idToSymbol[id] = symbol;
+      }
+      
+      for (const coin of data) {
+        const symbol = idToSymbol[coin.id];
+        if (symbol && coin.image) {
+          result[symbol] = coin.image;
+          console.log(`[Aggregator] Got logo for ${symbol} (${coin.id}): ${coin.image.substring(0, 50)}...`);
+        }
+      }
+      
+      console.log(`[Aggregator] Fetched ${Object.keys(result).length} logos via CoinGecko IDs`);
+    } catch (error) {
+      console.error('[Aggregator] Error fetching logos with IDs:', error);
+    }
+    
+    return result;
+  }
 }
 
 // ============================================================================

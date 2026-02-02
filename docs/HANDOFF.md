@@ -257,6 +257,66 @@ From the Google Sheets reference:
 
 ---
 
+## CoinGecko Logo Resolution Fix (February 2026)
+
+**Problem:** PAYAI and UMBRA showed fallback letter icons instead of logos. Root cause: micro cap coins not in top 500 cache, and ambiguous symbols without disambiguation.
+
+**Root Cause Analysis:**
+1. Worker cache registry only includes top 500 coins
+2. Holdings only stored ticker symbol, not CoinGecko ID
+3. For ambiguous symbols (multiple coins with same ticker), system picked arbitrarily
+4. No way for users to specify which coin they meant
+
+**Fix Applied:**
+
+1. **New CoinGecko Search Service** (`/frontend/src/lib/coinGeckoSearch.ts`):
+   - `SYMBOL_TO_COINGECKO_ID` map with explicit mappings for problematic coins (PAYAI, UMBRA, etc.)
+   - `searchCoinGecko()` - search CoinGecko API with caching
+   - `getBestCoinGeckoId()` - resolve symbol to most likely ID
+   - `isAmbiguousSymbol()` - detect when disambiguation is needed
+
+2. **Holding Interface Extended** (`/frontend/src/lib/dataModel.ts`):
+   - `coingeckoId?: string` - stores canonical CoinGecko ID
+   - `logoUrl?: string` - stores resolved logo URL
+   - `addHolding()` now accepts and stores both fields
+
+3. **UnifiedAssetModal Enhanced** (`/frontend/src/components/UnifiedAssetModal.tsx`):
+   - Debounced CoinGecko search on symbol input
+   - Logo preview shown next to symbol input
+   - Disambiguation picker when multiple coins match same symbol
+   - Stores `coingeckoId` and `logoUrl` with new holdings
+
+4. **Logo Fetching Uses Stored IDs** (`/frontend/src/components/PortfolioDashboard.tsx`):
+   - `fetchLogos()` now checks holdings for stored `coingeckoId`
+   - Uses new `aggregator.getLogosWithIds()` for direct ID-based lookup
+   - Falls back to symbol lookup for holdings without stored IDs
+
+5. **New PriceAggregator Method** (`/frontend/src/lib/priceService.ts`):
+   - `getLogosWithIds(symbolToIdMap)` - fetches logos using CoinGecko IDs directly
+
+**Key Mappings Added:**
+```typescript
+'PAYAI': 'payai-network',
+'UMBRA': 'umbra',
+'RENDER': 'render-token',
+'ONDO': 'ondo-finance',
+'KMNO': 'kamino',
+'DEEP': 'deepbook',
+// ... and many more major coins
+```
+
+**Result:** New assets added via the modal will have correct logos. Existing holdings need to be re-added or manually updated to get logos.
+
+**Files Changed:**
+- `/frontend/src/lib/coinGeckoSearch.ts` (NEW)
+- `/frontend/src/lib/dataModel.ts`
+- `/frontend/src/lib/store.ts`
+- `/frontend/src/lib/priceService.ts`
+- `/frontend/src/components/UnifiedAssetModal.tsx`
+- `/frontend/src/components/PortfolioDashboard.tsx`
+
+---
+
 ## CoinGecko Symbol Mappings
 
 The price service includes mappings for common symbols:
