@@ -960,3 +960,132 @@ Added disabled UI controls to the Formatting tab for planned future functionalit
 ### Deployment
 - Deployed to IC mainnet: https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io/
 
+
+
+
+---
+
+## Data Tab Research (February 2026)
+
+### Current Data Tab Implementation
+
+**Location:** `/frontend/src/pages/SettingsPage.tsx`
+- Component: `DataContent` (lines ~1083-1132)
+- Currently accessible under Settings > Data tab
+- Already properly placed in the user-accessible Settings section (not Admin)
+
+### Data Tab Functionality
+
+The Data tab provides complete import/export functionality via the `DataContent` component:
+
+**Import Capabilities:**
+1. **Import JSON** - Complete backup restore from JSON file
+   - Handler: `handleImportJSONClick` → `handleJSONFileSelect`
+   - Uses: `importJSON()` from `lib/importExport.ts`
+   - Shows preview dialog before applying
+
+2. **Import Holdings CSV** - Holdings-only import
+   - Handler: `handleImportCSVClick` → `handleCSVFileSelect`
+   - Uses: `importHoldingsCSV()` from `lib/importExport.ts`
+   - Generates preview via `generateCSVImportPreview()`
+
+**Export Capabilities:**
+1. **Export JSON** - Complete backup
+   - Handler: `handleExportJSON`
+   - Uses: `exportJSON()` from `lib/importExport.ts`
+   
+2. **Export Holdings CSV** - Current positions
+   - Handler: `handleExportHoldingsCSV`
+   - Uses: `exportHoldingsCSV()` from `lib/importExport.ts`
+
+3. **Export Transactions CSV** - Transaction history
+   - Handler: `handleExportTransactionsCSV`
+   - Uses: `exportTransactionsCSV()` from `lib/importExport.ts`
+
+4. **Export Ladder Plans CSV** - Exit strategies
+   - Handler: `handleExportLadderPlansCSV`
+   - Uses: `exportLadderPlansCSV()` from `lib/importExport.ts`
+
+### Dependencies
+
+**File:** `lib/importExport.ts` (376 lines)
+- Export functions: `exportJSON`, `exportHoldingsCSV`, `exportTransactionsCSV`, `exportLadderPlansCSV`
+- Import functions: `importJSON`, `importHoldingsCSV`, `applyJSONImport`, `generateCSVImportPreview`
+- Type exports: `ImportPreview`
+
+**UI Components Used:**
+- `Card`, `CardHeader`, `CardContent`, `CardTitle`, `CardDescription`
+- `Button` with variant="outline"
+- `Dialog` for import preview modal
+- `ScrollArea` for scrollable preview content
+- Icons: `FileJson`, `FileSpreadsheet`, `Download`, `Upload`, `Loader2`, `AlertTriangle`
+
+### Import Preview Dialog
+
+The import preview dialog (lines ~488-562 in SettingsPage.tsx):
+- Shows errors in red with AlertTriangle icon
+- Shows warnings in yellow
+- Displays changes summary: holdings added/updated, transactions added, settings changed
+- Has Cancel and "Confirm Import" buttons
+- Validates data before allowing import
+
+### Current Visual Styling
+
+The Data tab currently uses two cards:
+1. **Import Data Card** - 2-column grid with tall buttons (h-24)
+2. **Export Data Card** - 2-column grid with medium buttons (h-20)
+
+Both cards use the standard `glass-panel` styling consistent with other Settings tabs.
+
+### Assessment
+
+**Status:** ✅ Already properly placed in Settings > Settings section
+
+The Data tab is already correctly positioned under the user-accessible Settings section (not Admin). The navigation structure implemented in the previous session correctly placed:
+- Theme, Formatting, Data → under Settings (user-accessible)
+- Thresholds, Providers, Tools, Strategy Library → under Admin (admin-only)
+
+**Styling Assessment:**
+- The Data tab already uses the same Card/CardHeader/CardContent pattern as other tabs
+- Button styling is consistent with the application's design system
+- The import preview dialog properly styled with glass-panel effects
+
+### Recommendation
+
+The Data tab implementation is complete and properly positioned. No changes needed for placement. The task description may have been based on outdated information about the navigation structure.
+
+However, for consistency with the new segmented control styling, we could optionally:
+1. Verify all buttons use consistent sizing across the tab
+2. Ensure card spacing matches Theme and Formatting tabs
+3. Add subtle visual polish to match the refined Settings aesthetic
+
+
+
+### Task Verification - COMPLETE (February 2026)
+
+**Status:** ✅ Task already complete from previous session
+
+After thorough examination of the codebase and live testing on the IC mainnet deployment:
+
+1. **Data tab placement:** The Data tab is correctly placed under Settings > Settings (user-accessible), not under Admin. This was implemented during the "Navigation Restructure" work documented earlier in this handoff.
+
+2. **Segmented control navigation:** Both the top-level (Settings/Admin) and sub-tab (Theme/Formatting/Data) navigation use the new `SegmentedControl` component with animated sliding pill.
+
+3. **All functionality intact:**
+   - Import JSON (complete backup) ✓
+   - Import Holdings CSV ✓
+   - Export JSON ✓
+   - Export Holdings CSV ✓
+   - Export Transactions CSV ✓
+   - Export Ladder Plans CSV ✓
+   - Import preview dialog ✓
+
+4. **Styling consistency:** The Data tab uses the same Card/CardHeader/CardContent pattern as Formatting tab, which is appropriate for its content type.
+
+**Files involved (no changes needed):**
+- `/frontend/src/pages/SettingsPage.tsx` - DataContent component (lines ~1083-1132)
+- `/frontend/src/lib/importExport.ts` - Import/export functions
+- `/frontend/src/components/ui/segmented-control.tsx` - Navigation component
+
+**No code changes were required** as the task was already completed in a previous session.
+
