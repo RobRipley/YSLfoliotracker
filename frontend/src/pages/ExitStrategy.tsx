@@ -4,7 +4,9 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { store, getCategoryForHolding, type Holding, type Category } from '@/lib/dataModel';
+import { getCategoryForHolding, type Holding, type Category } from '@/lib/dataModel';
+import { usePortfolioStore } from '@/lib/store';
+import { useInternetIdentity } from '@/hooks/useInternetIdentity';
 import { getPriceAggregator, type ExtendedPriceQuote } from '@/lib/priceService';
 import { toast } from 'sonner';
 import { ChevronDown, ChevronRight, Info, Loader2 } from 'lucide-react';
@@ -12,6 +14,27 @@ import { formatPrice } from '@/lib/formatting';
 
 const EXIT_PLANS_STORAGE_KEY = 'ysl-exit-plans';
 const GLOBAL_CUSHION_KEY = 'ysl-global-cushion';
+const LOGO_CACHE_KEY = 'ysl-logo-cache';
+
+// Logo cache helpers
+function loadLogoCache(): Record<string, string> {
+  try {
+    const cached = localStorage.getItem(LOGO_CACHE_KEY);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+  } catch (e) {
+    console.warn('[ExitStrategy] Failed to load logo cache:', e);
+  }
+  return {};
+}
+function saveLogoCache(logos: Record<string, string>): void {
+  try {
+    localStorage.setItem(LOGO_CACHE_KEY, JSON.stringify(logos));
+  } catch (e) {
+    console.warn('[ExitStrategy] Failed to save logo cache:', e);
+  }
+}
 
 const CATEGORY_LABELS: Record<Category, string> = {
   'blue-chip': 'Blue Chip',
@@ -493,8 +516,12 @@ const AssetRow = memo(({
 AssetRow.displayName = 'AssetRow';
 
 export function ExitStrategy() {
+  // Use the portfolio store hook for principal-aware data access
+  const { principal } = useInternetIdentity();
+  const store = usePortfolioStore(principal);
+  
   const [prices, setPrices] = useState<Record<string, ExtendedPriceQuote>>({});
-  const [logos, setLogos] = useState<Record<string, string>>({});
+  const [logos, setLogos] = useState<Record<string, string>>(() => loadLogoCache());
   const [exitPlans, setExitPlans] = useState<Record<string, ExitPlan>>(() => loadExitPlans());
   const [isLoading, setIsLoading] = useState(true);
   const [hasFetchedOnce, setHasFetchedOnce] = useState(false);
@@ -566,13 +593,43 @@ export function ExitStrategy() {
       }
     };
 
-    // Fetch logos (only once on mount)
+    // Fetch logos - uses stored CoinGecko IDs when available for reliable resolution
     const fetchLogos = async () => {
       const symbols = store.holdings.map(h => h.symbol);
       if (symbols.length === 0) return;
       try {
-        const logoMap = await aggregator.getLogos(symbols);
-        setLogos(prev => ({ ...prev, ...logoMap }));
+        // Build symbol -> CoinGecko ID map from holdings that have stored IDs
+        const symbolToIdMap: Record<string, string> = {};
+        for (const holding of store.holdings) {
+          const symbol = holding.symbol.toUpperCase();
+          if (holding.coingeckoId) {
+            symbolToIdMap[symbol] = holding.coingeckoId;
+          }
+        }
+        
+        // Collect all logos before updating state
+        let allLogos: Record<string, string> = {};
+        
+        // Fetch logos using CoinGecko IDs for holdings that have them
+        const idsToFetch = Object.keys(symbolToIdMap);
+        if (idsToFetch.length > 0) {
+          const idBasedLogos = await aggregator.getLogosWithIds(symbolToIdMap);
+          allLogos = { ...allLogos, ...idBasedLogos };
+        }
+        
+        // For symbols without stored IDs, use the standard symbol-based lookup
+        const symbolsWithoutIds = symbols.map(s => s.toUpperCase()).filter(s => !symbolToIdMap[s]);
+        if (symbolsWithoutIds.length > 0) {
+          const symbolBasedLogos = await aggregator.getLogos(symbolsWithoutIds);
+          allLogos = { ...allLogos, ...symbolBasedLogos };
+        }
+        
+        // Update state and save to cache
+        setLogos(prev => {
+          const updated = { ...prev, ...allLogos };
+          saveLogoCache(updated);
+          return updated;
+        });
       } catch (error) {
         console.error('[ExitStrategy] Failed to fetch logos:', error);
       }
@@ -605,10 +662,12 @@ export function ExitStrategy() {
         if (!holding.avgCost) return;
         
         const price = prices[holding.symbol];
-        // Skip if no market cap data yet
-        if (!price?.marketCapUsd) return;
-        
-        const category = getCategoryForHolding(holding, price.marketCapUsd);
+        // Use fallback chain: live price > cached market cap > default to micro-cap (for new/unknown tokens)
+        const marketCap = price?.marketCapUsd ?? holding.lastMarketCapUsd ?? 0;
+        // If no market cap data, default to micro-cap category (safest assumption for unknown tokens)
+        const category = marketCap > 0 
+          ? getCategoryForHolding(holding, marketCap) 
+          : 'micro-cap' as Category;
         const plan = createDefaultExitPlan(holding, category, globalUseCushion);
         
         if (plan) {
@@ -778,11 +837,16 @@ export function ExitStrategy() {
     };
 
     store.holdings.forEach(holding => {
+      // Only include holdings with avgCost (required for exit planning)
+      if (!holding.avgCost) return;
+      
       const price = prices[holding.symbol];
-      if (price?.marketCapUsd) {
-        const category = getCategoryForHolding(holding, price.marketCapUsd);
-        groups[category].push(holding);
-      }
+      // Use fallback chain: live market cap > cached market cap > default to micro-cap
+      const marketCap = price?.marketCapUsd ?? holding.lastMarketCapUsd ?? 0;
+      const category = marketCap > 0 
+        ? getCategoryForHolding(holding, marketCap) 
+        : 'micro-cap' as Category;
+      groups[category].push(holding);
     });
 
     // Sort each category by position value (tokens * current price), highest first
@@ -798,7 +862,7 @@ export function ExitStrategy() {
     });
 
     return groups;
-  }, [prices]);
+  }, [prices, store.holdings]);
 
   // Calculate summary stats for custom vs template plans (must be before early returns)
   const planStats = useMemo(() => {
@@ -816,8 +880,9 @@ export function ExitStrategy() {
     return { customCount, templateCount, total: customCount + templateCount };
   }, [exitPlans]);
 
-  // Show loading state while fetching initial prices or waiting for market cap data
-  const showLoading = (isLoading && !hasFetchedOnce) || (store.holdings.length > 0 && hasFetchedOnce && !hasMarketCapData);
+  // Show loading state while fetching initial prices
+  // We no longer wait for market cap data since we default to micro-cap for unknown tokens
+  const showLoading = isLoading && !hasFetchedOnce;
   
   if (showLoading) {
     return (
@@ -838,12 +903,8 @@ export function ExitStrategy() {
     );
   }
 
-  // Check if any holdings have avgCost and market cap data
-  const holdingsWithData = store.holdings.filter(h => {
-    if (!h.avgCost) return false;
-    const price = prices[h.symbol];
-    return price?.marketCapUsd && price.marketCapUsd > 0;
-  });
+  // Check if any holdings have avgCost (the only requirement for exit planning)
+  const holdingsWithData = store.holdings.filter(h => !!h.avgCost);
 
   const hasEligibleHoldings = holdingsWithData.length > 0;
 
@@ -903,7 +964,7 @@ export function ExitStrategy() {
 
       {/* Holdings by Category */}
       <div className="space-y-6">
-        {(['blue-chip', 'mid-cap', 'low-cap'] as Category[]).map(category => {
+        {(['blue-chip', 'mid-cap', 'low-cap', 'micro-cap'] as Category[]).map(category => {
           const holdings = groupedHoldings[category];
           if (holdings.length === 0) return null;
 
@@ -953,10 +1014,10 @@ export function ExitStrategy() {
         </Card>
       )}
 
-      {store.holdings.length > 0 && !hasEligibleHoldings && hasFetchedOnce && hasMarketCapData && (
+      {store.holdings.length > 0 && !hasEligibleHoldings && (
         <Card className="p-12 text-center glass-panel border-divide-lighter/30">
           <p className="text-muted-foreground">
-            No holdings with both average cost and market cap data. 
+            No holdings with average cost data. 
             Add an average cost to your holdings in the Portfolio page to create exit strategies.
           </p>
         </Card>
