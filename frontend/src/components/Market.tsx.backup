@@ -1,0 +1,511 @@
+/**
+ * ORIGINAL MARKET.TSX - PRESERVED FOR FUTURE RESTORATION
+ * Backup created: February 2026
+ * 
+ * This file contains the complete original Market component with:
+ * - Top Volume Feed tab (sorted by 24h volume)
+ * - Screener tab with filtering (market cap, volume, % change)
+ * - Sortable columns
+ * - Add to Portfolio action
+ * - Mock data via marketService.ts
+ * 
+ * TO RESTORE: Copy this file back to Market.tsx (removing .backup extension)
+ */
+
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { RefreshCw, TrendingUp, TrendingDown, Plus, Search, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { toast } from 'sonner';
+import { 
+  getMarketService, 
+  type MarketAsset, 
+  type MarketFilters,
+  type SortColumn,
+  type SortDirection 
+} from '@/lib/marketService';
+
+interface MarketProps {
+  onAddToPortfolio?: (symbol: string) => void;
+}
+
+export function Market({ onAddToPortfolio }: MarketProps) {
+  const [feedData, setFeedData] = useState<MarketAsset[]>([]);
+  const [screenerData, setScreenerData] = useState<MarketAsset[]>([]);
+  const [filteredData, setFilteredData] = useState<MarketAsset[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Sorting state
+  const [feedSortColumn, setFeedSortColumn] = useState<SortColumn>('volume24h');
+  const [feedSortDirection, setFeedSortDirection] = useState<SortDirection>('desc');
+  const [screenerSortColumn, setScreenerSortColumn] = useState<SortColumn>('volume24h');
+  const [screenerSortDirection, setScreenerSortDirection] = useState<SortDirection>('desc');
+
+  // Filter state
+  const [filters, setFilters] = useState<MarketFilters>({
+    minMarketCap: undefined,
+    maxMarketCap: undefined,
+    minVolume: undefined,
+    searchTerm: '',
+  });
+
+  const marketService = getMarketService();
+
+  const loadMarketData = async () => {
+    try {
+      setIsLoading(true);
+      const data = await marketService.fetchMarketData();
+      
+      // Top volume feed - sorted by volume
+      const topVolume = marketService.sortMarketData(data, 'volume24h', 'desc').slice(0, 20);
+      setFeedData(topVolume);
+
+      // Screener - all data
+      setScreenerData(data);
+      setFilteredData(data);
+    } catch (error) {
+      console.error('Failed to load market data:', error);
+      toast.error('Failed to load market data');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await loadMarketData();
+    setIsRefreshing(false);
+    toast.success('Market data refreshed');
+  };
+
+  useEffect(() => {
+    loadMarketData();
+  }, []);
+
+  // Apply filters to screener data
+  useEffect(() => {
+    const filtered = marketService.filterMarketData(screenerData, filters);
+    const sorted = marketService.sortMarketData(filtered, screenerSortColumn, screenerSortDirection);
+    setFilteredData(sorted);
+  }, [filters, screenerData, screenerSortColumn, screenerSortDirection]);
+
+  const handleFeedSort = (column: SortColumn) => {
+    const newDirection = feedSortColumn === column && feedSortDirection === 'desc' ? 'asc' : 'desc';
+    setFeedSortColumn(column);
+    setFeedSortDirection(newDirection);
+    const sorted = marketService.sortMarketData(feedData, column, newDirection);
+    setFeedData(sorted);
+  };
+
+  const handleScreenerSort = (column: SortColumn) => {
+    const newDirection = screenerSortColumn === column && screenerSortDirection === 'desc' ? 'asc' : 'desc';
+    setScreenerSortColumn(column);
+    setScreenerSortDirection(newDirection);
+  };
+
+  const handleAddToPortfolio = (symbol: string) => {
+    if (onAddToPortfolio) {
+      onAddToPortfolio(symbol);
+    }
+    toast.success(`${symbol} ready to add to portfolio`);
+  };
+
+  const getSortIcon = (column: SortColumn, currentColumn: SortColumn, currentDirection: SortDirection) => {
+    if (column !== currentColumn) {
+      return <ArrowUpDown className="h-4 w-4 ml-1 opacity-40" />;
+    }
+    return currentDirection === 'desc' 
+      ? <ArrowDown className="h-4 w-4 ml-1" />
+      : <ArrowUp className="h-4 w-4 ml-1" />;
+  };
+
+  const renderAssetRow = (
+    asset: MarketAsset, 
+    onAdd: (symbol: string) => void,
+    sortColumn: SortColumn,
+    sortDirection: SortDirection
+  ) => {
+    const isPositive = asset.change24h > 0;
+
+    return (
+      <TableRow 
+        key={asset.symbol} 
+        className="hover:bg-secondary/8 transition-all duration-150 ease-out border-b border-divide-lighter/10"
+      >
+        <TableCell className="py-3.5">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center transition-all duration-150 ease-out hover:bg-primary/15">
+              <span className="text-xs font-bold text-foreground">{asset.symbol.slice(0, 2)}</span>
+            </div>
+            <div>
+              <div className="font-medium text-sm text-foreground">{asset.symbol}</div>
+              <div className="text-xs text-muted-foreground">{asset.name}</div>
+            </div>
+          </div>
+        </TableCell>
+        <TableCell className="font-medium text-sm text-foreground">
+          ${asset.price >= 1 
+            ? asset.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            : asset.price.toFixed(6)}
+        </TableCell>
+        <TableCell>
+          <Badge 
+            variant={isPositive ? 'default' : 'destructive'} 
+            className="gap-1 transition-all duration-150 ease-out hover:shadow-lg"
+          >
+            {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+            {isPositive ? '+' : ''}{asset.change24h.toFixed(2)}%
+          </Badge>
+        </TableCell>
+        <TableCell className="text-sm text-foreground">
+          ${asset.marketCap >= 1e9 
+            ? `${(asset.marketCap / 1e9).toFixed(2)}B`
+            : `${(asset.marketCap / 1e6).toFixed(0)}M`}
+        </TableCell>
+        <TableCell className="text-sm text-foreground">
+          ${asset.volume24h >= 1e9
+            ? `${(asset.volume24h / 1e9).toFixed(2)}B`
+            : `${(asset.volume24h / 1e6).toFixed(0)}M`}
+        </TableCell>
+        <TableCell>
+          <button
+            onClick={() => onAdd(asset.symbol)}
+            className="gradient-outline-btn text-xs inline-flex items-center gap-1.5 px-3.5 py-1.5 hover:scale-105 active:scale-95"
+          >
+            <Plus className="h-3.5 w-3.5 text-white" />
+            <span className="text-white font-semibold">
+              Add to Portfolio
+            </span>
+          </button>
+        </TableCell>
+      </TableRow>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold font-heading text-foreground">Market</h2>
+            <p className="text-muted-foreground mt-1">Discover and track cryptocurrency opportunities</p>
+          </div>
+        </div>
+        <Card className="animate-pulse glass-panel">
+          <CardContent className="p-6">
+            <div className="h-96 bg-muted/5 rounded"></div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header with refined spacing */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold font-heading text-foreground">Market</h2>
+          <p className="text-muted-foreground mt-1">Discover and track cryptocurrency opportunities</p>
+        </div>
+        <button 
+          onClick={handleRefresh} 
+          disabled={isRefreshing}
+          className="gradient-outline-btn disabled:opacity-50 inline-flex items-center gap-2 hover:scale-105 active:scale-95"
+        >
+          <RefreshCw className={`h-4 w-4 text-white ${isRefreshing ? 'animate-spin' : ''}`} />
+          <span className="text-white font-semibold">
+            Refresh
+          </span>
+        </button>
+      </div>
+
+      <Tabs defaultValue="feed" className="space-y-6">
+        <TabsList className="grid w-full max-w-md grid-cols-2 glass-panel">
+          <TabsTrigger value="feed" className="transition-all duration-150 ease-out">Top Volume Feed</TabsTrigger>
+          <TabsTrigger value="screener" className="transition-all duration-150 ease-out">Screener</TabsTrigger>
+        </TabsList>
+
+        {/* Top Volume Feed */}
+        <TabsContent value="feed" className="space-y-6">
+          <Card className="glass-panel border-divide-lighter/20 shadow-minimal overflow-hidden">
+            <CardHeader className="pb-4">
+              <CardTitle className="font-heading text-foreground">Top Cryptocurrencies by 24h Volume</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1.5">
+                Showing top 20 assets by trading volume (excluding major blue chips and stablecoins)
+              </p>
+            </CardHeader>
+            <CardContent className="px-0">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b border-divide-lighter/15 hover:bg-transparent">
+                    <TableHead className="pl-6">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleFeedSort('symbol')}
+                        className="font-semibold p-0 h-auto hover:bg-transparent transition-all duration-150 ease-out text-foreground"
+                      >
+                        Symbol
+                        {getSortIcon('symbol', feedSortColumn, feedSortDirection)}
+                      </Button>
+                    </TableHead>
+                    <TableHead>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleFeedSort('price')}
+                        className="font-semibold p-0 h-auto hover:bg-transparent transition-all duration-150 ease-out text-foreground"
+                      >
+                        Price
+                        {getSortIcon('price', feedSortColumn, feedSortDirection)}
+                      </Button>
+                    </TableHead>
+                    <TableHead>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleFeedSort('change24h')}
+                        className="font-semibold p-0 h-auto hover:bg-transparent transition-all duration-150 ease-out text-foreground"
+                      >
+                        24h %
+                        {getSortIcon('change24h', feedSortColumn, feedSortDirection)}
+                      </Button>
+                    </TableHead>
+                    <TableHead>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleFeedSort('marketCap')}
+                        className="font-semibold p-0 h-auto hover:bg-transparent transition-all duration-150 ease-out text-foreground"
+                      >
+                        Market Cap
+                        {getSortIcon('marketCap', feedSortColumn, feedSortDirection)}
+                      </Button>
+                    </TableHead>
+                    <TableHead>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleFeedSort('volume24h')}
+                        className="font-semibold p-0 h-auto hover:bg-transparent transition-all duration-150 ease-out text-foreground"
+                      >
+                        Volume 24h
+                        {getSortIcon('volume24h', feedSortColumn, feedSortDirection)}
+                      </Button>
+                    </TableHead>
+                    <TableHead className="text-foreground pr-6">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {feedData.map(asset => renderAssetRow(asset, handleAddToPortfolio, feedSortColumn, feedSortDirection))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Screener */}
+        <TabsContent value="screener" className="space-y-6">
+          <Card className="glass-panel border-divide-lighter/20 shadow-minimal">
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 font-heading text-foreground">
+                <Search className="h-5 w-5" />
+                Filters
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <div className="space-y-2">
+                  <Label htmlFor="searchTerm" className="text-foreground text-sm font-medium">Search Symbol or Name</Label>
+                  <Input
+                    id="searchTerm"
+                    placeholder="e.g., BTC, Bitcoin"
+                    value={filters.searchTerm}
+                    onChange={(e) => setFilters({ ...filters, searchTerm: e.target.value })}
+                    className="glass-panel transition-all duration-150 ease-out focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="minMarketCap" className="text-foreground text-sm font-medium">Min Market Cap (USD)</Label>
+                  <Input
+                    id="minMarketCap"
+                    type="number"
+                    placeholder="e.g., 50000000"
+                    value={filters.minMarketCap || ''}
+                    onChange={(e) => setFilters({ 
+                      ...filters, 
+                      minMarketCap: e.target.value ? parseFloat(e.target.value) : undefined 
+                    })}
+                    className="glass-panel transition-all duration-150 ease-out focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="maxMarketCap" className="text-foreground text-sm font-medium">Max Market Cap (USD)</Label>
+                  <Input
+                    id="maxMarketCap"
+                    type="number"
+                    placeholder="e.g., 10000000000"
+                    value={filters.maxMarketCap || ''}
+                    onChange={(e) => setFilters({ 
+                      ...filters, 
+                      maxMarketCap: e.target.value ? parseFloat(e.target.value) : undefined 
+                    })}
+                    className="glass-panel transition-all duration-150 ease-out focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="minVolume" className="text-foreground text-sm font-medium">Min 24h Volume (USD)</Label>
+                  <Input
+                    id="minVolume"
+                    type="number"
+                    placeholder="e.g., 5000000"
+                    value={filters.minVolume || ''}
+                    onChange={(e) => setFilters({ 
+                      ...filters, 
+                      minVolume: e.target.value ? parseFloat(e.target.value) : undefined 
+                    })}
+                    className="glass-panel transition-all duration-150 ease-out focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="minChange1d" className="text-foreground text-sm font-medium">Min 24h Change (%)</Label>
+                  <Input
+                    id="minChange1d"
+                    type="number"
+                    placeholder="e.g., 5"
+                    value={filters.minChange1d || ''}
+                    onChange={(e) => setFilters({ 
+                      ...filters, 
+                      minChange1d: e.target.value ? parseFloat(e.target.value) : undefined 
+                    })}
+                    className="glass-panel transition-all duration-150 ease-out focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="maxChange1d" className="text-foreground text-sm font-medium">Max 24h Change (%)</Label>
+                  <Input
+                    id="maxChange1d"
+                    type="number"
+                    placeholder="e.g., 20"
+                    value={filters.maxChange1d || ''}
+                    onChange={(e) => setFilters({ 
+                      ...filters, 
+                      maxChange1d: e.target.value ? parseFloat(e.target.value) : undefined 
+                    })}
+                    className="glass-panel transition-all duration-150 ease-out focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+              </div>
+              <div className="mt-5 flex gap-2">
+                <button
+                  onClick={() => setFilters({
+                    minMarketCap: undefined,
+                    maxMarketCap: undefined,
+                    minVolume: undefined,
+                    searchTerm: '',
+                  })}
+                  className="gradient-outline-btn hover:scale-105 active:scale-95"
+                >
+                  <span className="text-white font-semibold">
+                    Clear Filters
+                  </span>
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="glass-panel border-divide-lighter/20 shadow-minimal overflow-hidden">
+            <CardHeader className="pb-4">
+              <CardTitle className="font-heading text-foreground">Results ({filteredData.length} assets)</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1.5">
+                Click column headers to sort
+              </p>
+            </CardHeader>
+            <CardContent className="px-0">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b border-divide-lighter/15 hover:bg-transparent">
+                    <TableHead className="pl-6">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleScreenerSort('symbol')}
+                        className="font-semibold p-0 h-auto hover:bg-transparent transition-all duration-150 ease-out text-foreground"
+                      >
+                        Symbol
+                        {getSortIcon('symbol', screenerSortColumn, screenerSortDirection)}
+                      </Button>
+                    </TableHead>
+                    <TableHead>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleScreenerSort('price')}
+                        className="font-semibold p-0 h-auto hover:bg-transparent transition-all duration-150 ease-out text-foreground"
+                      >
+                        Price
+                        {getSortIcon('price', screenerSortColumn, screenerSortDirection)}
+                      </Button>
+                    </TableHead>
+                    <TableHead>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleScreenerSort('change24h')}
+                        className="font-semibold p-0 h-auto hover:bg-transparent transition-all duration-150 ease-out text-foreground"
+                      >
+                        24h %
+                        {getSortIcon('change24h', screenerSortColumn, screenerSortDirection)}
+                      </Button>
+                    </TableHead>
+                    <TableHead>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleScreenerSort('marketCap')}
+                        className="font-semibold p-0 h-auto hover:bg-transparent transition-all duration-150 ease-out text-foreground"
+                      >
+                        Market Cap
+                        {getSortIcon('marketCap', screenerSortColumn, screenerSortDirection)}
+                      </Button>
+                    </TableHead>
+                    <TableHead>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleScreenerSort('volume24h')}
+                        className="font-semibold p-0 h-auto hover:bg-transparent transition-all duration-150 ease-out text-foreground"
+                      >
+                        Volume 24h
+                        {getSortIcon('volume24h', screenerSortColumn, screenerSortDirection)}
+                      </Button>
+                    </TableHead>
+                    <TableHead className="text-foreground pr-6">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredData.length > 0 ? (
+                    filteredData.map(asset => renderAssetRow(asset, handleAddToPortfolio, screenerSortColumn, screenerSortDirection))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
+                        No assets match your filters
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

@@ -1268,3 +1268,107 @@ Restructured the Admin sections in Settings with enhanced functionality and UI s
 - Deployed to local canister: http://ulvla-h7777-77774-qaacq-cai.localhost:4943/
 
 
+
+
+---
+
+## Market Tab Research (February 2026)
+
+### Summary of Original Implementation
+
+The Market tab was a fully-implemented market discovery feature with two main sub-tabs:
+
+**Location:** `/frontend/src/components/Market.tsx` (498 lines)
+**Backup Location:** `/frontend/src/components/Market.tsx.backup`
+
+### Original Features Documented
+
+**1. Top Volume Feed Tab**
+- Sortable table of top 20 cryptocurrencies by 24h trading volume
+- Columns: Symbol, Price, 24h %, Market Cap, Volume 24h, Action
+- Clickable column headers for sorting (asc/desc)
+- "Add to Portfolio" button on each row
+- Excludes major blue chips and stablecoins
+
+**2. Screener Tab**
+- Filter controls:
+  - Search by symbol or name
+  - Min/Max Market Cap (USD)
+  - Min 24h Volume (USD)
+  - Min/Max 24h Change (%)
+- "Clear Filters" button
+- Results table with same columns as feed
+- Empty state when no matches
+
+**3. Common Features**
+- Refresh button with loading spinner
+- Glass-panel card styling
+- Sort icons (ArrowUpDown, ArrowUp, ArrowDown)
+- Badge component for % change (green/red)
+- Responsive grid for filter inputs
+
+### Dependencies
+
+**MarketService:** `/frontend/src/lib/marketService.ts` (182 lines)
+- `MarketAsset` interface: symbol, name, price, change24h, marketCap, volume24h
+- `MarketFilters` interface for screener
+- `MarketDataService` class with caching (5-min TTL)
+- Mock data: 30 assets (RENDER, INJ, SEI, PENDLE, JUP, ONDO, etc.)
+- Methods: fetchMarketData, filterMarketData, sortMarketData, getTopByVolume
+
+### UI Components Used
+- Card, CardContent, CardHeader, CardTitle
+- Button, Input, Label, Badge
+- Tabs, TabsContent, TabsList, TabsTrigger
+- Table, TableBody, TableCell, TableHead, TableHeader, TableRow
+- Icons: RefreshCw, TrendingUp, TrendingDown, Plus, Search, ArrowUpDown, ArrowUp, ArrowDown
+
+### Restoration Instructions
+
+To restore the original Market implementation:
+1. Copy `/frontend/src/components/Market.tsx.backup` to `/frontend/src/components/Market.tsx`
+2. Rebuild and deploy
+
+---
+
+## Market Tab Coming Soon - COMPLETED (February 2026)
+
+### Summary
+
+Replaced the Market tab content with a "Coming Soon" placeholder while preserving the original implementation for future restoration.
+
+### Changes Made
+
+1. **Backup Created:** Original `Market.tsx` (498 lines) preserved as `Market.tsx.backup` with header documentation
+
+2. **New Placeholder:** Clean "Coming Soon" page with:
+   - Centered card layout
+   - Icon cluster (TrendingUp, Search, Star, Compass)
+   - "Market" heading
+   - One-liner: "Coming Soon: Market overview, watchlists, and discovery."
+   - "Planned Features" section with pill badges
+
+3. **Styling:** Consistent with product design (glass-panel, theme colors, muted text)
+
+### Files Changed
+- `/frontend/src/components/Market.tsx` - New placeholder component
+- `/frontend/src/components/Market.tsx.backup` - Original implementation preserved
+
+### Features to Restore/Build Later
+
+Added to "Low Priority / Future Work" section:
+
+| Feature | Location | Notes |
+|---------|----------|-------|
+| Top Volume Feed | Market tab | 24h volume-sorted asset list, sortable columns, Add to Portfolio |
+| Screener | Market tab | Filter by market cap, volume, % change, search |
+| Watchlists | Market tab | Save favorite assets, custom lists |
+| Discovery | Market tab | Trending assets, new listings, momentum signals |
+
+### Original Code Location
+
+The complete original Market.tsx implementation is preserved at:
+`/frontend/src/components/Market.tsx.backup`
+
+This includes all state management, sorting logic, filtering, table rendering, and styling.
+
