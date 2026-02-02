@@ -826,6 +826,43 @@ export function ExitStrategy() {
     });
   }, [globalUseCushion]);
 
+  // Sync tokensToSell with current holdings tokensOwned
+  // This handles cases where tokens were updated after exit plan was created
+  useEffect(() => {
+    setExitPlans(prev => {
+      const updated: Record<string, ExitPlan> = {};
+      let hasAnyChanges = false;
+      
+      Object.keys(prev).forEach(holdingId => {
+        const plan = prev[holdingId];
+        const holding = store.holdings.find(h => h.id === holdingId);
+        if (!plan || !holding) {
+          updated[holdingId] = plan;
+          return;
+        }
+        
+        const newRungs = plan.rungs.map(rung => {
+          const expectedTokens = (holding.tokensOwned * (rung.percent ?? 0)) / 100;
+          
+          // Check if tokensToSell needs to be updated (allow small floating point differences)
+          if (Math.abs(expectedTokens - (rung.tokensToSell ?? 0)) > 0.001) {
+            hasAnyChanges = true;
+            return {
+              ...rung,
+              tokensToSell: expectedTokens
+            };
+          }
+          
+          return rung;
+        });
+        
+        updated[holdingId] = hasAnyChanges ? { ...plan, rungs: newRungs } : plan;
+      });
+      
+      return hasAnyChanges ? updated : prev;
+    });
+  }, [store.holdings]);
+
   const groupedHoldings = useMemo(() => {
     const groups: Record<Category, Holding[]> = {
       'blue-chip': [],

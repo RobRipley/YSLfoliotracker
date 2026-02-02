@@ -529,6 +529,31 @@ dfx deploy frontend --network ic
 - Created `categoryExpandState.ts` for localStorage persistence
 - Category expand/collapse state survives page refresh
 
+### Exit Strategy Page Fixes (February 2026)
+
+**Summary:** Fixed critical bugs where assets and logos weren't showing on Exit Strategy page, and tokens-to-sell calculations were incorrect.
+
+**Root Causes Identified:**
+1. ExitStrategy was importing global `store` directly from `dataModel.ts` instead of using `usePortfolioStore(principal)` hook
+2. Missing `store.holdings` in `groupedHoldings` useMemo dependency array caused blank renders
+3. No fallback for holdings without live market cap data (they were being skipped)
+4. `tokensToSell` values weren't recalculated when holding's `tokensOwned` changed
+
+**Key Changes:**
+- Added `usePortfolioStore` and `useInternetIdentity` hooks to ExitStrategy component
+- Added market cap fallback chain: `price?.marketCapUsd ?? holding.lastMarketCapUsd ?? 0`
+- Holdings without any market cap data now default to `'micro-cap'` category
+- Added `store.holdings` to `groupedHoldings` useMemo dependency array
+- Added new useEffect to sync `tokensToSell` with current `tokensOwned` when holdings change
+
+**Files Changed:**
+- `/frontend/src/pages/ExitStrategy.tsx`
+
+**Technical Notes:**
+- The `usePortfolioStore` hook returns principal-aware data; the global store in `dataModel.ts` is a singleton that may be stale
+- Exit plans are stored in localStorage (`ysl-exit-plans` key) and persist across sessions
+- When a user updates token amounts for a holding, the exit plan's `tokensToSell` values must be recalculated based on the percentages
+
 ---
 
 ## Component Reference
