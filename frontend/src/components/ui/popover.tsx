@@ -3,6 +3,7 @@ import * as React from "react";
 type PopoverContextType = {
   open: boolean;
   setOpen: (open: boolean) => void;
+  registerContent: (el: HTMLElement | null) => void;
 };
 
 const PopoverContext = React.createContext<PopoverContextType | null>(null);
@@ -24,6 +25,7 @@ export const Popover: React.FC<PopoverProps> = ({
 }) => {
   const [internalOpen, setInternalOpen] = React.useState(!!defaultOpen);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const contentRef = React.useRef<HTMLElement | null>(null);
 
   const actualOpen = open !== undefined ? open : internalOpen;
 
@@ -32,12 +34,20 @@ export const Popover: React.FC<PopoverProps> = ({
     onOpenChange?.(next);
   };
 
+  const registerContent = React.useCallback((el: HTMLElement | null) => {
+    contentRef.current = el;
+  }, []);
+
   // Close on click outside
   React.useEffect(() => {
     if (!actualOpen) return;
 
     const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const clickedInsideTrigger = containerRef.current && containerRef.current.contains(target);
+      const clickedInsideContent = contentRef.current && contentRef.current.contains(target);
+      
+      if (!clickedInsideTrigger && !clickedInsideContent) {
         setOpen(false);
       }
     };
@@ -62,7 +72,7 @@ export const Popover: React.FC<PopoverProps> = ({
   }, [actualOpen]);
 
   return (
-    <PopoverContext.Provider value={{ open: actualOpen, setOpen }}>
+    <PopoverContext.Provider value={{ open: actualOpen, setOpen, registerContent }}>
       <div ref={containerRef} className={"relative inline-block " + className}>{children}</div>
     </PopoverContext.Provider>
   );
@@ -85,6 +95,7 @@ export const PopoverTrigger: React.FC<PopoverTriggerProps> = ({
   // If asChild, clone the child element and add onClick
   if (asChild && React.isValidElement(children)) {
     return React.cloneElement(children as React.ReactElement<any>, {
+      'data-popover-trigger': true,
       onClick: (e: React.MouseEvent) => {
         ctx.setOpen(!ctx.open);
         // Call original onClick if it exists
@@ -97,6 +108,7 @@ export const PopoverTrigger: React.FC<PopoverTriggerProps> = ({
   return (
     <button
       type="button"
+      data-popover-trigger
       onClick={() => ctx.setOpen(!ctx.open)}
       className={className}
     >
@@ -106,26 +118,61 @@ export const PopoverTrigger: React.FC<PopoverTriggerProps> = ({
 };
 
 export interface PopoverContentProps
-  extends React.HTMLAttributes<HTMLDivElement> {}
+  extends React.HTMLAttributes<HTMLDivElement> {
+  align?: 'start' | 'center' | 'end';
+  side?: 'top' | 'bottom';
+  sideOffset?: number;
+}
 
 export const PopoverContent: React.FC<PopoverContentProps> = ({
   className = "",
   children,
   style,
+  align = 'end',
+  side = 'bottom',
+  sideOffset = 8,
   ...props
 }) => {
   const ctx = React.useContext(PopoverContext);
+  const contentRef = React.useRef<HTMLDivElement>(null);
+  
   if (!ctx) throw new Error("PopoverContent must be used inside <Popover>");
+
+  // Register content ref with parent Popover for click-outside detection
+  React.useEffect(() => {
+    ctx.registerContent(contentRef.current);
+    return () => ctx.registerContent(null);
+  }, [ctx.open]);
 
   if (!ctx.open) return null;
 
+  // Calculate alignment styles
+  const alignmentStyles: React.CSSProperties = {
+    position: 'absolute',
+    top: side === 'bottom' ? `calc(100% + ${sideOffset}px)` : undefined,
+    bottom: side === 'top' ? `calc(100% + ${sideOffset}px)` : undefined,
+    left: align === 'start' ? 0 : undefined,
+    right: align === 'end' ? 0 : undefined,
+  };
+
+  if (align === 'center') {
+    alignmentStyles.left = '50%';
+    alignmentStyles.transform = 'translateX(-50%)';
+  }
+
+  // Render as child (not portal) so it scrolls with content
+  // z-40 is below z-50 header so it goes behind header when scrolling
   return (
     <div
+      ref={contentRef}
       className={
-        "absolute z-50 mt-2 min-w-[10rem] rounded-xl border border-slate-700 bg-slate-900/95 p-3 text-xs text-slate-100 shadow-lg " +
+        "z-40 rounded-xl border border-slate-700 bg-slate-900 p-3 text-xs text-slate-100 shadow-2xl " +
         className
       }
-      style={{ right: 0, ...style }}
+      style={{ 
+        ...alignmentStyles,
+        ...style 
+      }}
       {...props}
     >
       {children}

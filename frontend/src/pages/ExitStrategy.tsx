@@ -2,19 +2,61 @@ import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { getCategoryForHolding, type Holding, type Category } from '@/lib/dataModel';
 import { usePortfolioStore } from '@/lib/store';
 import { useInternetIdentity } from '@/hooks/useInternetIdentity';
 import { getPriceAggregator, type ExtendedPriceQuote } from '@/lib/priceService';
 import { toast } from 'sonner';
-import { ChevronDown, ChevronRight, Info, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, Settings2 } from 'lucide-react';
 import { formatPrice } from '@/lib/formatting';
+import {
+  CATEGORY_LABELS,
+  getCategoryColor,
+} from '@/lib/categoryColors';
 
 const EXIT_PLANS_STORAGE_KEY = 'ysl-exit-plans';
-const GLOBAL_CUSHION_KEY = 'ysl-global-cushion';
+const PLAN_BASIS_CONFIG_KEY = 'ysl-plan-basis-configs';
 const LOGO_CACHE_KEY = 'ysl-logo-cache';
+
+// Plan Basis Configuration Types
+type PlanBasisMode = 'avg_cost' | 'avg_cushion' | 'custom';
+
+interface PlanBasisConfig {
+  mode: PlanBasisMode;
+  cushionPct?: number;   // for avg_cushion mode
+  customPrice?: number;  // only for custom mode
+}
+
+// Default config - avg + cushion at 10%
+const DEFAULT_PLAN_BASIS_CONFIG: PlanBasisConfig = {
+  mode: 'avg_cushion',
+  cushionPct: 10,
+};
+
+// Plan Basis Config Storage helpers
+function loadPlanBasisConfigs(): Record<string, PlanBasisConfig> {
+  try {
+    const stored = localStorage.getItem(PLAN_BASIS_CONFIG_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.warn('[ExitStrategy] Failed to load plan basis configs:', e);
+  }
+  return {};
+}
+
+function savePlanBasisConfigs(configs: Record<string, PlanBasisConfig>): void {
+  try {
+    localStorage.setItem(PLAN_BASIS_CONFIG_KEY, JSON.stringify(configs));
+  } catch (e) {
+    console.warn('[ExitStrategy] Failed to save plan basis configs:', e);
+  }
+}
 
 // Logo cache helpers
 function loadLogoCache(): Record<string, string> {
@@ -28,6 +70,7 @@ function loadLogoCache(): Record<string, string> {
   }
   return {};
 }
+
 function saveLogoCache(logos: Record<string, string>): void {
   try {
     localStorage.setItem(LOGO_CACHE_KEY, JSON.stringify(logos));
@@ -35,24 +78,6 @@ function saveLogoCache(logos: Record<string, string>): void {
     console.warn('[ExitStrategy] Failed to save logo cache:', e);
   }
 }
-
-const CATEGORY_LABELS: Record<Category, string> = {
-  'blue-chip': 'Blue Chip',
-  'mid-cap': 'Mid Cap',
-  'low-cap': 'Low Cap',
-  'micro-cap': 'Micro Cap',
-  'stablecoin': 'Stablecoin',
-  'defi': 'DeFi'
-};
-
-const CATEGORY_COLORS: Record<Category, string> = {
-  'blue-chip': '#06b6d4',
-  'mid-cap': '#7c3aed',
-  'low-cap': '#22c55e',
-  'micro-cap': '#f59e0b',
-  'stablecoin': '#10b981',
-  'defi': '#8b5cf6'
-};
 
 type PresetType = 'conservative' | 'aggressive' | 'custom';
 
@@ -136,21 +161,16 @@ function saveExitPlans(plans: Record<string, ExitPlan>): void {
 
 /**
  * Format tokens with smart decimal display
- * - Only shows as many decimals as needed
- * - Trims trailing zeros after decimal
- * - Shows no decimal point if all decimals are zero
- * - Respects maximum precision setting for assets that truly need 8 decimals
  */
 function formatTokensSmart(value: number, maxPrecision: number = 8): string {
   if (value === 0) return '0';
   if (isNaN(value) || !isFinite(value)) return '0';
   
-  // For very small numbers, use more precision
   const absValue = Math.abs(value);
   let precision = maxPrecision;
   
   if (absValue >= 10000) {
-    precision = 0;  // No decimals for large numbers
+    precision = 0;
   } else if (absValue >= 1000) {
     precision = 1;
   } else if (absValue >= 100) {
@@ -161,10 +181,8 @@ function formatTokensSmart(value: number, maxPrecision: number = 8): string {
     precision = 6;
   }
   
-  // Format with precision
   const formatted = value.toFixed(precision);
   
-  // Remove trailing zeros after decimal point and unnecessary decimal point
   if (formatted.includes('.')) {
     const trimmed = formatted.replace(/\.?0+$/, '');
     return trimmed === '' ? '0' : trimmed;
@@ -173,22 +191,38 @@ function formatTokensSmart(value: number, maxPrecision: number = 8): string {
   return formatted;
 }
 
+/**
+ * Calculate plan basis from config
+ */
+function calculatePlanBasis(
+  config: PlanBasisConfig,
+  avgCost: number,
+  currentPrice: number
+): number {
+  switch (config.mode) {
+    case 'avg_cost':
+      return avgCost;
+    case 'avg_cushion':
+      const cushion = config.cushionPct ?? 10;
+      return avgCost * (1 + cushion / 100);
+    case 'custom':
+      return config.customPrice ?? avgCost;
+    default:
+      return avgCost;
+  }
+}
+
 // Create default exit plan for a holding
 function createDefaultExitPlan(
   holding: Holding,
   category: Category,
-  useCushion: boolean = true
+  planBasis: number
 ): ExitPlan | null {
   if (!holding.avgCost) return null;
   
-  const avgCost = holding.avgCost;
-  const base = useCushion ? avgCost * 1.1 : avgCost;
-  
-  // Select proper template based on category
   let template = category === 'blue-chip' ? BLUE_CHIP_CONSERVATIVE : 
                  category === 'mid-cap' ? MID_CAP_AGGRESSIVE : LOW_CAP_AGGRESSIVE;
   
-  // Default preset based on category
   const defaultPreset: PresetType = category === 'blue-chip' ? 'conservative' : 'aggressive';
   
   const rungs = template.map((t, idx) => {
@@ -196,26 +230,216 @@ function createDefaultExitPlan(
     return {
       percent: t.percent,
       multiplier: t.multiplier,
-      targetPrice: isRemaining || t.multiplier === 0 ? 0 : base * t.multiplier,
+      targetPrice: isRemaining || t.multiplier === 0 ? 0 : planBasis * t.multiplier,
       tokensToSell: (holding.tokensOwned * t.percent) / 100
     };
   });
   
   return {
     holdingId: holding.id,
-    useBase: useCushion,
+    useBase: true,
     preset: defaultPreset,
     rungs
   };
 }
 
+// ============================================================================
+// Plan Basis Popover Component
+// ============================================================================
+interface PlanBasisPopoverProps {
+  symbol: string;
+  holdingId: string;
+  config: PlanBasisConfig;
+  avgCost: number;
+  currentPrice: number;
+  onSave: (config: PlanBasisConfig) => void;
+}
+
+const PlanBasisPopover = memo(({ 
+  symbol, 
+  holdingId, 
+  config, 
+  avgCost, 
+  currentPrice, 
+  onSave 
+}: PlanBasisPopoverProps) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [localConfig, setLocalConfig] = useState<PlanBasisConfig>(config);
+  
+  // Reset local state when popover opens
+  useEffect(() => {
+    if (isOpen) {
+      setLocalConfig(config);
+    }
+  }, [isOpen, config]);
+
+  const handleModeChange = (mode: PlanBasisMode) => {
+    const newConfig: PlanBasisConfig = {
+      ...localConfig,
+      mode,
+      // Preserve cushionPct default when switching to avg_cushion
+      cushionPct: mode === 'avg_cushion' ? (localConfig.cushionPct ?? 10) : localConfig.cushionPct,
+    };
+    setLocalConfig(newConfig);
+    // Auto-save on mode change
+    onSave(newConfig);
+  };
+
+  const handleCushionChange = (value: string) => {
+    const pct = parseFloat(value);
+    if (!isNaN(pct) && pct >= 0) {
+      const newConfig = { ...localConfig, cushionPct: pct };
+      setLocalConfig(newConfig);
+      // Auto-save on cushion change
+      onSave(newConfig);
+    }
+  };
+
+  const handleCustomPriceChange = (value: string) => {
+    const price = parseFloat(value);
+    if (!isNaN(price) && price >= 0) {
+      const newConfig = { ...localConfig, customPrice: price };
+      setLocalConfig(newConfig);
+      // Auto-save on custom price change
+      onSave(newConfig);
+    }
+  };
+
+  // Calculate live preview value based on current local config
+  const liveValue = calculatePlanBasis(localConfig, avgCost, currentPrice);
+  
+  // Display value (use calculated value from saved config for the button)
+  const displayValue = calculatePlanBasis(config, avgCost, currentPrice);
+
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <button
+                className="w-24 text-right text-sm tabular-nums text-foreground/80 flex-shrink-0 group cursor-pointer hover:text-foreground transition-colors duration-150 flex items-center justify-end gap-1"
+                onClick={() => setIsOpen(true)}
+              >
+                <span className="group-hover:underline">{formatPrice(displayValue)}</span>
+                <Settings2 className="w-3 h-3 opacity-0 group-hover:opacity-60 transition-opacity duration-150" />
+              </button>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            Click to adjust plan basis
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      
+      <PopoverContent 
+        className="p-2.5"
+        align="start"
+        side="bottom"
+        style={{ width: 'auto', minWidth: '140px', maxWidth: '180px' }}
+      >
+        <div className="space-y-2">
+          {/* Header with live value */}
+          <div className="pb-1 border-b border-slate-700/50">
+            <div className="text-[9px] text-muted-foreground/50 uppercase tracking-wider">Plan basis for {symbol}</div>
+            <div className="text-sm font-semibold text-foreground tabular-nums">{formatPrice(liveValue)}</div>
+          </div>
+          
+          {/* Radio Group - very compact */}
+          <div className="space-y-1">
+            <label className="flex items-center gap-1.5 cursor-pointer group py-0.5">
+              <input
+                type="radio"
+                name={`plan-basis-mode-${holdingId}`}
+                checked={localConfig.mode === 'avg_cost'}
+                onChange={() => handleModeChange('avg_cost')}
+                className="w-3 h-3 text-indigo-500 focus:ring-indigo-400"
+              />
+              <span className="text-xs text-foreground/80 group-hover:text-foreground transition-colors whitespace-nowrap">
+                Average cost
+              </span>
+            </label>
+            
+            <div>
+              <label className="flex items-center gap-1.5 cursor-pointer group py-0.5">
+                <input
+                  type="radio"
+                  name={`plan-basis-mode-${holdingId}`}
+                  checked={localConfig.mode === 'avg_cushion'}
+                  onChange={() => handleModeChange('avg_cushion')}
+                  className="w-3 h-3 text-indigo-500 focus:ring-indigo-400"
+                />
+                <span className="text-xs text-foreground/80 group-hover:text-foreground transition-colors whitespace-nowrap">
+                  Avg + cushion
+                </span>
+              </label>
+              
+              {/* Cushion input - shown when avg_cushion is selected */}
+              {localConfig.mode === 'avg_cushion' && (
+                <div className="mt-1 ml-4 flex items-center gap-1">
+                  <Input
+                    type="number"
+                    value={localConfig.cushionPct ?? 10}
+                    onChange={(e) => handleCushionChange(e.target.value)}
+                    className="w-12 h-5 text-[11px] text-right tabular-nums px-1.5"
+                    min="0"
+                    max="100"
+                    step="1"
+                  />
+                  <span className="text-[10px] text-muted-foreground">%</span>
+                </div>
+              )}
+            </div>
+            
+            <div>
+              <label className="flex items-center gap-1.5 cursor-pointer group py-0.5">
+                <input
+                  type="radio"
+                  name={`plan-basis-mode-${holdingId}`}
+                  checked={localConfig.mode === 'custom'}
+                  onChange={() => handleModeChange('custom')}
+                  className="w-3 h-3 text-indigo-500 focus:ring-indigo-400"
+                />
+                <span className="text-xs text-foreground/80 group-hover:text-foreground transition-colors whitespace-nowrap">
+                  Custom
+                </span>
+              </label>
+              
+              {/* Custom Price Input - shown when custom is selected */}
+              {localConfig.mode === 'custom' && (
+                <div className="mt-1 ml-4 flex items-center gap-0.5">
+                  <span className="text-[10px] text-muted-foreground">$</span>
+                  <Input
+                    type="number"
+                    value={localConfig.customPrice ?? avgCost}
+                    onChange={(e) => handleCustomPriceChange(e.target.value)}
+                    className="w-16 h-5 text-[11px] text-right tabular-nums px-1.5"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+});
+
+PlanBasisPopover.displayName = 'PlanBasisPopover';
+
+// ============================================================================
+// Asset Row Component
+// ============================================================================
 interface AssetRowProps {
   holding: Holding;
   price: ExtendedPriceQuote | undefined;
   category: Category;
   plan: ExitPlan | undefined;
   logoUrl?: string;
-  globalUseCushion: boolean;
+  planBasisConfig: PlanBasisConfig;
+  onPlanBasisChange: (config: PlanBasisConfig) => void;
   onPresetChange: (preset: PresetType) => void;
   onUpdateRung: (rungIndex: number, field: 'percent' | 'multiplier', value: number) => void;
 }
@@ -226,32 +450,23 @@ const AssetRow = memo(({
   category, 
   plan, 
   logoUrl,
-  globalUseCushion,
+  planBasisConfig,
+  onPlanBasisChange,
   onPresetChange,
   onUpdateRung
 }: AssetRowProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Calculate values - guard against undefined/NaN
   const avgCost = holding.avgCost || 0;
-  const planBasis = globalUseCushion ? avgCost * 1.1 : avgCost;
   const currentPrice = price?.priceUsd ?? 0;
+  const planBasis = calculatePlanBasis(planBasisConfig, avgCost, currentPrice);
   
-  // Position Value = current value (tokens * current price) - PRIMARY
   const positionValue = holding.tokensOwned * currentPrice;
-  
-  // Total Cost = cost basis (tokens * avg cost) - SECONDARY
   const totalCost = holding.tokensOwned * avgCost;
-  
-  // Unrealized PnL = Value - Cost
   const unrealizedPnL = positionValue - totalCost;
-  
-  // Unrealized Return % = PnL / Cost
-  const unrealizedReturn = totalCost > 0 ? (unrealizedPnL / totalCost) * 100 : 0;
 
-  // Calculate expected profit and proceeds - with NaN guards
-  const { expectedProfit, totalProceeds } = useMemo(() => {
-    if (!plan || !plan.rungs) return { expectedProfit: 0, totalProceeds: 0 };
+  const { expectedProfit } = useMemo(() => {
+    if (!plan || !plan.rungs) return { expectedProfit: 0 };
     
     let totalRevenue = 0;
     plan.rungs.forEach(rung => {
@@ -266,132 +481,106 @@ const AssetRow = memo(({
     
     const profit = isNaN(totalRevenue) || isNaN(totalCost) ? 0 : totalRevenue - totalCost;
     
-    return {
-      expectedProfit: profit,
-      totalProceeds: totalRevenue
-    };
+    return { expectedProfit: profit };
   }, [plan, totalCost]);
 
-  const percentGain = totalCost > 0 && !isNaN(expectedProfit) ? (expectedProfit / totalCost) * 100 : 0;
-
-  // Early return after all hooks - show nothing if no avgCost or no plan
   if (!holding.avgCost || !plan) return null;
 
-  // Determine if editing is locked (locked for conservative and aggressive presets)
   const isLocked = plan.preset !== 'custom';
   
-  // Determine plan status for display
-  const planStatus = plan.preset === 'custom' ? 'Edited' : 'Template';
-  
-  // Get available strategies based on category
   const strategyOptions = category === 'blue-chip' 
     ? [{ value: 'conservative', label: 'Conservative' }, { value: 'custom', label: 'Custom' }]
     : [{ value: 'conservative', label: 'Conservative' }, { value: 'aggressive', label: 'Aggressive' }, { value: 'custom', label: 'Custom' }];
 
+  // Get color from centralized source
+  const catColor = getCategoryColor(category);
+
   return (
     <div className="border-b border-divide-lighter/10 last:border-0">
-      {/* Collapsed Summary Row */}
+      {/* Data Row - values only, no labels */}
       <div className="px-4 py-3 hover:bg-secondary/4 transition-colors duration-150">
-        <div className="flex items-center gap-6">
-          {/* Left Section: Expand Button + Asset Info */}
-          <div className="flex items-center gap-3 flex-shrink-0">
-            <button
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="p-1.5 hover:bg-secondary/10 rounded-md transition-colors duration-150"
-              aria-label={isExpanded ? 'Collapse' : 'Expand'}
-            >
-              {isExpanded ? (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="w-4 h-4 text-muted-foreground" />
-              )}
-            </button>
+        <div className="flex items-center gap-4">
+          {/* Expand Button */}
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="p-1.5 hover:bg-secondary/10 rounded-md transition-colors duration-150 flex-shrink-0"
+            aria-label={isExpanded ? 'Collapse' : 'Expand'}
+          >
+            {isExpanded ? (
+              <ChevronDown className="w-4 h-4 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            )}
+          </button>
 
-            {/* Logo + Symbol - prominent */}
-            <div className="flex items-center gap-2">
-              {logoUrl ? (
-                <img
-                  src={logoUrl}
-                  alt={holding.symbol}
-                  className="h-7 w-7 rounded-full object-contain shadow-md"
-                  onError={(e) => {
-                    // Hide image on error, fallback will show
-                    e.currentTarget.style.display = 'none';
-                    const fallback = e.currentTarget.nextElementSibling as HTMLElement;
-                    if (fallback) fallback.style.display = 'flex';
-                  }}
-                />
-              ) : null}
-              <div
-                className="flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold text-white shadow-md"
-                style={{ 
-                  backgroundColor: CATEGORY_COLORS[category],
-                  display: logoUrl ? 'none' : 'flex'
+          {/* Asset: Logo + Symbol */}
+          <div className="flex items-center gap-2 w-24 flex-shrink-0">
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt={holding.symbol}
+                className="h-6 w-6 rounded-full object-contain"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                  if (fallback) fallback.style.display = 'flex';
                 }}
-              >
-                {holding.symbol.charAt(0).toUpperCase()}
-              </div>
-              <span className="font-semibold font-heading text-base">
-                {holding.symbol}
-              </span>
+              />
+            ) : null}
+            <div
+              className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold text-white"
+              style={{ 
+                backgroundColor: catColor,
+                display: logoUrl ? 'none' : 'flex'
+              }}
+            >
+              {holding.symbol.charAt(0).toUpperCase()}
             </div>
-            
-            {/* Plan Status Indicator */}
-            <div className={`text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider font-medium ${
-              planStatus === 'Edited' 
-                ? 'bg-amber-500/10 text-amber-400/80 border border-amber-500/20' 
-                : 'bg-secondary/30 text-muted-foreground/60'
-            }`}>
-              {planStatus}
-            </div>
-            
-            {/* Tokens */}
-            <div className="text-sm text-muted-foreground/80 w-28">
-              {formatTokensSmart(holding.tokensOwned)} tokens
-            </div>
+            <span className="font-semibold text-sm">{holding.symbol}</span>
           </div>
 
-          {/* Position Value (PRIMARY) + Total Cost (SECONDARY) */}
-          <div className="flex items-center gap-6 flex-shrink-0">
-            {/* Position Value - visually primary */}
-            <div className="text-left w-28">
-              <div className="font-semibold text-foreground">{formatPrice(positionValue)}</div>
-              <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">Position Value</div>
-            </div>
-            
-            {/* Total Cost - visually secondary */}
-            <div className="text-left w-24">
-              <div className="text-sm text-foreground/70">{formatPrice(totalCost)}</div>
-              <div className="text-[10px] text-muted-foreground/50 uppercase tracking-wider">Total Cost</div>
-            </div>
-            
-            {/* Unrealized PnL & Return */}
-            <div className="text-left w-28">
-              <div className={`text-sm font-medium ${unrealizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
-                {unrealizedPnL >= 0 ? '+' : ''}{formatPrice(unrealizedPnL)}
-              </div>
-              <div className={`text-[10px] ${unrealizedReturn >= 0 ? 'text-success/70' : 'text-danger/70'}`}>
-                {unrealizedReturn >= 0 ? '+' : ''}{unrealizedReturn.toFixed(1)}% unrealized
-              </div>
-            </div>
+          {/* LEFT GROUP: Descriptive metrics */}
+          {/* Tokens */}
+          <div className="w-24 text-right text-sm tabular-nums text-foreground/80 flex-shrink-0">
+            {formatTokensSmart(holding.tokensOwned)}
           </div>
 
-          {/* Plan Basis display (driven by global cushion setting) */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/5 border border-divide-lighter/10 flex-shrink-0">
-            <div className="text-left">
-              <div className="text-xs text-muted-foreground/60 uppercase tracking-wider">Plan basis</div>
-              <div className="text-sm font-medium text-foreground/90">{formatPrice(planBasis)}</div>
-            </div>
+          {/* Position Value */}
+          <div className="w-28 text-right text-sm font-medium tabular-nums flex-shrink-0">
+            {formatPrice(positionValue)}
           </div>
+          
+          {/* Total Cost */}
+          <div className="w-24 text-right text-sm tabular-nums text-foreground/70 flex-shrink-0">
+            {formatPrice(totalCost)}
+          </div>
+          
+          {/* Unrealized P/L */}
+          <div className={`w-28 text-right text-sm font-medium tabular-nums flex-shrink-0 ${unrealizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
+            {unrealizedPnL >= 0 ? '+' : ''}{formatPrice(unrealizedPnL)}
+          </div>
+
+          {/* Spacer */}
+          <div className="flex-grow min-w-4" />
+
+          {/* RIGHT GROUP: Planning & outcome metrics */}
+          {/* Plan Basis - Now clickable with popover */}
+          <PlanBasisPopover
+            symbol={holding.symbol}
+            holdingId={holding.id}
+            config={planBasisConfig}
+            avgCost={avgCost}
+            currentPrice={currentPrice}
+            onSave={onPlanBasisChange}
+          />
 
           {/* Strategy Dropdown */}
-          <div className="flex items-center gap-2 flex-shrink-0 relative">
-            <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">Strategy</span>
+          <div className="w-32 flex-shrink-0">
             <Select
               value={plan.preset}
               onValueChange={(value) => onPresetChange(value as PresetType)}
             >
-              <SelectTrigger className="w-32 h-8 text-xs bg-secondary/10 border-divide-lighter/20 hover:border-divide-lighter/40 transition-colors">
+              <SelectTrigger className="w-full h-8 text-xs bg-secondary/10 border-divide-lighter/20 hover:border-divide-lighter/40 transition-colors">
                 <SelectValue placeholder="Select..." />
               </SelectTrigger>
               <SelectContent className="z-50">
@@ -404,14 +593,9 @@ const AssetRow = memo(({
             </Select>
           </div>
 
-          {/* Expected Profit + % Gain (consolidated) */}
-          <div className="text-right ml-auto flex-shrink-0 w-28">
-            <div className={`font-semibold ${expectedProfit >= 0 ? 'text-success' : 'text-danger'}`}>
-              {formatPrice(expectedProfit)}
-            </div>
-            <div className={`text-xs ${percentGain >= 0 ? 'text-success/60' : 'text-danger/60'}`}>
-              {percentGain >= 0 ? '+' : ''}{percentGain.toFixed(1)}% gain
-            </div>
+          {/* Expected Profit */}
+          <div className={`w-28 text-right font-semibold tabular-nums flex-shrink-0 ${expectedProfit >= 0 ? 'text-success' : 'text-danger'}`}>
+            {expectedProfit >= 0 ? '+' : ''}{formatPrice(expectedProfit)}
           </div>
         </div>
       </div>
@@ -420,13 +604,10 @@ const AssetRow = memo(({
       {isExpanded && (
         <div 
           className="px-4 pb-4 overflow-hidden"
-          style={{
-            animation: 'expandRow 180ms ease-out'
-          }}
+          style={{ animation: 'expandRow 180ms ease-out' }}
         >
-          {/* Helper text - explains what the rungs represent */}
           <div className="text-xs text-muted-foreground/60 mb-3 pl-1">
-            Each rung is a price target where you'll sell a portion of your position. When the price hits that multiple, sell that percentage.
+            Each rung is a price target where you'll sell a portion of your position.
           </div>
           
           <div className="overflow-x-auto">
@@ -434,12 +615,12 @@ const AssetRow = memo(({
               <thead>
                 <tr className="border-b border-divide-lighter/10">
                   <th className="text-left py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Exit Point</th>
-                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Sell % of position</th>
-                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Target multiple</th>
-                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Tokens to sell</th>
-                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Target price</th>
+                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Sell %</th>
+                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Multiple</th>
+                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Tokens</th>
+                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Target Price</th>
                   <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Proceeds</th>
-                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Profit from rung</th>
+                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Profit</th>
                 </tr>
               </thead>
               <tbody>
@@ -515,160 +696,146 @@ const AssetRow = memo(({
 
 AssetRow.displayName = 'AssetRow';
 
+// ============================================================================
+// Main Exit Strategy Component
+// ============================================================================
 export function ExitStrategy() {
-  // Use the portfolio store hook for principal-aware data access
   const { principal } = useInternetIdentity();
   const store = usePortfolioStore(principal);
   
   const [prices, setPrices] = useState<Record<string, ExtendedPriceQuote>>({});
   const [logos, setLogos] = useState<Record<string, string>>(() => loadLogoCache());
   const [exitPlans, setExitPlans] = useState<Record<string, ExitPlan>>(() => loadExitPlans());
+  const [planBasisConfigs, setPlanBasisConfigs] = useState<Record<string, PlanBasisConfig>>(() => loadPlanBasisConfigs());
   const [isLoading, setIsLoading] = useState(true);
   const [hasFetchedOnce, setHasFetchedOnce] = useState(false);
   
-  // Global cushion toggle - affects all assets
-  const [globalUseCushion, setGlobalUseCushion] = useState<boolean>(() => {
-    try {
-      const stored = localStorage.getItem(GLOBAL_CUSHION_KEY);
-      if (stored !== null) return stored === 'true';
-      // Default to true (cushion enabled)
-      return true;
-    } catch {
-      return true;
-    }
-  });
-  
-  // Persist global cushion setting
-  useEffect(() => {
-    try {
-      localStorage.setItem(GLOBAL_CUSHION_KEY, String(globalUseCushion));
-    } catch (e) {
-      console.warn('[ExitStrategy] Failed to save global cushion setting:', e);
-    }
-  }, [globalUseCushion]);
-  
-  // Check if we have meaningful market cap data (not just prices with $0 market cap)
-  const hasMarketCapData = useMemo(() => {
-    const priceValues = Object.values(prices);
-    if (priceValues.length === 0) return false;
-    // At least one price should have a non-zero market cap
-    return priceValues.some(p => p.marketCapUsd && p.marketCapUsd > 0);
-  }, [prices]);
-  
-  // Track which holdings have been initialized to avoid re-initializing on price updates
   const initializedHoldingsRef = useRef<Set<string>>(new Set());
 
-  // Persist exit plans to localStorage whenever they change
+  // Memoize symbols to avoid unnecessary fetches
+  const symbols = useMemo(
+    () => Array.from(new Set(store.holdings.map(h => h.symbol.toUpperCase()))),
+    [store.holdings]
+  );
+
+  // Persist exit plans
   useEffect(() => {
     if (Object.keys(exitPlans).length > 0) {
       saveExitPlans(exitPlans);
     }
   }, [exitPlans]);
 
-  // Fetch prices - only fetch, don't rebuild plans on every update
+  // Persist plan basis configs
   useEffect(() => {
+    savePlanBasisConfigs(planBasisConfigs);
+  }, [planBasisConfigs]);
+
+  // Fetch prices - memoized callback
+  const fetchPrices = useCallback(async () => {
     const aggregator = getPriceAggregator();
     
-    const fetchPrices = async () => {
-      const symbols = store.holdings.map(h => h.symbol);
-      if (symbols.length === 0) {
-        setIsLoading(false);
-        setHasFetchedOnce(true);
-        return;
-      }
+    if (symbols.length === 0) {
+      setIsLoading(false);
+      setHasFetchedOnce(true);
+      return;
+    }
 
-      try {
-        const quotes = await aggregator.getPrice(symbols);
-        const priceMap: Record<string, ExtendedPriceQuote> = {};
-        quotes.forEach(q => {
-          priceMap[q.symbol] = q;
-        });
-        setPrices(priceMap);
-        setHasFetchedOnce(true);
-        setIsLoading(false);
-      } catch (error) {
-        console.error('[ExitStrategy] Failed to fetch prices:', error);
-        setIsLoading(false);
-        setHasFetchedOnce(true);
-      }
-    };
+    try {
+      const quotes = await aggregator.getPrice(symbols);
+      const priceMap: Record<string, ExtendedPriceQuote> = {};
+      quotes.forEach(q => {
+        priceMap[q.symbol.toUpperCase()] = q;
+      });
+      setPrices(priceMap);
+      setHasFetchedOnce(true);
+      setIsLoading(false);
+    } catch (error) {
+      console.error('[ExitStrategy] Failed to fetch prices:', error);
+      setIsLoading(false);
+      setHasFetchedOnce(true);
+    }
+  }, [symbols]);
 
-    // Fetch logos - uses stored CoinGecko IDs when available for reliable resolution
-    const fetchLogos = async () => {
-      const symbols = store.holdings.map(h => h.symbol);
-      if (symbols.length === 0) return;
-      try {
-        // Build symbol -> CoinGecko ID map from holdings that have stored IDs
-        const symbolToIdMap: Record<string, string> = {};
-        for (const holding of store.holdings) {
-          const symbol = holding.symbol.toUpperCase();
-          if (holding.coingeckoId) {
-            symbolToIdMap[symbol] = holding.coingeckoId;
-          }
+  // Fetch logos - memoized callback
+  const fetchLogos = useCallback(async () => {
+    const aggregator = getPriceAggregator();
+    
+    if (symbols.length === 0) return;
+    try {
+      const symbolToIdMap: Record<string, string> = {};
+      for (const holding of store.holdings) {
+        const symbol = holding.symbol.toUpperCase();
+        if (holding.coingeckoId) {
+          symbolToIdMap[symbol] = holding.coingeckoId;
         }
-        
-        // Collect all logos before updating state
-        let allLogos: Record<string, string> = {};
-        
-        // Fetch logos using CoinGecko IDs for holdings that have them
-        const idsToFetch = Object.keys(symbolToIdMap);
-        if (idsToFetch.length > 0) {
-          const idBasedLogos = await aggregator.getLogosWithIds(symbolToIdMap);
-          allLogos = { ...allLogos, ...idBasedLogos };
-        }
-        
-        // For symbols without stored IDs, use the standard symbol-based lookup
-        const symbolsWithoutIds = symbols.map(s => s.toUpperCase()).filter(s => !symbolToIdMap[s]);
-        if (symbolsWithoutIds.length > 0) {
-          const symbolBasedLogos = await aggregator.getLogos(symbolsWithoutIds);
-          allLogos = { ...allLogos, ...symbolBasedLogos };
-        }
-        
-        // Update state and save to cache
-        setLogos(prev => {
-          const updated = { ...prev, ...allLogos };
-          saveLogoCache(updated);
-          return updated;
-        });
-      } catch (error) {
-        console.error('[ExitStrategy] Failed to fetch logos:', error);
       }
-    };
+      
+      let allLogos: Record<string, string> = {};
+      
+      const idsToFetch = Object.keys(symbolToIdMap);
+      if (idsToFetch.length > 0) {
+        const idBasedLogos = await aggregator.getLogosWithIds(symbolToIdMap);
+        allLogos = { ...allLogos, ...idBasedLogos };
+      }
+      
+      const symbolsWithoutIds = symbols.filter(s => !symbolToIdMap[s]);
+      if (symbolsWithoutIds.length > 0) {
+        const symbolBasedLogos = await aggregator.getLogos(symbolsWithoutIds);
+        allLogos = { ...allLogos, ...symbolBasedLogos };
+      }
+      
+      setLogos(prev => {
+        const updated = { ...prev, ...allLogos };
+        saveLogoCache(updated);
+        return updated;
+      });
+    } catch (error) {
+      console.error('[ExitStrategy] Failed to fetch logos:', error);
+    }
+  }, [symbols, store.holdings]);
 
+  // Effect to fetch prices and logos
+  useEffect(() => {
     fetchPrices();
     fetchLogos();
-    const interval = setInterval(fetchPrices, 30000); // Reduced frequency to 30s
+    const interval = setInterval(fetchPrices, 30000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchPrices, fetchLogos]);
 
-  // Initialize exit plans ONLY for new holdings - don't wipe existing plans
+  // Get plan basis config for a holding (with default fallback)
+  const getPlanBasisConfig = useCallback((holdingId: string): PlanBasisConfig => {
+    return planBasisConfigs[holdingId] ?? { ...DEFAULT_PLAN_BASIS_CONFIG };
+  }, [planBasisConfigs]);
+
+  // Initialize exit plans for new holdings
   useEffect(() => {
-    if (!hasFetchedOnce) return; // Wait for first price fetch
+    if (!hasFetchedOnce) return;
     
     setExitPlans(prevPlans => {
       const newPlans = { ...prevPlans };
       let hasChanges = false;
       
       store.holdings.forEach(holding => {
-        // Skip if already initialized
         if (initializedHoldingsRef.current.has(holding.id)) return;
-        // Skip if plan already exists (from localStorage)
         if (newPlans[holding.id]) {
           initializedHoldingsRef.current.add(holding.id);
           return;
         }
-        // Skip if no avgCost
         if (!holding.avgCost) return;
         
-        const price = prices[holding.symbol];
-        // Use fallback chain: live price > cached market cap > default to micro-cap (for new/unknown tokens)
+        const price = prices[holding.symbol.toUpperCase()];
         const marketCap = price?.marketCapUsd ?? holding.lastMarketCapUsd ?? 0;
-        // If no market cap data, default to micro-cap category (safest assumption for unknown tokens)
         const category = marketCap > 0 
           ? getCategoryForHolding(holding, marketCap) 
           : 'micro-cap' as Category;
-        const plan = createDefaultExitPlan(holding, category, globalUseCushion);
+        
+        // Get plan basis config for this holding
+        const config = getPlanBasisConfig(holding.id);
+        const currentPrice = price?.priceUsd ?? 0;
+        const planBasis = calculatePlanBasis(config, holding.avgCost, currentPrice);
+        
+        const plan = createDefaultExitPlan(holding, category, planBasis);
         
         if (plan) {
           newPlans[holding.id] = plan;
@@ -677,7 +844,6 @@ export function ExitStrategy() {
         }
       });
       
-      // Clean up plans for holdings that no longer exist
       const holdingIds = new Set(store.holdings.map(h => h.id));
       Object.keys(newPlans).forEach(planId => {
         if (!holdingIds.has(planId)) {
@@ -689,28 +855,64 @@ export function ExitStrategy() {
       
       return hasChanges ? newPlans : prevPlans;
     });
-  }, [prices, hasFetchedOnce, globalUseCushion]);
+  }, [prices, hasFetchedOnce, getPlanBasisConfig]);
 
-  // Broadcast exit plan updates to Portfolio page
+  // Broadcast exit plans updates
   useEffect(() => {
     const event = new CustomEvent('exitPlansUpdated', { detail: exitPlans });
     window.dispatchEvent(event);
   }, [exitPlans]);
 
+  // Handle plan basis config change for a holding
+  const handlePlanBasisChange = useCallback((holdingId: string, config: PlanBasisConfig) => {
+    // Update config
+    setPlanBasisConfigs(prev => ({
+      ...prev,
+      [holdingId]: config
+    }));
+    
+    // Recalculate exit plan with new plan basis
+    const holding = store.holdings.find(h => h.id === holdingId);
+    if (!holding?.avgCost) return;
+    
+    const price = prices[holding.symbol.toUpperCase()];
+    const currentPrice = price?.priceUsd ?? 0;
+    const newPlanBasis = calculatePlanBasis(config, holding.avgCost, currentPrice);
+    
+    setExitPlans(prev => {
+      const plan = prev[holdingId];
+      if (!plan) return prev;
+      
+      const newRungs = plan.rungs.map((rung, idx) => {
+        const isRemaining = idx === plan.rungs.length - 1;
+        return {
+          ...rung,
+          targetPrice: isRemaining || (rung.multiplier ?? 0) === 0 ? 0 : newPlanBasis * (rung.multiplier ?? 0)
+        };
+      });
+      
+      return {
+        ...prev,
+        [holdingId]: { ...plan, rungs: newRungs }
+      };
+    });
+  }, [prices]);
+
+  // Handle preset change
   const handlePresetChange = useCallback((holdingId: string, category: Category, preset: PresetType) => {
     const holding = store.holdings.find(h => h.id === holdingId);
     if (!holding?.avgCost) return;
     
-    const avgCost = holding.avgCost;
+    const price = prices[holding.symbol.toUpperCase()];
+    const currentPrice = price?.priceUsd ?? 0;
+    const config = getPlanBasisConfig(holdingId);
+    const planBasis = calculatePlanBasis(config, holding.avgCost, currentPrice);
     
     setExitPlans(prev => {
       const currentPlan = prev[holdingId];
-      const base = globalUseCushion ? avgCost * 1.1 : avgCost;
       
-      // Get the appropriate template
       let template;
       if (preset === 'custom') {
-        // Keep current rungs when switching to custom
         return {
           ...prev,
           [holdingId]: { ...currentPlan, preset: 'custom' }
@@ -727,14 +929,14 @@ export function ExitStrategy() {
         return {
           percent: t.percent,
           multiplier: t.multiplier,
-          targetPrice: isRemaining || t.multiplier === 0 ? 0 : base * t.multiplier,
+          targetPrice: isRemaining || t.multiplier === 0 ? 0 : planBasis * t.multiplier,
           tokensToSell: (holding.tokensOwned * t.percent) / 100
         };
       });
       
       return {
         ...prev,
-        [holdingId]: { holdingId, useBase: globalUseCushion, preset, rungs }
+        [holdingId]: { holdingId, useBase: true, preset, rungs }
       };
     });
     
@@ -743,26 +945,29 @@ export function ExitStrategy() {
     } else {
       toast.success(`Applied ${preset.charAt(0).toUpperCase() + preset.slice(1)} preset`);
     }
-  }, [globalUseCushion]);
+  }, [prices, getPlanBasisConfig]);
 
+  // Handle rung updates
   const handleUpdateRung = useCallback((holdingId: string, rungIndex: number, field: 'percent' | 'multiplier', value: number) => {
     const holding = store.holdings.find(h => h.id === holdingId);
     if (!holding?.avgCost) return;
     
-    const avgCost = holding.avgCost;
+    const price = prices[holding.symbol.toUpperCase()];
+    const currentPrice = price?.priceUsd ?? 0;
+    const config = getPlanBasisConfig(holdingId);
+    const planBasis = calculatePlanBasis(config, holding.avgCost, currentPrice);
     
     setExitPlans(prev => {
       const plan = prev[holdingId];
       if (!plan) return prev;
       
-      const base = globalUseCushion ? avgCost * 1.1 : avgCost;
       const newRungs = [...plan.rungs];
       
       if (field === 'multiplier') {
         newRungs[rungIndex] = {
           ...newRungs[rungIndex],
           multiplier: value,
-          targetPrice: value > 0 ? base * value : 0
+          targetPrice: value > 0 ? planBasis * value : 0
         };
       } else {
         newRungs[rungIndex] = {
@@ -771,7 +976,6 @@ export function ExitStrategy() {
           tokensToSell: (holding.tokensOwned * value) / 100
         };
         
-        // Recalculate remaining percentage (last rung)
         const sumOfExits = newRungs.slice(0, -1).reduce((sum, rung) => sum + (rung.percent ?? 0), 0);
         const remainingPercent = Math.max(0, 100 - sumOfExits);
         newRungs[newRungs.length - 1] = {
@@ -786,48 +990,9 @@ export function ExitStrategy() {
         [holdingId]: { ...plan, rungs: newRungs }
       };
     });
-  }, [globalUseCushion]);
+  }, [prices, getPlanBasisConfig]);
 
-  // Recalculate all target prices when global cushion changes
-  useEffect(() => {
-    setExitPlans(prev => {
-      const updated: Record<string, ExitPlan> = {};
-      let hasAnyChanges = false;
-      
-      Object.keys(prev).forEach(holdingId => {
-        const plan = prev[holdingId];
-        const holding = store.holdings.find(h => h.id === holdingId);
-        if (!plan || !holding?.avgCost) {
-          updated[holdingId] = plan;
-          return;
-        }
-        
-        const avgCost = holding.avgCost;
-        const base = globalUseCushion ? avgCost * 1.1 : avgCost;
-        
-        const newRungs = plan.rungs.map((rung, idx) => {
-          const isRemaining = idx === plan.rungs.length - 1;
-          const newTargetPrice = isRemaining || (rung.multiplier ?? 0) === 0 ? 0 : base * (rung.multiplier ?? 0);
-          
-          if (Math.abs(newTargetPrice - (rung.targetPrice ?? 0)) > 0.01) {
-            hasAnyChanges = true;
-          }
-          
-          return {
-            ...rung,
-            targetPrice: newTargetPrice
-          };
-        });
-        
-        updated[holdingId] = { ...plan, rungs: newRungs };
-      });
-      
-      return hasAnyChanges ? updated : prev;
-    });
-  }, [globalUseCushion]);
-
-  // Sync tokensToSell with current holdings tokensOwned
-  // This handles cases where tokens were updated after exit plan was created
+  // Sync tokensToSell when holdings change
   useEffect(() => {
     setExitPlans(prev => {
       const updated: Record<string, ExitPlan> = {};
@@ -844,7 +1009,6 @@ export function ExitStrategy() {
         const newRungs = plan.rungs.map(rung => {
           const expectedTokens = (holding.tokensOwned * (rung.percent ?? 0)) / 100;
           
-          // Check if tokensToSell needs to be updated (allow small floating point differences)
           if (Math.abs(expectedTokens - (rung.tokensToSell ?? 0)) > 0.001) {
             hasAnyChanges = true;
             return {
@@ -863,6 +1027,7 @@ export function ExitStrategy() {
     });
   }, [store.holdings]);
 
+  // Group holdings by category
   const groupedHoldings = useMemo(() => {
     const groups: Record<Category, Holding[]> = {
       'blue-chip': [],
@@ -874,11 +1039,9 @@ export function ExitStrategy() {
     };
 
     store.holdings.forEach(holding => {
-      // Only include holdings with avgCost (required for exit planning)
       if (!holding.avgCost) return;
       
-      const price = prices[holding.symbol];
-      // Use fallback chain: live market cap > cached market cap > default to micro-cap
+      const price = prices[holding.symbol.toUpperCase()];
       const marketCap = price?.marketCapUsd ?? holding.lastMarketCapUsd ?? 0;
       const category = marketCap > 0 
         ? getCategoryForHolding(holding, marketCap) 
@@ -886,39 +1049,20 @@ export function ExitStrategy() {
       groups[category].push(holding);
     });
 
-    // Sort each category by position value (tokens * current price), highest first
     Object.keys(groups).forEach(cat => {
       const category = cat as Category;
       groups[category].sort((a, b) => {
-        const priceA = prices[a.symbol]?.priceUsd ?? 0;
-        const priceB = prices[b.symbol]?.priceUsd ?? 0;
+        const priceA = prices[a.symbol.toUpperCase()]?.priceUsd ?? 0;
+        const priceB = prices[b.symbol.toUpperCase()]?.priceUsd ?? 0;
         const valueA = a.tokensOwned * priceA;
         const valueB = b.tokensOwned * priceB;
-        return valueB - valueA; // Descending order (highest value first)
+        return valueB - valueA;
       });
     });
 
     return groups;
   }, [prices, store.holdings]);
 
-  // Calculate summary stats for custom vs template plans (must be before early returns)
-  const planStats = useMemo(() => {
-    let customCount = 0;
-    let templateCount = 0;
-    
-    Object.values(exitPlans).forEach(plan => {
-      if (plan.preset === 'custom') {
-        customCount++;
-      } else {
-        templateCount++;
-      }
-    });
-    
-    return { customCount, templateCount, total: customCount + templateCount };
-  }, [exitPlans]);
-
-  // Show loading state while fetching initial prices
-  // We no longer wait for market cap data since we default to micro-cap for unknown tokens
   const showLoading = isLoading && !hasFetchedOnce;
   
   if (showLoading) {
@@ -940,63 +1084,17 @@ export function ExitStrategy() {
     );
   }
 
-  // Check if any holdings have avgCost (the only requirement for exit planning)
   const holdingsWithData = store.holdings.filter(h => !!h.avgCost);
-
   const hasEligibleHoldings = holdingsWithData.length > 0;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold font-heading tracking-tight">Exit Strategy</h1>
-          <p className="text-sm text-muted-foreground/70 mt-1">
-            Set your exits now, so you can take profits later without emotion.
-          </p>
-        </div>
-        {/* Right section: Global cushion toggle + Summary status */}
-        <div className="flex items-center gap-6">
-          {/* Global Plan Basis Cushion Toggle */}
-          <div 
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/5 border border-divide-lighter/10 cursor-pointer hover:bg-secondary/10 transition-colors"
-            onClick={() => setGlobalUseCushion(prev => !prev)}
-          >
-            <span className="text-xs text-muted-foreground/60">Plan basis</span>
-            <Checkbox
-              id="global-cushion"
-              checked={globalUseCushion}
-              onCheckedChange={(checked) => setGlobalUseCushion(checked === true)}
-              className="h-3.5 w-3.5 pointer-events-none"
-            />
-            <span className="text-xs text-muted-foreground/80 whitespace-nowrap">
-              +10% cushion
-            </span>
-            <div className="group relative ml-1" onClick={(e) => e.stopPropagation()}>
-              <Info className="w-3.5 h-3.5 text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors cursor-help" />
-              <div className="absolute bottom-full right-0 mb-2 w-72 p-3 bg-secondary/95 backdrop-blur-sm border border-divide-lighter/30 rounded-lg text-xs text-muted-foreground opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50 shadow-lg">
-                <div className="font-semibold text-foreground/90 mb-1.5">Plan basis</div>
-                <p className="leading-relaxed">
-                  Exit targets are calculated from the Plan basis price. By default, Plan basis is your average cost per token. 
-                  If +10% cushion is enabled, we set Plan basis to 10% above your average cost to leave room for taxes, fees, and slippage. 
-                  Turn it off to calculate targets from your true average cost.
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          {/* Summary status */}
-          {planStats.total > 0 && (
-            <div className="text-xs text-muted-foreground/60">
-              {planStats.customCount === 0 ? (
-                <span>All {planStats.total} assets use templates</span>
-              ) : planStats.templateCount === 0 ? (
-                <span>All {planStats.total} assets have custom edits</span>
-              ) : (
-                <span>{planStats.customCount} of {planStats.total} assets edited</span>
-              )}
-            </div>
-          )}
-        </div>
+      {/* Header - removed global cushion toggle */}
+      <div>
+        <h1 className="text-2xl font-bold font-heading tracking-tight">Exit Strategy</h1>
+        <p className="text-sm text-muted-foreground/70 mt-1">
+          Set your exits now, so you can take profits later without emotion.
+        </p>
       </div>
 
       {/* Holdings by Category */}
@@ -1005,25 +1103,52 @@ export function ExitStrategy() {
           const holdings = groupedHoldings[category];
           if (holdings.length === 0) return null;
 
+          const catColor = getCategoryColor(category);
+          const catLabel = CATEGORY_LABELS[category];
+
           return (
-            <Card key={category} className="overflow-hidden border-divide-lighter/30 glass-panel shadow-minimal">
-              <div className="px-4 py-3 border-b border-divide-lighter/15 flex items-center gap-3">
-                <div 
-                  className="w-2.5 h-2.5 rounded-full" 
-                  style={{ 
-                    backgroundColor: CATEGORY_COLORS[category],
-                    boxShadow: `0 0 6px ${CATEGORY_COLORS[category]}50`
-                  }}
-                />
-                <h2 className="text-base font-semibold font-heading">{CATEGORY_LABELS[category]}</h2>
-                <Badge variant="secondary" className="text-[10px] px-2 py-0.5">{holdings.length}</Badge>
+            <Card key={category} className="overflow-visible border-divide-lighter/30 glass-panel shadow-minimal">
+              {/* Category Header with column labels */}
+              <div className="px-4 py-3 border-b border-divide-lighter/15">
+                {/* Category name row */}
+                <div className="flex items-center gap-3 mb-3">
+                  <div 
+                    className="w-2.5 h-2.5 rounded-full" 
+                    style={{ 
+                      backgroundColor: catColor,
+                      boxShadow: `0 0 6px ${catColor}50`
+                    }}
+                  />
+                  <h2 className="text-base font-semibold font-heading">{catLabel}</h2>
+                  <Badge variant="secondary" className="text-[10px] px-2 py-0.5">{holdings.length}</Badge>
+                </div>
+                
+                {/* Column headers row */}
+                <div className="flex items-center gap-4 text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">
+                  {/* Expand button placeholder */}
+                  <div className="w-8 flex-shrink-0" />
+                  {/* Asset */}
+                  <div className="w-24 flex-shrink-0">Asset</div>
+                  {/* LEFT GROUP */}
+                  <div className="w-24 text-right flex-shrink-0">Tokens</div>
+                  <div className="w-28 text-right flex-shrink-0">Position Value</div>
+                  <div className="w-24 text-right flex-shrink-0">Total Cost</div>
+                  <div className="w-28 text-right flex-shrink-0">Unrealized P/L</div>
+                  {/* Spacer */}
+                  <div className="flex-grow min-w-4" />
+                  {/* RIGHT GROUP */}
+                  <div className="w-24 text-right flex-shrink-0">Plan Basis</div>
+                  <div className="w-32 text-center flex-shrink-0">Strategy</div>
+                  <div className="w-28 text-right flex-shrink-0">Expected Profit</div>
+                </div>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="overflow-visible">
                 {holdings.map(holding => {
-                  const price = prices[holding.symbol];
+                  const price = prices[holding.symbol.toUpperCase()];
                   const plan = exitPlans[holding.id];
                   const logoUrl = logos[holding.symbol.toUpperCase()];
+                  const planBasisConfig = getPlanBasisConfig(holding.id);
 
                   return (
                     <AssetRow
@@ -1033,7 +1158,8 @@ export function ExitStrategy() {
                       category={category}
                       plan={plan}
                       logoUrl={logoUrl}
-                      globalUseCushion={globalUseCushion}
+                      planBasisConfig={planBasisConfig}
+                      onPlanBasisChange={(config) => handlePlanBasisChange(holding.id, config)}
                       onPresetChange={(preset) => handlePresetChange(holding.id, category, preset)}
                       onUpdateRung={(rungIndex, field, value) => handleUpdateRung(holding.id, rungIndex, field, value)}
                     />
