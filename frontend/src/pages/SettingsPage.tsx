@@ -31,6 +31,7 @@ import {
   type ThemeCollection 
 } from '@/lib/themes';
 import { SegmentedControl, type SegmentedTab } from '@/components/ui/segmented-control';
+import { StrategyLibrary } from '@/components/StrategyLibrary';
 import { cn } from '@/lib/utils';
 
 // =============================================================================

@@ -701,4 +701,52 @@ Could be extracted to `/components/ui/` if needed elsewhere.
 
 ---
 
+### Exit Strategy Page Enhancements (February 2026)
+
+**Summary:** Fixed plan basis popover z-index issue and added percentage displays for Unrealized P/L and Expected Profit.
+
+**Issues Fixed:**
+
+1. **Plan Basis Popover Z-Index:** Popovers were rendering behind sibling category Cards due to stacking context isolation. Fixed by dynamically adding `z-index: 100` to the parent Card (identified by `.glass-panel` class) when a popover opens.
+
+2. **Missing Percentage Displays:** Added smaller percentage text below Unrealized P/L and Expected Profit columns:
+   - **Unrealized P/L %:** `(positionValue - totalCost) / totalCost * 100` - shows how much the position is up/down from original investment
+   - **Expected Profit %:** `expectedProfit / totalCost * 100` - shows what percent of the original investment the expected profit represents (NOT total return including principal)
+
+**Key Implementation Details:**
+
+```tsx
+// Popover z-index fix - finds parent Card and elevates it when open
+React.useEffect(() => {
+  if (!actualOpen || !containerRef.current) return;
+  
+  let cardElement: HTMLElement | null = containerRef.current;
+  while (cardElement && !cardElement.classList.contains('glass-panel')) {
+    cardElement = cardElement.parentElement;
+  }
+  
+  if (cardElement) {
+    cardElement.style.zIndex = '100';
+    cardElement.style.position = 'relative';
+    // Cleanup restores original values
+  }
+}, [actualOpen]);
+
+// Percentage display in AssetRow
+<div className="w-28 text-right flex-shrink-0 flex flex-col items-end">
+  <span className={`text-sm font-medium tabular-nums ${unrealizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
+    {unrealizedPnL >= 0 ? '+' : ''}{formatPrice(unrealizedPnL)}
+  </span>
+  <span className={`text-[10px] tabular-nums ${unrealizedPnL >= 0 ? 'text-success/70' : 'text-danger/70'}`}>
+    {totalCost > 0 ? `${((unrealizedPnL / totalCost) * 100).toFixed(1)}%` : '—'}
+  </span>
+</div>
+```
+
+**Files Changed:**
+- `/frontend/src/components/ui/popover.tsx` - Added parent Card z-index elevation on popover open
+- `/frontend/src/pages/ExitStrategy.tsx` - Added percentage displays below Unrealized P/L and Expected Profit
+
+---
+
 *Last updated: February 2026*

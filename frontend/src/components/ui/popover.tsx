@@ -71,12 +71,36 @@ export const Popover: React.FC<PopoverProps> = ({
     };
   }, [actualOpen]);
 
+  // When popover opens, add z-index to the nearest Card ancestor
+  React.useEffect(() => {
+    if (!actualOpen || !containerRef.current) return;
+
+    // Find the nearest Card ancestor (has class containing 'rounded-2xl' or data attribute)
+    let cardElement: HTMLElement | null = containerRef.current;
+    while (cardElement && !cardElement.classList.contains('glass-panel')) {
+      cardElement = cardElement.parentElement;
+    }
+
+    if (cardElement) {
+      const originalZIndex = cardElement.style.zIndex;
+      const originalPosition = cardElement.style.position;
+      cardElement.style.zIndex = '100';
+      cardElement.style.position = 'relative';
+
+      return () => {
+        if (cardElement) {
+          cardElement.style.zIndex = originalZIndex;
+          cardElement.style.position = originalPosition;
+        }
+      };
+    }
+  }, [actualOpen]);
+
   return (
     <PopoverContext.Provider value={{ open: actualOpen, setOpen, registerContent }}>
       <div 
         ref={containerRef} 
         className={"relative inline-block " + className}
-        style={actualOpen ? { zIndex: 100 } : undefined}
       >
         {children}
       </div>
@@ -166,14 +190,13 @@ export const PopoverContent: React.FC<PopoverContentProps> = ({
     alignmentStyles.transform = 'translateX(-50%)';
   }
 
-  // Render as child (not portal) so it scrolls with content
-  // z-[100] is high enough to be above sibling cards but below z-[9999] modals
-  // Will still go behind sticky header (z-50) when scrolled because header has position:sticky
+  // Render inline (not portal) so it scrolls with content
+  // Parent Card gets z-index bump when popover is open
   return (
     <div
       ref={contentRef}
       className={
-        "z-[100] rounded-xl border border-slate-700 bg-slate-900 p-3 text-xs text-slate-100 shadow-2xl " +
+        "z-[50] rounded-xl border border-slate-700 bg-slate-900 p-3 text-xs text-slate-100 shadow-2xl " +
         className
       }
       style={{ 

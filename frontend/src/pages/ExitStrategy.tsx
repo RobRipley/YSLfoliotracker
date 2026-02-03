@@ -556,8 +556,15 @@ const AssetRow = memo(({
           </div>
           
           {/* Unrealized P/L */}
-          <div className={`w-28 text-right text-sm font-medium tabular-nums flex-shrink-0 ${unrealizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
-            {unrealizedPnL >= 0 ? '+' : ''}{formatPrice(unrealizedPnL)}
+          <div className={`w-28 text-right flex-shrink-0 flex flex-col items-end`}>
+            <span className={`text-sm font-medium tabular-nums ${unrealizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
+              {unrealizedPnL >= 0 ? '+' : ''}{formatPrice(unrealizedPnL)}
+            </span>
+            <span className={`text-[10px] tabular-nums ${unrealizedPnL >= 0 ? 'text-success/70' : 'text-danger/70'}`}>
+              {totalCost > 0 
+                ? `${unrealizedPnL >= 0 ? '+' : ''}${((unrealizedPnL / totalCost) * 100).toFixed(1)}%`
+                : '—'}
+            </span>
           </div>
 
           {/* Spacer */}
@@ -594,8 +601,15 @@ const AssetRow = memo(({
           </div>
 
           {/* Expected Profit */}
-          <div className={`w-28 text-right font-semibold tabular-nums flex-shrink-0 ${expectedProfit >= 0 ? 'text-success' : 'text-danger'}`}>
-            {expectedProfit >= 0 ? '+' : ''}{formatPrice(expectedProfit)}
+          <div className={`w-28 text-right flex-shrink-0 flex flex-col items-end`}>
+            <span className={`font-semibold tabular-nums ${expectedProfit >= 0 ? 'text-success' : 'text-danger'}`}>
+              {expectedProfit >= 0 ? '+' : ''}{formatPrice(expectedProfit)}
+            </span>
+            <span className={`text-[10px] tabular-nums ${expectedProfit >= 0 ? 'text-success/70' : 'text-danger/70'}`}>
+              {totalCost > 0 
+                ? `${expectedProfit >= 0 ? '+' : ''}${((expectedProfit / totalCost) * 100).toFixed(1)}%`
+                : '—'}
+            </span>
           </div>
         </div>
       </div>
