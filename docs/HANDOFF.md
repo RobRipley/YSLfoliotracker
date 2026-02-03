@@ -529,6 +529,33 @@ dfx deploy frontend --network ic
 - Created `categoryExpandState.ts` for localStorage persistence
 - Category expand/collapse state survives page refresh
 
+### Exit Strategy Plan Basis Popover Improvements (February 2026)
+
+**Summary:** Fixed plan basis popover functionality, positioning, and overflow issues.
+
+**Issues Fixed:**
+1. **Popover closing on selection:** Click-outside handler was detecting portal content as "outside" - fixed by registering portal content with parent context
+2. **Popover not staying with content on scroll:** Changed from portal-based `position: fixed` to inline `position: absolute` relative to trigger container
+3. **Category cards causing scrollbar when popover opened:** Changed overflow from `overflow-hidden`/`overflow-x-auto` to `overflow-visible` on category cards
+4. **Translucency too high:** Increased background opacity from `bg-slate-900/98` to `bg-slate-900` (solid)
+
+**Key Changes:**
+- `/frontend/src/components/ui/popover.tsx`: 
+  - Added `registerContent` to context for click-outside detection
+  - Removed portal rendering, now renders inline with `position: absolute`
+  - z-index lowered to `z-40` (below header's `z-50`) so popover goes behind header when scrolling
+- `/frontend/src/pages/ExitStrategy.tsx`:
+  - Changed Card className from `overflow-hidden` to `overflow-visible`
+  - Changed holdings container from `overflow-x-auto` to `overflow-visible`
+
+**Behavior:**
+- Selecting an option auto-saves immediately (no save button)
+- Popover scrolls with page content naturally
+- Popover can extend beyond category card boundaries without triggering scrollbar
+- When scrolling far enough, popover goes behind sticky header
+
+---
+
 ### Exit Strategy Page Fixes (February 2026)
 
 **Summary:** Fixed critical bugs where assets and logos weren't showing on Exit Strategy page, and tokens-to-sell calculations were incorrect.
@@ -557,6 +584,24 @@ dfx deploy frontend --network ic
 ---
 
 ## Component Reference
+
+### PlanBasisPopover (Exit Strategy)
+
+**Location:** `/frontend/src/pages/ExitStrategy.tsx` (lines ~248-425)
+
+**Features:**
+- Auto-save on change (no save button needed)
+- Three plan basis options:
+  - **Average cost:** Uses holding's avgCost directly
+  - **Avg + cushion (default):** avgCost × (1 + cushionPct/100), with editable percentage field (defaults to 10%)
+  - **Custom:** User-defined custom price
+- Live-updating header shows "PLAN BASIS FOR [SYMBOL]" with calculated value
+- Persisted per-holding in localStorage (`ysl-plan-basis-configs` key)
+
+**Storage Keys:**
+- `ysl-exit-plans`: Exit plan configurations per holding
+- `ysl-plan-basis-configs`: Plan basis mode and values per holding
+- `ysl-logo-cache`: Token logo URLs
 
 ### SegmentedControl
 
