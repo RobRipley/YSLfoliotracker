@@ -19,7 +19,17 @@ import {
 } from 'lucide-react';
 import { DEFAULT_SETTINGS, getStore, categorize } from '@/lib/dataModel';
 import { exportJSON, exportHoldingsCSV, exportTransactionsCSV, exportLadderPlansCSV, importJSON, importHoldingsCSV, generateCSVImportPreview, applyJSONImport, type ImportPreview } from '@/lib/importExport';
-import { PREDEFINED_THEMES, loadThemeSettings, saveThemeSettings, applyTheme, getThemePreviewColors, type ThemeSettings } from '@/lib/themes';
+import { 
+  THEME_COLLECTIONS, 
+  THEME_MAP,
+  loadThemeSettings, 
+  saveThemeSettings, 
+  applyTheme, 
+  getThemePreviewColors, 
+  findCollectionForTheme,
+  type ThemeSettings,
+  type ThemeCollection 
+} from '@/lib/themes';
 import { SegmentedControl, type SegmentedTab } from '@/components/ui/segmented-control';
 import { cn } from '@/lib/utils';
 
@@ -257,11 +267,20 @@ export function SettingsPage() {
     setSettings(prev => ({ ...prev, ...partial }));
   };
 
-  const handleThemeChange = (themeName: string) => {
-    setThemeSettings(prev => ({ ...prev, selectedTheme: themeName }));
+  const handleThemeChange = (themeName: string, collectionId: string) => {
+    setThemeSettings(prev => ({ 
+      ...prev, 
+      selectedTheme: themeName,
+      selectedCollection: collectionId 
+    }));
+    const theme = THEME_MAP.get(themeName);
     toast.success('Theme changed', {
-      description: PREDEFINED_THEMES[themeName]?.name || themeName,
+      description: theme?.name || themeName,
     });
+  };
+
+  const handleCollectionChange = (collectionId: string) => {
+    setThemeSettings(prev => ({ ...prev, selectedCollection: collectionId }));
   };
 
   const handleHueChange = (value: number[]) => {
@@ -505,7 +524,6 @@ export function SettingsPage() {
     return value.toFixed(settings.numberFormatting.tokenPrecision);
   };
 
-  const currentTheme = PREDEFINED_THEMES[themeSettings.selectedTheme];
   const previewColors = getThemePreviewColors(themeSettings.selectedTheme, themeSettings.hueAdjustment);
 
   // Render sub-tab content
@@ -516,7 +534,7 @@ export function SettingsPage() {
           themeSettings={themeSettings}
           handleThemeChange={handleThemeChange}
           handleHueChange={handleHueChange}
-          currentTheme={currentTheme}
+          handleCollectionChange={handleCollectionChange}
           previewColors={previewColors}
         />;
       case 'formatting':
@@ -717,67 +735,164 @@ export function SettingsPage() {
 
 interface ThemeContentProps {
   themeSettings: ThemeSettings;
-  handleThemeChange: (theme: string) => void;
+  handleThemeChange: (theme: string, collection: string) => void;
   handleHueChange: (value: number[]) => void;
-  currentTheme: typeof PREDEFINED_THEMES[string] | undefined;
-  previewColors: { primary: string; secondary: string; background: string };
+  handleCollectionChange: (collectionId: string) => void;
+  previewColors: { primary: string; secondary: string; background: string; glow: string; text: string };
 }
 
-// Reordered theme keys to separate visually similar themes (Slate Minimal and Ocean Flux)
-const THEME_GRID_ORDER = [
-  'midnight-neon',    // Row 1
-  'carbon-shadow',    // Row 1
-  'slate-minimal',    // Row 2
-  'aurora-mist',      // Row 2
-  'graphite-lumina',  // Row 3
-  'velvet-dusk',      // Row 3
-  'ocean-flux',       // Row 4
-  'ember-glow',       // Row 4
-];
+// =============================================================================
+// Folder-Style Tabs Component for Theme Collections
+// =============================================================================
 
-function ThemeContent({ themeSettings, handleThemeChange, handleHueChange, currentTheme, previewColors }: ThemeContentProps) {
+interface FolderTabsProps {
+  collections: ThemeCollection[];
+  activeCollection: string;
+  onChange: (collectionId: string) => void;
+}
+
+function FolderTabs({ collections, activeCollection, onChange }: FolderTabsProps) {
+  return (
+    <div className="grid grid-cols-3 w-full">
+      {collections.map((collection, index) => {
+        const isActive = collection.id === activeCollection;
+        
+        return (
+          <button
+            key={collection.id}
+            onClick={() => onChange(collection.id)}
+            className={cn(
+              "px-4 py-3 text-sm font-medium",
+              // Rounded TOP corners on EVERY tab (both corners)
+              "rounded-tl-lg rounded-tr-lg",
+              // Focus
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+              // ALL tabs get border-2 on top, left, right
+              "border-t-2 border-l-2 border-r-2 border-white/70",
+              // ACTIVE: same bg as panel, NO bottom border, extends down
+              isActive && [
+                "bg-slate-900/80 text-slate-100",
+                "relative z-20 -mb-[2px]",
+              ],
+              // INACTIVE: transparent bg, HAS bottom border
+              !isActive && [
+                "bg-transparent text-slate-400",
+                "border-b-2",
+                "hover:text-slate-300",
+              ]
+            )}
+          >
+            {collection.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Panel - THICK white border like tabs
+interface ThemePanelProps {
+  activeIndex: number;
+  tabCount: number;
+  children: React.ReactNode;
+}
+
+function ThemePanel({ activeIndex, tabCount, children }: ThemePanelProps) {
+  const maskLeft = `${activeIndex * 33.3333}%`;
+  const maskWidth = '33.3333%';
+  
+  return (
+    <div className="relative">
+      {/* Panel: THICK white border, rounded bottom corners */}
+      <div className="rounded-t-none rounded-b-lg border-2 border-white/70 bg-slate-900/80 p-4 relative z-10">
+        {children}
+      </div>
+      
+      {/* Mask strip: covers panel top border under active tab */}
+      <div
+        className="absolute top-0 h-[2px] bg-slate-900/80 z-20"
+        style={{
+          left: maskLeft,
+          width: maskWidth,
+        }}
+        aria-hidden="true"
+      />
+    </div>
+  );
+}
+
+function ThemeContent({ themeSettings, handleThemeChange, handleHueChange, handleCollectionChange, previewColors }: ThemeContentProps) {
   const handleResetHue = () => {
     handleHueChange([0]);
   };
 
+  // Get current collection's themes and active index
+  const currentCollection = THEME_COLLECTIONS.find(c => c.id === themeSettings.selectedCollection) || THEME_COLLECTIONS[0];
+  const activeIndex = THEME_COLLECTIONS.findIndex(c => c.id === themeSettings.selectedCollection);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Left Column: Theme Cards Grid */}
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-lg">Select Theme</CardTitle>
-        </CardHeader>
-        <CardContent>
+      {/* Left Column: Theme Collection Tabs + Theme Cards Grid */}
+      <div>
+        {/* Folder-Style Collection Tabs */}
+        <FolderTabs
+          collections={THEME_COLLECTIONS}
+          activeCollection={themeSettings.selectedCollection}
+          onChange={handleCollectionChange}
+        />
+        
+        {/* Theme Panel with cutout strip for seamless tab connection */}
+        <ThemePanel activeIndex={activeIndex >= 0 ? activeIndex : 0} tabCount={THEME_COLLECTIONS.length}>
           <div className="grid grid-cols-2 gap-3">
-            {THEME_GRID_ORDER.map((key) => {
-              const theme = PREDEFINED_THEMES[key];
-              if (!theme) return null;
-              const colors = getThemePreviewColors(key, themeSettings.hueAdjustment);
-              const isSelected = themeSettings.selectedTheme === key;
+            {currentCollection.themes.map((theme) => {
+              const colors = getThemePreviewColors(theme.id, themeSettings.hueAdjustment);
+              const isSelected = themeSettings.selectedTheme === theme.id;
               return (
                 <button
-                  key={key}
-                  onClick={() => handleThemeChange(key)}
-                  className={`p-3 rounded-lg border-2 transition-all text-left ${
+                  key={theme.id}
+                  onClick={() => handleThemeChange(theme.id, currentCollection.id)}
+                  className={cn(
+                    "p-3 rounded-lg border transition-all duration-150 text-left",
                     isSelected 
-                      ? 'border-primary shadow-glow bg-primary/5' 
-                      : 'border-border/50 hover:border-primary/50 hover:bg-secondary/30'
-                  }`}
+                      ? "border-primary shadow-[0_0_12px_rgba(var(--primary),0.3)] bg-primary/5" 
+                      : "border-slate-800 hover:border-primary/50 hover:bg-secondary/30"
+                  )}
                 >
                   <div className="space-y-2">
-                    <div className="flex gap-1 h-6">
-                      <div className="flex-1 rounded-sm" style={{ backgroundColor: colors.primary }} />
-                      <div className="flex-1 rounded-sm" style={{ backgroundColor: colors.secondary }} />
+                    {/* Color swatches: Background + Accent + Buttons + Glow */}
+                    <div className="flex gap-1 h-5">
+                      <div 
+                        className="flex-1 rounded-sm" 
+                        style={{ backgroundColor: colors.background }} 
+                        title="Background"
+                      />
+                      <div 
+                        className="flex-1 rounded-sm" 
+                        style={{ backgroundColor: colors.primary }} 
+                        title="Accent"
+                      />
+                      <div 
+                        className="flex-1 rounded-sm" 
+                        style={{ backgroundColor: colors.secondary }} 
+                        title="Buttons"
+                      />
+                      <div 
+                        className="flex-1 rounded-sm" 
+                        style={{ 
+                          backgroundColor: colors.glow,
+                          boxShadow: `0 0 6px ${colors.glow}50`
+                        }} 
+                        title="Glow"
+                      />
                     </div>
-                    <div className="h-4 rounded-sm" style={{ backgroundColor: colors.background }} />
                     <p className="text-xs font-medium truncate">{theme.name}</p>
                   </div>
                 </button>
               );
             })}
           </div>
-        </CardContent>
-      </Card>
+        </ThemePanel>
+      </div>
 
       {/* Right Column: Preview + Accent Adjustment + Customization */}
       <div className="space-y-4">
@@ -797,10 +912,11 @@ function ThemeContent({ themeSettings, handleThemeChange, handleHueChange, curre
                   <div 
                     className="w-4 h-4 rounded-full"
                     style={{ 
-                      background: `linear-gradient(135deg, ${previewColors.primary}, ${previewColors.secondary})` 
+                      background: `linear-gradient(135deg, ${previewColors.primary}, ${previewColors.secondary})`,
+                      boxShadow: `0 0 8px ${previewColors.glow}60`
                     }}
                   />
-                  <span className="text-xs font-medium text-foreground/80">YSL Portfolio</span>
+                  <span className="text-xs font-medium" style={{ color: previewColors.text }}>YSL Portfolio</span>
                 </div>
                 <div className="flex gap-1.5">
                   <div className="w-8 h-4 rounded-full bg-secondary/50" />
@@ -817,7 +933,8 @@ function ThemeContent({ themeSettings, handleThemeChange, handleHueChange, curre
                 style={{ 
                   borderColor: previewColors.primary,
                   background: `linear-gradient(135deg, ${previewColors.primary}15, ${previewColors.secondary}15)`,
-                  color: previewColors.primary
+                  color: previewColors.primary,
+                  boxShadow: `0 0 12px ${previewColors.glow}20`
                 }}
               >
                 Add Asset
@@ -864,7 +981,7 @@ function ThemeContent({ themeSettings, handleThemeChange, handleHueChange, curre
                     >
                       B
                     </div>
-                    <span className="font-medium">BTC</span>
+                    <span className="font-medium" style={{ color: previewColors.text }}>BTC</span>
                   </div>
                   <span className="text-muted-foreground">$97,542.00</span>
                   <span style={{ color: '#22c55e' }}>+2.4%</span>
@@ -874,46 +991,73 @@ function ThemeContent({ themeSettings, handleThemeChange, handleHueChange, curre
           </CardContent>
         </Card>
 
-        {/* Accent Adjustment Section */}
+        {/* Accent Adjustment Section - FUNCTIONAL HUE SLIDER */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">Accent Adjustment</CardTitle>
+            <CardDescription className="text-xs">Rotate theme colors along the hue spectrum</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-3">
-              <div className="flex items-center gap-3">
+              {/* Hue slider with rainbow gradient background */}
+              <div className="relative">
+                <div 
+                  className="absolute inset-0 rounded-full opacity-30 pointer-events-none"
+                  style={{
+                    background: 'linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)',
+                    height: '8px',
+                    top: '50%',
+                    transform: 'translateY(-50%)'
+                  }}
+                />
                 <Slider
                   value={[themeSettings.hueAdjustment]}
                   onValueChange={handleHueChange}
                   min={-180}
                   max={180}
                   step={1}
-                  className="flex-1"
+                  className="flex-1 relative z-10"
                 />
-                <span className="text-sm font-mono w-12 text-right tabular-nums">
-                  {themeSettings.hueAdjustment > 0 ? '+' : ''}{themeSettings.hueAdjustment}°
-                </span>
               </div>
               <div className="flex items-center justify-between">
-                <div className="flex gap-2">
-                  <div 
-                    className="h-6 w-12 rounded border border-border/50" 
-                    style={{ backgroundColor: previewColors.primary }} 
-                  />
-                  <div 
-                    className="h-6 w-12 rounded border border-border/50" 
-                    style={{ backgroundColor: previewColors.secondary }} 
-                  />
+                <span className="text-sm font-mono tabular-nums">
+                  {themeSettings.hueAdjustment > 0 ? '+' : ''}{themeSettings.hueAdjustment}°
+                </span>
+                <div className="flex items-center gap-3">
+                  {/* Live color preview swatches */}
+                  <div className="flex gap-1">
+                    <div 
+                      className="h-6 w-8 rounded border border-border/50" 
+                      style={{ 
+                        backgroundColor: previewColors.primary,
+                        boxShadow: `0 0 8px ${previewColors.glow}40`
+                      }} 
+                      title="Accent"
+                    />
+                    <div 
+                      className="h-6 w-8 rounded border border-border/50" 
+                      style={{ backgroundColor: previewColors.secondary }} 
+                      title="Buttons"
+                    />
+                    <div 
+                      className="h-6 w-8 rounded border border-border/50" 
+                      style={{ 
+                        backgroundColor: previewColors.glow,
+                        boxShadow: `0 0 8px ${previewColors.glow}60`
+                      }} 
+                      title="Glow"
+                    />
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={handleResetHue}
+                    disabled={themeSettings.hueAdjustment === 0}
+                    className="h-7 text-xs"
+                  >
+                    Reset
+                  </Button>
                 </div>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={handleResetHue}
-                  disabled={themeSettings.hueAdjustment === 0}
-                  className="h-7 text-xs"
-                >
-                  Reset
-                </Button>
               </div>
             </div>
           </CardContent>

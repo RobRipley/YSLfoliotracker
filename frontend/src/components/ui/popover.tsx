@@ -73,7 +73,13 @@ export const Popover: React.FC<PopoverProps> = ({
 
   return (
     <PopoverContext.Provider value={{ open: actualOpen, setOpen, registerContent }}>
-      <div ref={containerRef} className={"relative inline-block " + className}>{children}</div>
+      <div 
+        ref={containerRef} 
+        className={"relative inline-block " + className}
+        style={actualOpen ? { zIndex: 100 } : undefined}
+      >
+        {children}
+      </div>
     </PopoverContext.Provider>
   );
 };
@@ -161,12 +167,13 @@ export const PopoverContent: React.FC<PopoverContentProps> = ({
   }
 
   // Render as child (not portal) so it scrolls with content
-  // z-40 is below z-50 header so it goes behind header when scrolling
+  // z-[100] is high enough to be above sibling cards but below z-[9999] modals
+  // Will still go behind sticky header (z-50) when scrolled because header has position:sticky
   return (
     <div
       ref={contentRef}
       className={
-        "z-40 rounded-xl border border-slate-700 bg-slate-900 p-3 text-xs text-slate-100 shadow-2xl " +
+        "z-[100] rounded-xl border border-slate-700 bg-slate-900 p-3 text-xs text-slate-100 shadow-2xl " +
         className
       }
       style={{ 

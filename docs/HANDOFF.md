@@ -643,4 +643,62 @@ Could be extracted to `/components/ui/` if needed elsewhere.
 
 ---
 
+### Folder-Style Tabs for Theme Collections (February 2026)
+
+**Summary:** Implemented proper folder-style tabs for theme collection selector with visible borders and panel connection.
+
+**Visual Design:**
+- **Tabs:** 3 equal-width buttons with `border-2 border-white/70` (thick visible white border)
+- **All tabs:** Rounded top corners on BOTH left and right (`rounded-tl-lg rounded-tr-lg`)
+- **Active tab:** 3-sided border (top, left, right), no bottom border, same background as panel (`bg-slate-900/80`), extends down `-mb-[2px]` to cover panel's top border
+- **Inactive tabs:** 4-sided border (includes bottom), transparent background
+- **Panel:** `border-2 border-white/70 rounded-b-lg bg-slate-900/80` - same thick border, matches tab styling
+- **Mask strip:** Absolutely positioned `div` that covers panel's top border under active tab (height 2px, z-20)
+
+**Key Implementation Details:**
+
+```tsx
+// FolderTabs component structure
+<div className="grid grid-cols-3 w-full">
+  {collections.map((collection, index) => (
+    <button
+      className={cn(
+        "px-4 py-3 text-sm font-medium",
+        "rounded-tl-lg rounded-tr-lg",  // Both top corners rounded on ALL tabs
+        "border-t-2 border-l-2 border-r-2 border-white/70",  // 3 sides always
+        isActive && [
+          "bg-slate-900/80 text-slate-100",
+          "relative z-20 -mb-[2px]",  // Extends down to cover panel border
+        ],
+        !isActive && [
+          "bg-transparent text-slate-400",
+          "border-b-2",  // Inactive gets bottom border too
+        ]
+      )}
+    />
+  ))}
+</div>
+
+// ThemePanel with mask strip
+<div className="relative">
+  <div className="rounded-t-none rounded-b-lg border-2 border-white/70 bg-slate-900/80 p-4 relative z-10">
+    {children}
+  </div>
+  {/* Mask strip covers panel border under active tab */}
+  <div
+    className="absolute top-0 h-[2px] bg-slate-900/80 z-20"
+    style={{ left: `${activeIndex * 33.3333}%`, width: '33.3333%' }}
+  />
+</div>
+```
+
+**Theme Cards (inside panel):**
+- Changed from `border-2` (thick) to `border border-slate-800` (soft/subtle)
+- Same rounded corners and backgrounds maintained
+
+**Files Changed:**
+- `/frontend/src/pages/SettingsPage.tsx` - FolderTabs and ThemePanel components
+
+---
+
 *Last updated: February 2026*

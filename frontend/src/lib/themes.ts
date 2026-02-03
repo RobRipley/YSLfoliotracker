@@ -1,8 +1,337 @@
 /**
- * Advanced Theme System
+ * Advanced Theme System with Collections
  * 
- * Provides predefined themes with customizable hue adjustment
+ * 24 themes organized into 3 collections:
+ * - Luminous Dark (8 themes)
+ * - Radiant Spectrum (8 themes)
+ * - Elemental Essence (8 themes)
+ * 
+ * Each theme defines colors for:
+ * - Background
+ * - Accent
+ * - Buttons
+ * - Text
+ * - Glow
  */
+
+export interface ThemeDefinition {
+  id: string;
+  name: string;
+  colors: {
+    background: string;
+    accent: string;
+    buttons: string;
+    text: string;
+    glow: string;
+  };
+}
+
+export interface ThemeCollection {
+  id: string;
+  name: string;
+  themes: ThemeDefinition[];
+}
+
+// =============================================================================
+// THEME COLLECTIONS DATA (24 themes total)
+// =============================================================================
+
+export const THEME_COLLECTIONS: ThemeCollection[] = [
+  {
+    id: 'luminous-dark',
+    name: 'Luminous Dark',
+    themes: [
+      {
+        id: 'midnight-neon',
+        name: 'Midnight Neon',
+        colors: {
+          background: '#0b0f17',
+          accent: '#06b6d4',
+          buttons: '#7c3aed',
+          text: '#e5e7eb',
+          glow: '#06b6d4',
+        },
+      },
+      {
+        id: 'carbon-shadow',
+        name: 'Carbon Shadow',
+        colors: {
+          background: '#0a0a0a',
+          accent: '#dc2626',
+          buttons: '#f97316',
+          text: '#fafafa',
+          glow: '#ef4444',
+        },
+      },
+      {
+        id: 'obsidian-pulse',
+        name: 'Obsidian Pulse',
+        colors: {
+          background: '#0f0f12',
+          accent: '#8b5cf6',
+          buttons: '#a855f7',
+          text: '#f4f4f5',
+          glow: '#a78bfa',
+        },
+      },
+      {
+        id: 'deep-space',
+        name: 'Deep Space',
+        colors: {
+          background: '#030712',
+          accent: '#3b82f6',
+          buttons: '#6366f1',
+          text: '#e2e8f0',
+          glow: '#60a5fa',
+        },
+      },
+      {
+        id: 'void-ember',
+        name: 'Void Ember',
+        colors: {
+          background: '#0c0a09',
+          accent: '#ea580c',
+          buttons: '#f97316',
+          text: '#fafaf9',
+          glow: '#fb923c',
+        },
+      },
+      {
+        id: 'shadow-mint',
+        name: 'Shadow Mint',
+        colors: {
+          background: '#0a0f0d',
+          accent: '#10b981',
+          buttons: '#14b8a6',
+          text: '#ecfdf5',
+          glow: '#34d399',
+        },
+      },
+      {
+        id: 'dark-rose',
+        name: 'Dark Rose',
+        colors: {
+          background: '#0f0a0c',
+          accent: '#ec4899',
+          buttons: '#f472b6',
+          text: '#fdf2f8',
+          glow: '#f472b6',
+        },
+      },
+      {
+        id: 'onyx-gold',
+        name: 'Onyx Gold',
+        colors: {
+          background: '#0c0a07',
+          accent: '#eab308',
+          buttons: '#fbbf24',
+          text: '#fefce8',
+          glow: '#facc15',
+        },
+      },
+    ],
+  },
+  {
+    id: 'radiant-spectrum',
+    name: 'Radiant Spectrum',
+    themes: [
+      {
+        id: 'aurora-mist',
+        name: 'Aurora Mist',
+        colors: {
+          background: '#1a0b2e',
+          accent: '#10b981',
+          buttons: '#ec4899',
+          text: '#f0e7ff',
+          glow: '#34d399',
+        },
+      },
+      {
+        id: 'velvet-dusk',
+        name: 'Velvet Dusk',
+        colors: {
+          background: '#1a0a0f',
+          accent: '#f59e0b',
+          buttons: '#eab308',
+          text: '#ffe7f0',
+          glow: '#fbbf24',
+        },
+      },
+      {
+        id: 'neon-twilight',
+        name: 'Neon Twilight',
+        colors: {
+          background: '#1a0f2e',
+          accent: '#f43f5e',
+          buttons: '#ec4899',
+          text: '#faf5ff',
+          glow: '#fb7185',
+        },
+      },
+      {
+        id: 'cyber-jungle',
+        name: 'Cyber Jungle',
+        colors: {
+          background: '#0a1f1a',
+          accent: '#22c55e',
+          buttons: '#06b6d4',
+          text: '#f0fdf4',
+          glow: '#4ade80',
+        },
+      },
+      {
+        id: 'electric-sunset',
+        name: 'Electric Sunset',
+        colors: {
+          background: '#1f0a0a',
+          accent: '#f97316',
+          buttons: '#ef4444',
+          text: '#fff7ed',
+          glow: '#fb923c',
+        },
+      },
+      {
+        id: 'plasma-wave',
+        name: 'Plasma Wave',
+        colors: {
+          background: '#0f1a2e',
+          accent: '#06b6d4',
+          buttons: '#8b5cf6',
+          text: '#ecfeff',
+          glow: '#22d3ee',
+        },
+      },
+      {
+        id: 'toxic-bloom',
+        name: 'Toxic Bloom',
+        colors: {
+          background: '#0f1a0f',
+          accent: '#84cc16',
+          buttons: '#22c55e',
+          text: '#f7fee7',
+          glow: '#a3e635',
+        },
+      },
+      {
+        id: 'royal-amethyst',
+        name: 'Royal Amethyst',
+        colors: {
+          background: '#1a0f2a',
+          accent: '#a855f7',
+          buttons: '#7c3aed',
+          text: '#faf5ff',
+          glow: '#c084fc',
+        },
+      },
+    ],
+  },
+  {
+    id: 'elemental-essence',
+    name: 'Elemental Essence',
+    themes: [
+      {
+        id: 'slate-minimal',
+        name: 'Slate Minimal',
+        colors: {
+          background: '#0f172a',
+          accent: '#0ea5e9',
+          buttons: '#14b8a6',
+          text: '#e2e8f0',
+          glow: '#38bdf8',
+        },
+      },
+      {
+        id: 'ocean-flux',
+        name: 'Ocean Flux',
+        colors: {
+          background: '#001a2e',
+          accent: '#06b6d4',
+          buttons: '#14b8a6',
+          text: '#e0f2fe',
+          glow: '#22d3ee',
+        },
+      },
+      {
+        id: 'ember-glow',
+        name: 'Ember Glow',
+        colors: {
+          background: '#1a0f0a',
+          accent: '#f97316',
+          buttons: '#eab308',
+          text: '#fff7ed',
+          glow: '#fb923c',
+        },
+      },
+      {
+        id: 'graphite-lumina',
+        name: 'Graphite Lumina',
+        colors: {
+          background: '#0a0a0a',
+          accent: '#e5e5e5',
+          buttons: '#a3a3a3',
+          text: '#f5f5f5',
+          glow: '#ffffff',
+        },
+      },
+      {
+        id: 'forest-mist',
+        name: 'Forest Mist',
+        colors: {
+          background: '#0a1510',
+          accent: '#22c55e',
+          buttons: '#10b981',
+          text: '#dcfce7',
+          glow: '#4ade80',
+        },
+      },
+      {
+        id: 'arctic-steel',
+        name: 'Arctic Steel',
+        colors: {
+          background: '#0f1419',
+          accent: '#94a3b8',
+          buttons: '#64748b',
+          text: '#f1f5f9',
+          glow: '#cbd5e1',
+        },
+      },
+      {
+        id: 'volcanic-ash',
+        name: 'Volcanic Ash',
+        colors: {
+          background: '#1a1412',
+          accent: '#ef4444',
+          buttons: '#dc2626',
+          text: '#fef2f2',
+          glow: '#f87171',
+        },
+      },
+      {
+        id: 'copper-patina',
+        name: 'Copper Patina',
+        colors: {
+          background: '#0f1514',
+          accent: '#14b8a6',
+          buttons: '#0d9488',
+          text: '#f0fdfa',
+          glow: '#2dd4bf',
+        },
+      },
+    ],
+  },
+];
+
+// Create a flat lookup map for quick access
+export const THEME_MAP: Map<string, ThemeDefinition> = new Map();
+THEME_COLLECTIONS.forEach(collection => {
+  collection.themes.forEach(theme => {
+    THEME_MAP.set(theme.id, theme);
+  });
+});
+
+// =============================================================================
+// LEGACY COMPATIBILITY - Keep old PREDEFINED_THEMES structure for backward compat
+// =============================================================================
 
 export interface ThemeColors {
   name: string;
@@ -25,198 +354,56 @@ export interface ThemeColors {
     danger: string;
     warning: string;
   };
-  baseHue: number; // Default hue for this theme
+  baseHue: number;
 }
 
-export const PREDEFINED_THEMES: Record<string, ThemeColors> = {
-  'midnight-neon': {
-    name: 'Midnight Neon',
-    description: 'Deep blue-black base with electric cyan/magenta accents',
+// Generate legacy format from new themes
+function generateLegacyTheme(theme: ThemeDefinition): ThemeColors {
+  const bg = theme.colors.background;
+  const lighterBg1 = lightenHex(bg, 0.03);
+  const lighterBg2 = lightenHex(bg, 0.06);
+  const mutedText = adjustAlpha(theme.colors.text, 0.6);
+  
+  return {
+    name: theme.name,
+    description: `${theme.name} theme`,
     backgrounds: {
-      bg0: '#0b0f17',
-      bg1: '#111827',
-      bg2: '#1f2937',
+      bg0: bg,
+      bg1: lighterBg1,
+      bg2: lighterBg2,
     },
     text: {
-      primary: '#e5e7eb',
-      muted: '#9ca3af',
+      primary: theme.colors.text,
+      muted: mutedText,
     },
     accents: {
-      primary: '#06b6d4', // cyan
-      secondary: '#7c3aed', // violet
+      primary: theme.colors.accent,
+      secondary: theme.colors.buttons,
     },
     status: {
       success: '#22c55e',
       danger: '#ef4444',
       warning: '#f59e0b',
     },
-    baseHue: 195, // cyan-violet gradient
-  },
-  'graphite-lumina': {
-    name: 'Graphite Lumina',
-    description: 'Charcoal gray base with silver/white luminous accents',
-    backgrounds: {
-      bg0: '#0a0a0a',
-      bg1: '#1a1a1a',
-      bg2: '#2a2a2a',
-    },
-    text: {
-      primary: '#f5f5f5',
-      muted: '#a3a3a3',
-    },
-    accents: {
-      primary: '#e5e5e5', // silver
-      secondary: '#ffffff', // white
-    },
-    status: {
-      success: '#10b981',
-      danger: '#f87171',
-      warning: '#fbbf24',
-    },
-    baseHue: 0, // neutral
-  },
-  'slate-minimal': {
-    name: 'Slate Minimal',
-    description: 'Cool gray base with subtle blue/teal accents',
-    backgrounds: {
-      bg0: '#0f172a',
-      bg1: '#1e293b',
-      bg2: '#334155',
-    },
-    text: {
-      primary: '#e2e8f0',
-      muted: '#94a3b8',
-    },
-    accents: {
-      primary: '#0ea5e9', // sky blue
-      secondary: '#14b8a6', // teal
-    },
-    status: {
-      success: '#22c55e',
-      danger: '#ef4444',
-      warning: '#f59e0b',
-    },
-    baseHue: 200, // blue-teal
-  },
-  'aurora-mist': {
-    name: 'Aurora Mist',
-    description: 'Dark purple base with green/pink aurora-like accents',
-    backgrounds: {
-      bg0: '#1a0b2e',
-      bg1: '#2d1b4e',
-      bg2: '#3d2b5e',
-    },
-    text: {
-      primary: '#f0e7ff',
-      muted: '#b8a7d9',
-    },
-    accents: {
-      primary: '#10b981', // emerald
-      secondary: '#ec4899', // pink
-    },
-    status: {
-      success: '#34d399',
-      danger: '#f472b6',
-      warning: '#fbbf24',
-    },
-    baseHue: 280, // purple
-  },
-  'velvet-dusk': {
-    name: 'Velvet Dusk',
-    description: 'Rich burgundy base with gold/amber accents',
-    backgrounds: {
-      bg0: '#1a0a0f',
-      bg1: '#2d1520',
-      bg2: '#3d2530',
-    },
-    text: {
-      primary: '#ffe7f0',
-      muted: '#d9a7b8',
-    },
-    accents: {
-      primary: '#f59e0b', // amber
-      secondary: '#eab308', // yellow
-    },
-    status: {
-      success: '#84cc16',
-      danger: '#dc2626',
-      warning: '#f97316',
-    },
-    baseHue: 340, // burgundy
-  },
-  'carbon-shadow': {
-    name: 'Carbon Shadow',
-    description: 'Pure black base with red/orange ember accents',
-    backgrounds: {
-      bg0: '#000000',
-      bg1: '#0a0a0a',
-      bg2: '#1a1a1a',
-    },
-    text: {
-      primary: '#fafafa',
-      muted: '#a3a3a3',
-    },
-    accents: {
-      primary: '#dc2626', // red
-      secondary: '#f97316', // orange
-    },
-    status: {
-      success: '#22c55e',
-      danger: '#ef4444',
-      warning: '#f59e0b',
-    },
-    baseHue: 10, // red-orange
-  },
-  'ocean-flux': {
-    name: 'Ocean Flux',
-    description: 'Deep navy base with aqua/turquoise accents',
-    backgrounds: {
-      bg0: '#001a2e',
-      bg1: '#002a4e',
-      bg2: '#003a6e',
-    },
-    text: {
-      primary: '#e0f2fe',
-      muted: '#7dd3fc',
-    },
-    accents: {
-      primary: '#06b6d4', // cyan
-      secondary: '#14b8a6', // teal
-    },
-    status: {
-      success: '#10b981',
-      danger: '#f87171',
-      warning: '#fbbf24',
-    },
-    baseHue: 190, // cyan-teal
-  },
-  'ember-glow': {
-    name: 'Ember Glow',
-    description: 'Dark brown base with orange/yellow fire accents',
-    backgrounds: {
-      bg0: '#1a0f0a',
-      bg1: '#2d1f15',
-      bg2: '#3d2f25',
-    },
-    text: {
-      primary: '#fff7ed',
-      muted: '#d9c7b8',
-    },
-    accents: {
-      primary: '#f97316', // orange
-      secondary: '#eab308', // yellow
-    },
-    status: {
-      success: '#84cc16',
-      danger: '#dc2626',
-      warning: '#f59e0b',
-    },
-    baseHue: 30, // orange-yellow
-  },
-};
+    baseHue: hexToHSL(theme.colors.accent).h,
+  };
+}
+
+// Build PREDEFINED_THEMES from collections
+export const PREDEFINED_THEMES: Record<string, ThemeColors> = {};
+THEME_COLLECTIONS.forEach(collection => {
+  collection.themes.forEach(theme => {
+    PREDEFINED_THEMES[theme.id] = generateLegacyTheme(theme);
+  });
+});
+
+// =============================================================================
+// THEME SETTINGS
+// =============================================================================
 
 export interface ThemeSettings {
   selectedTheme: string;
+  selectedCollection: string;
   hueAdjustment: number; // -180 to +180 degrees
 }
 
@@ -224,6 +411,7 @@ const THEME_SETTINGS_KEY = 'crypto-portfolio-theme-settings';
 
 const DEFAULT_THEME_SETTINGS: ThemeSettings = {
   selectedTheme: 'midnight-neon',
+  selectedCollection: 'luminous-dark',
   hueAdjustment: 0,
 };
 
@@ -236,6 +424,13 @@ export function loadThemeSettings(): ThemeSettings {
     if (!stored) return { ...DEFAULT_THEME_SETTINGS };
     
     const parsed = JSON.parse(stored);
+    // Migration: add selectedCollection if missing
+    if (!parsed.selectedCollection) {
+      const foundCollection = THEME_COLLECTIONS.find(c => 
+        c.themes.some(t => t.id === parsed.selectedTheme)
+      );
+      parsed.selectedCollection = foundCollection?.id || 'luminous-dark';
+    }
     return { ...DEFAULT_THEME_SETTINGS, ...parsed };
   } catch (error) {
     console.error('Failed to load theme settings:', error);
@@ -254,10 +449,14 @@ export function saveThemeSettings(settings: ThemeSettings): void {
   }
 }
 
+// =============================================================================
+// COLOR MANIPULATION UTILITIES
+// =============================================================================
+
 /**
  * Convert hex color to HSL
  */
-function hexToHSL(hex: string): { h: number; s: number; l: number } {
+export function hexToHSL(hex: string): { h: number; s: number; l: number } {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if (!result) return { h: 0, s: 0, l: 0 };
 
@@ -292,22 +491,17 @@ function hexToHSL(hex: string): { h: number; s: number; l: number } {
 }
 
 /**
- * Adjust hue of a hex color
+ * Convert HSL to hex
  */
-function adjustHue(hex: string, hueShift: number): string {
-  const hsl = hexToHSL(hex);
-  let newHue = (hsl.h + hueShift) % 360;
-  if (newHue < 0) newHue += 360;
-
-  // Convert back to hex
-  const h = newHue / 360;
-  const s = hsl.s / 100;
-  const l = hsl.l / 100;
+export function hslToHex(h: number, s: number, l: number): string {
+  const hNorm = h / 360;
+  const sNorm = s / 100;
+  const lNorm = l / 100;
 
   let r, g, b;
 
-  if (s === 0) {
-    r = g = b = l;
+  if (sNorm === 0) {
+    r = g = b = lNorm;
   } else {
     const hue2rgb = (p: number, q: number, t: number) => {
       if (t < 0) t += 1;
@@ -318,12 +512,12 @@ function adjustHue(hex: string, hueShift: number): string {
       return p;
     };
 
-    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    const p = 2 * l - q;
+    const q = lNorm < 0.5 ? lNorm * (1 + sNorm) : lNorm + sNorm - lNorm * sNorm;
+    const p = 2 * lNorm - q;
 
-    r = hue2rgb(p, q, h + 1 / 3);
-    g = hue2rgb(p, q, h);
-    b = hue2rgb(p, q, h - 1 / 3);
+    r = hue2rgb(p, q, hNorm + 1 / 3);
+    g = hue2rgb(p, q, hNorm);
+    b = hue2rgb(p, q, hNorm - 1 / 3);
   }
 
   const toHex = (x: number) => {
@@ -335,68 +529,164 @@ function adjustHue(hex: string, hueShift: number): string {
 }
 
 /**
- * Apply theme to document root
+ * Rotate hue of a hex color
  */
-export function applyTheme(themeName: string, hueAdjustment: number): void {
-  const theme = PREDEFINED_THEMES[themeName];
+export function rotateHue(hex: string, hueShift: number): string {
+  const hsl = hexToHSL(hex);
+  let newHue = (hsl.h + hueShift) % 360;
+  if (newHue < 0) newHue += 360;
+  return hslToHex(newHue, hsl.s, hsl.l);
+}
+
+/**
+ * Lighten a hex color by a factor (0-1)
+ */
+function lightenHex(hex: string, factor: number): string {
+  const hsl = hexToHSL(hex);
+  const newL = Math.min(100, hsl.l + (100 - hsl.l) * factor);
+  return hslToHex(hsl.h, hsl.s, newL);
+}
+
+/**
+ * Create a muted version of a color (reduce saturation and lightness)
+ */
+function adjustAlpha(hex: string, factor: number): string {
+  const hsl = hexToHSL(hex);
+  // Reduce lightness to simulate lower opacity on dark bg
+  const newL = hsl.l * factor + (1 - factor) * 15;
+  return hslToHex(hsl.h, hsl.s * 0.8, newL);
+}
+
+/**
+ * Convert hex to HSL CSS string
+ */
+function hexToHSLCSSValue(hex: string): string {
+  const hsl = hexToHSL(hex);
+  return `${Math.round(hsl.h)} ${Math.round(hsl.s)}% ${Math.round(hsl.l)}%`;
+}
+
+// =============================================================================
+// THEME APPLICATION
+// =============================================================================
+
+/**
+ * Apply theme to document root with hue adjustment
+ */
+export function applyTheme(themeId: string, hueShift: number): void {
+  const theme = THEME_MAP.get(themeId);
   if (!theme) {
-    console.error(`Theme "${themeName}" not found`);
+    console.error(`Theme "${themeId}" not found`);
     return;
   }
 
   const root = document.documentElement;
+  const colors = theme.colors;
 
-  // Apply background colors
-  root.style.setProperty('--bg0', theme.backgrounds.bg0);
-  root.style.setProperty('--bg1', theme.backgrounds.bg1);
-  root.style.setProperty('--bg2', theme.backgrounds.bg2);
-
-  // Apply text colors
-  root.style.setProperty('--text-primary', theme.text.primary);
-  root.style.setProperty('--text-muted', theme.text.muted);
-
-  // Apply accent colors with hue adjustment
-  const adjustedPrimary = adjustHue(theme.accents.primary, hueAdjustment);
-  const adjustedSecondary = adjustHue(theme.accents.secondary, hueAdjustment);
-
-  root.style.setProperty('--accent-cyan', adjustedPrimary);
-  root.style.setProperty('--accent-violet', adjustedSecondary);
-
-  // Apply status colors
-  root.style.setProperty('--success', theme.status.success);
-  root.style.setProperty('--danger', theme.status.danger);
-  root.style.setProperty('--warning', theme.status.warning);
-
-  // Update body background gradient
-  const bg0 = theme.backgrounds.bg0;
-  const bg1 = theme.backgrounds.bg1;
-  const bg2 = theme.backgrounds.bg2;
+  // Apply hue rotation to accent colors (keep text mostly unshifted)
+  const adjustedAccent = rotateHue(colors.accent, hueShift);
+  const adjustedButtons = rotateHue(colors.buttons, hueShift);
+  const adjustedGlow = rotateHue(colors.glow, hueShift);
+  // Slight shift for background to maintain cohesion
+  const adjustedBg = rotateHue(colors.background, hueShift * 0.3);
   
+  // Generate background gradient colors
+  const bg0 = adjustedBg;
+  const bg1 = lightenHex(adjustedBg, 0.03);
+  const bg2 = lightenHex(adjustedBg, 0.06);
+  
+  // Set CSS custom properties using HSL format for Tailwind compatibility
+  root.style.setProperty('--background', hexToHSLCSSValue(bg0));
+  root.style.setProperty('--background-gradient-start', hexToHSLCSSValue(bg0));
+  root.style.setProperty('--background-gradient-end', hexToHSLCSSValue(bg1));
+  
+  root.style.setProperty('--foreground', hexToHSLCSSValue(colors.text));
+  
+  root.style.setProperty('--card', hexToHSLCSSValue(bg1));
+  root.style.setProperty('--card-foreground', hexToHSLCSSValue(colors.text));
+  
+  root.style.setProperty('--popover', hexToHSLCSSValue(bg1));
+  root.style.setProperty('--popover-foreground', hexToHSLCSSValue(colors.text));
+  
+  root.style.setProperty('--primary', hexToHSLCSSValue(adjustedAccent));
+  root.style.setProperty('--primary-foreground', hexToHSLCSSValue(colors.text));
+  
+  root.style.setProperty('--secondary', hexToHSLCSSValue(bg2));
+  root.style.setProperty('--secondary-foreground', hexToHSLCSSValue(colors.text));
+  
+  // Muted colors derived from background
+  const mutedBg = lightenHex(adjustedBg, 0.08);
+  const mutedText = adjustAlpha(colors.text, 0.6);
+  root.style.setProperty('--muted', hexToHSLCSSValue(mutedBg));
+  root.style.setProperty('--muted-foreground', hexToHSLCSSValue(mutedText));
+  
+  root.style.setProperty('--accent', hexToHSLCSSValue(adjustedAccent));
+  root.style.setProperty('--accent-foreground', hexToHSLCSSValue(colors.text));
+  
+  // Border and input colors
+  const borderColor = lightenHex(adjustedBg, 0.12);
+  root.style.setProperty('--border', hexToHSLCSSValue(borderColor));
+  root.style.setProperty('--input', hexToHSLCSSValue(borderColor));
+  root.style.setProperty('--ring', hexToHSLCSSValue(adjustedAccent));
+  
+  // Chart colors
+  root.style.setProperty('--chart-1', hexToHSLCSSValue(adjustedAccent));
+  root.style.setProperty('--chart-2', hexToHSLCSSValue(adjustedButtons));
+  root.style.setProperty('--chart-3', hexToHSLCSSValue(adjustedGlow));
+  
+  // Legacy custom properties for gradients
+  root.style.setProperty('--bg0', bg0);
+  root.style.setProperty('--bg1', bg1);
+  root.style.setProperty('--bg2', bg2);
+  root.style.setProperty('--text-primary', colors.text);
+  root.style.setProperty('--text-muted', mutedText);
+  root.style.setProperty('--accent-cyan', adjustedAccent);
+  root.style.setProperty('--accent-violet', adjustedButtons);
+  root.style.setProperty('--glow-color', adjustedGlow);
+  
+  // Update body background gradient directly
   document.body.style.background = `linear-gradient(180deg, ${bg0} 0%, ${bg1} 50%, ${bg2} 70%, ${bg1} 100%)`;
 
-  console.log(`Applied theme: ${theme.name} with hue adjustment: ${hueAdjustment}°`);
+  console.log(`Applied theme: ${theme.name} with hue adjustment: ${hueShift}°`);
 }
 
 /**
- * Get preview color for theme selector
+ * Get preview colors for theme card display
  */
-export function getThemePreviewColors(themeName: string, hueAdjustment: number): {
+export function getThemePreviewColors(themeId: string, hueShift: number): {
   primary: string;
   secondary: string;
   background: string;
+  glow: string;
+  text: string;
 } {
-  const theme = PREDEFINED_THEMES[themeName];
+  const theme = THEME_MAP.get(themeId);
   if (!theme) {
     return {
       primary: '#06b6d4',
       secondary: '#7c3aed',
       background: '#111827',
+      glow: '#06b6d4',
+      text: '#e5e7eb',
     };
   }
 
   return {
-    primary: adjustHue(theme.accents.primary, hueAdjustment),
-    secondary: adjustHue(theme.accents.secondary, hueAdjustment),
-    background: theme.backgrounds.bg1,
+    primary: rotateHue(theme.colors.accent, hueShift),
+    secondary: rotateHue(theme.colors.buttons, hueShift),
+    background: rotateHue(theme.colors.background, hueShift * 0.3),
+    glow: rotateHue(theme.colors.glow, hueShift),
+    text: theme.colors.text,
   };
+}
+
+/**
+ * Find which collection a theme belongs to
+ */
+export function findCollectionForTheme(themeId: string): string {
+  for (const collection of THEME_COLLECTIONS) {
+    if (collection.themes.some(t => t.id === themeId)) {
+      return collection.id;
+    }
+  }
+  return 'luminous-dark';
 }
