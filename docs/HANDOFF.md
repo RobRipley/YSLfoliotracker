@@ -854,3 +854,54 @@ Implemented consistent button styling system across the app:
 ---
 
 *Last updated: February 3, 2026*
+
+
+### Strategy Builder Dual Action Bars
+
+**Status:** Not started  
+**Priority:** Low (but mandatory when implemented)
+
+Implement DUAL action bars (top + bottom) on the Create/Edit Strategy builder page to eliminate "scroll back up to save" friction.
+
+**SCOPE**
+- Apply to the strategy builder screen where the user edits exit points (the long, scroll-heavy page with the exit matrix + summary metrics).
+- Do NOT apply to the Strategy Library list page.
+
+**TOP ACTION BAR (existing)**
+- Keep the current top action bar directly under the page title/subtitle.
+- Buttons:
+  - Cancel = secondary/ghost
+  - Create Strategy (or Save Strategy when editing) = primary (same style/component as "Sign Out")
+- Keep existing validation behavior (primary disabled until valid).
+
+**BOTTOM ACTION BAR (new)**
+- Add a second action bar at the bottom of the builder page so users can save/cancel after finishing edits.
+- Place it AFTER the exit table and summary metrics section, aligned with the main content width (not full viewport).
+- Button order: Cancel (left) → Create/Save (right).
+- Styling must match the top bar exactly (same components/variants/sizing).
+- The bottom bar must call the same handlers as the top bar (no duplicated logic).
+
+**BEHAVIOR REQUIREMENTS**
+- Both action bars trigger the exact same actions:
+  - Cancel → same navigation/close behavior as top Cancel
+  - Create/Save → same submit/save mutation as top Create/Save
+- Loading/disabled states must stay in sync:
+  - If saving is in progress, BOTH primary buttons show loading/disabled
+  - If validation fails, BOTH primary buttons are disabled
+- Do not introduce new confirmation dialogs unless one already exists.
+
+**LABELING**
+- If the screen is "Create", label primary: "Create Strategy"
+- If the screen is "Edit", label primary: "Save Strategy"
+- Both top and bottom must show the same label.
+
+**OPTIONAL (only if simple)**
+- If you can do it cleanly, make the bottom action bar sticky to the bottom of the viewport while scrolling, but ONLY within the builder page content area (not overlapping the global nav). If this is non-trivial, keep it non-sticky and simply place it at the bottom of the page.
+
+**IMPLEMENTATION NOTE**
+- Prefer extracting a reusable `<StrategyActionBar />` component used twice (top + bottom) to guarantee consistent styling and synced states.
+- Do not change any unrelated layout or styling while implementing this.
+
+**Files to modify:**
+- `/frontend/src/components/StrategyLibrary.tsx` - Extract action bar component, add bottom instance
+
