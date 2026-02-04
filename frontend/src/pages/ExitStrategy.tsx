@@ -614,7 +614,9 @@ const AssetRow = memo(({
               onValueChange={(value) => onPresetChange(value as PresetType)}
             >
               <SelectTrigger className="w-full h-8 text-xs bg-secondary/10 border-divide-lighter/20 hover:border-divide-lighter/40 transition-colors">
-                <SelectValue placeholder="Select..." />
+                <span className="text-xs text-foreground/90 truncate">
+                  {strategyOptions.find(opt => opt.value === plan.preset)?.label || 'Select...'}
+                </span>
               </SelectTrigger>
               <SelectContent className="z-50">
                 {strategyOptions.map(opt => (

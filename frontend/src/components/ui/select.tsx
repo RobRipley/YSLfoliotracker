@@ -3,7 +3,8 @@ import { ChevronDown } from "lucide-react";
 
 type SelectContextType = {
   value: string | undefined;
-  setValue: (v: string) => void;
+  selectedLabel: string | undefined;
+  setValue: (v: string, label?: string) => void;
   open: boolean;
   setOpen: (o: boolean) => void;
   placeholder?: string;
@@ -29,14 +30,18 @@ export const Select: React.FC<SelectProps> = ({
   const [internalValue, setInternalValue] = React.useState<string | undefined>(
     defaultValue
   );
+  const [selectedLabel, setSelectedLabel] = React.useState<string | undefined>(undefined);
   const [open, setOpen] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
 
   const actualValue = value !== undefined ? value : internalValue;
 
-  const setValue = (next: string) => {
+  const setValue = (next: string, label?: string) => {
     if (value === undefined) {
       setInternalValue(next);
+    }
+    if (label) {
+      setSelectedLabel(label);
     }
     onValueChange?.(next);
   };
@@ -68,7 +73,7 @@ export const Select: React.FC<SelectProps> = ({
 
   return (
     <SelectContext.Provider
-      value={{ value: actualValue, setValue, open, setOpen, placeholder: undefined }}
+      value={{ value: actualValue, selectedLabel, setValue, open, setOpen, placeholder: undefined }}
     >
       <div ref={containerRef} className={`relative ${className}`}>{children}</div>
     </SelectContext.Provider>
@@ -115,9 +120,12 @@ export const SelectValue: React.FC<SelectValueProps> = ({
   const ctx = React.useContext<SelectContextType | null>(SelectContext);
   if (!ctx) throw new Error("SelectValue must be used within Select");
 
-  const text = ctx.value 
-    ? ctx.value.charAt(0).toUpperCase() + ctx.value.slice(1) 
-    : placeholder || "Select";
+  // Use selectedLabel if available, otherwise fall back to formatted value
+  const text = ctx.selectedLabel 
+    ? ctx.selectedLabel
+    : ctx.value 
+      ? ctx.value.charAt(0).toUpperCase() + ctx.value.slice(1) 
+      : placeholder || "Select";
 
   return (
     <span className={"text-xs text-foreground/90 " + className}>{text}</span>
@@ -165,12 +173,15 @@ export const SelectItem: React.FC<SelectItemProps> = ({
   if (!ctx) throw new Error("SelectItem must be used within Select");
 
   const active = ctx.value === value;
+  
+  // Extract label text from children
+  const labelText = typeof children === 'string' ? children : undefined;
 
   return (
     <button
       type="button"
       onClick={() => {
-        ctx.setValue(value);
+        ctx.setValue(value, labelText);
         ctx.setOpen(false);
       }}
       className={
