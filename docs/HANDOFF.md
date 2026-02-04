@@ -199,11 +199,48 @@ npx wrangler deploy
 
 | Issue | Priority | Notes |
 |-------|----------|-------|
+| **On-chain portfolio storage** | **HIGH** | Migrate from localStorage to ICP canister (see details below) |
 | 24h % change shows 0.00% | Low | Price providers don't return change data consistently |
 | Backend not connected | Low | Frontend uses localStorage; backend ready but not wired |
 | R2 bucket disabled | Low | Infrastructure ready for historical snapshots |
 | Large bundle size warning | Low | Vite warns about chunk >500KB; would require code splitting |
 | IC assets security policy | Low | Recommend adding `.ic-assets.json5` |
+
+### HIGH PRIORITY: On-Chain Portfolio Storage Migration
+
+**Goal:** Migrate portfolio data from browser localStorage to ICP canister for cross-device access and data persistence.
+
+**Recommended Approach: Hybrid Sync (Option B)**
+- localStorage remains for instant writes (no latency)
+- Background sync to canister when online
+- Works offline, syncs when connected
+- Better UX than canister-first writes (~2-3 sec latency)
+
+**Current State:**
+- Backend canister exists with basic `Holding` type: `{ ticker, quantity, purchasePrice, purchaseDate }`
+- Frontend has richer `Holding` with 15+ fields including cached market data
+- Access control and user profiles already working
+
+**Work Required:**
+
+1. **Backend (Motoko)** - ~1 session
+   - Expand `Holding` type to match frontend model (id, symbol, tokensOwned, avgCost, notes, categoryLocked, lockedCategory, coingeckoId, cached market data fields)
+   - Add `updateHolding()`, `deleteHolding()`, `bulkSaveHoldings()` functions
+   - Add exit plans storage per user
+   - Add strategy templates storage (admin-only)
+
+2. **Frontend Integration** - ~1-2 sessions
+   - Create canister client service with actor
+   - Modify Zustand store to sync with canister in background
+   - Implement conflict resolution (last-write-wins or merge)
+   - Add sync status indicators in UI
+   - Handle offline queue for pending writes
+
+3. **Migration & Testing** - ~1 session
+   - One-time localStorage → canister migration on first load
+   - Handle edge cases (partial sync, network failures)
+   - Test cross-device access
+   - Verify data integrity
 
 ---
 

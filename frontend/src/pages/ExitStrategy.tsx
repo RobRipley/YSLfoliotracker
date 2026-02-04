@@ -484,6 +484,7 @@ const AssetRow = memo(({
   const totalCost = holding.tokensOwned * avgCost;
   const unrealizedPnL = positionValue - totalCost;
 
+  // ALL HOOKS MUST BE BEFORE ANY CONDITIONAL RETURNS
   const { expectedProfit } = useMemo(() => {
     if (!plan || !plan.rungs) return { expectedProfit: 0 };
     
@@ -503,11 +504,7 @@ const AssetRow = memo(({
     return { expectedProfit: profit };
   }, [plan, totalCost]);
 
-  if (!holding.avgCost || !plan) return null;
-
-  const isLocked = plan.preset !== 'custom';
-  
-  // Build strategy options from templates - all templates available to all assets
+  // Build strategy options from templates - MUST BE BEFORE CONDITIONAL RETURN
   const strategyOptions = useMemo(() => {
     const options = templates.map(t => ({
       value: t.id,
@@ -518,8 +515,14 @@ const AssetRow = memo(({
     return options;
   }, [templates]);
 
-  // Get color from centralized source
+  // Get color from centralized source - move before return
   const catColor = getCategoryColor(category);
+  
+  // Derived values that depend on plan
+  const isLocked = plan?.preset !== 'custom';
+
+  // NOW we can have the conditional return
+  if (!holding.avgCost || !plan) return null;
 
   return (
     <div className="border-b border-divide-lighter/10 last:border-0">
@@ -877,17 +880,22 @@ export function ExitStrategy() {
   useEffect(() => {
     if (!hasFetchedOnce) return;
     
+    console.log('[ExitStrategy] Init effect running. Holdings:', store.holdings.length, 'Templates:', templates.length, 'Prices:', Object.keys(prices).length);
+    
     setExitPlans(prevPlans => {
       const newPlans = { ...prevPlans };
       let hasChanges = false;
       
       store.holdings.forEach(holding => {
-        if (initializedHoldingsRef.current.has(holding.id)) return;
+        // Skip if already has a valid plan
         if (newPlans[holding.id]) {
-          initializedHoldingsRef.current.add(holding.id);
+          console.log(`[ExitStrategy] ${holding.symbol}: Already has plan`);
           return;
         }
-        if (!holding.avgCost) return;
+        if (!holding.avgCost) {
+          console.log(`[ExitStrategy] ${holding.symbol}: No avgCost, skipping`);
+          return;
+        }
         
         const price = prices[holding.symbol.toUpperCase()];
         const marketCap = price?.marketCapUsd ?? holding.lastMarketCapUsd ?? 0;
@@ -900,12 +908,16 @@ export function ExitStrategy() {
         const currentPrice = price?.priceUsd ?? 0;
         const planBasis = calculatePlanBasis(config, holding.avgCost, currentPrice);
         
+        console.log(`[ExitStrategy] ${holding.symbol}: Creating plan. PlanBasis: ${planBasis}, Category: ${category}`);
+        
         const plan = createDefaultExitPlan(holding, category, planBasis, templates);
         
         if (plan) {
+          console.log(`[ExitStrategy] ${holding.symbol}: Plan created successfully`);
           newPlans[holding.id] = plan;
-          initializedHoldingsRef.current.add(holding.id);
           hasChanges = true;
+        } else {
+          console.warn(`[ExitStrategy] ${holding.symbol}: Failed to create plan!`);
         }
       });
       
