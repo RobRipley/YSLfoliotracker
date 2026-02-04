@@ -244,6 +244,46 @@ npx wrangler deploy
 
 ---
 
+## Low Priority Enhancements
+
+### UI/UX Improvements
+
+| Item | Effort | Notes |
+|------|--------|-------|
+| **Donut chart hover animation** | Small | Smoother transitions on hover, remove tooltip box, instead highlight corresponding category row below with subtle glow/pulse |
+| **Settings page layout** | Small | Two-column panel layout for wider screens (responsive). Fix active tab highlighting which is currently invisible. Formatting tab especially needs cleanup. |
+| **DeFi manual positions** | Small-Medium | Until DeBank/DeFiLlama integration, allow manual DeFi entries: name, value, avg cost, notes. No price lookups. Counts toward portfolio total. |
+
+### Data Import/Export
+
+| Item | Effort | Notes |
+|------|--------|-------|
+| **Export to CSV/JSON** | Small | Trivial - serialize holdings from Zustand store, trigger download. Format: `symbol, tokens, avgCost, purchaseDate, notes, category` |
+| **Import from CSV** | Medium | Column mapping, validation, duplicate handling, symbol resolution. Start with YSL Google Sheets template format. |
+| **Exchange transaction import** | Large | Coinbase, Kraken, Binance each have different formats. Needs format detection, per-exchange parsers, transaction aggregation, avg cost calculation (FIFO/LIFO/average). Essentially a mini portfolio tracker engine. Consider existing parser libraries. |
+
+### Notifications System
+
+| Item | Effort | Notes |
+|------|--------|-------|
+| **In-app notifications** | Medium | Notification store, bell icon with badge, dropdown panel, read/unread state. Triggers: price alerts, exit targets hit, portfolio milestones. |
+| **Email notifications** | Medium-Large | Requires email service (SendGrid/AWS SES), email verification flow, preferences UI, backend scheduled jobs. Canister needs HTTP outcalls or separate service. |
+
+### Research Hub Integration (Market Tab)
+
+| Item | Effort | Notes |
+|------|--------|-------|
+| **Yieldschool Research Hub** | Exploratory | Integrate research reports from Circle.so (yieldschool.app) into Market tab. |
+
+**Circle.so API Limitations:** Their API is member/space management focused, not content retrieval. Options:
+1. **Manual JSON file** - `research-reports.json` with asset metadata and Circle links, manually updated. Simple and reliable.
+2. **Airtable/Notion as CMS** - Store report metadata, pull via API. Easy manual updates, auto-pulls to app.
+3. **Full Circle integration** - Would need content API access (contact Circle) or scraping solution.
+
+Recommendation: Start with manual/semi-auto approach, explore full integration separately.
+
+---
+
 ## Key Technical Insights (Gotchas)
 
 ### 1. nvm Path Issue
