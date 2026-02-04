@@ -196,7 +196,7 @@ export const PopoverContent: React.FC<PopoverContentProps> = ({
     <div
       ref={contentRef}
       className={
-        "z-[50] rounded-xl border border-slate-700 bg-slate-900 p-3 text-xs text-slate-100 shadow-2xl " +
+        "z-[100] rounded-xl border border-slate-700 bg-slate-900 p-3 text-xs text-slate-100 shadow-2xl " +
         className
       }
       style={{ 

@@ -579,7 +579,7 @@ export function SettingsPage() {
       case 'tools':
         return <ToolsContent />;
       case 'strategy-library':
-        return <StrategyLibraryContent />;
+        return <StrategyLibrary />;
       default:
         return null;
     }

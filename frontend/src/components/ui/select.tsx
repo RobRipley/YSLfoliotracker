@@ -139,7 +139,7 @@ export const SelectContent: React.FC<SelectContentProps> = ({
   return (
     <div
       className={
-        "absolute top-full left-0 mt-1 min-w-full max-h-64 overflow-auto rounded-lg border border-divide-lighter/30 bg-background/95 backdrop-blur-sm p-1 text-xs shadow-lg z-50 " +
+        "absolute top-full left-0 mt-1 min-w-full max-h-64 overflow-auto rounded-lg border border-divide-lighter/30 bg-background/95 backdrop-blur-sm p-1 text-xs shadow-lg z-[100] " +
         "animate-in fade-in-0 zoom-in-95 duration-100 " +
         className
       }

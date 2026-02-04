@@ -5,12 +5,11 @@
  * These templates define exit ladders that can be applied to assets in the Exit Strategy page.
  */
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
@@ -18,11 +17,8 @@ import {
   Plus, 
   Trash2, 
   Edit2, 
-  Save, 
-  X, 
   Library, 
   Target, 
-  Info,
   ChevronDown,
   ChevronRight,
   RotateCcw,
@@ -53,58 +49,6 @@ const DUMMY_TOKEN = {
   avgCost: 1.00,
   planBasis: 1.10,  // 10% cushion applied
 };
-
-// ============================================================================
-// CATEGORY SELECTOR
-// ============================================================================
-
-interface CategorySelectorProps {
-  selected: Category[];
-  onChange: (categories: Category[]) => void;
-  disabled?: boolean;
-}
-
-const EDITABLE_CATEGORIES: Category[] = ['blue-chip', 'mid-cap', 'low-cap', 'micro-cap'];
-
-function CategorySelector({ selected, onChange, disabled }: CategorySelectorProps) {
-  const toggle = (cat: Category) => {
-    if (disabled) return;
-    if (selected.includes(cat)) {
-      onChange(selected.filter(c => c !== cat));
-    } else {
-      onChange([...selected, cat]);
-    }
-  };
-
-  return (
-    <div className="flex flex-wrap gap-2">
-      {EDITABLE_CATEGORIES.map(cat => {
-        const isSelected = selected.includes(cat);
-        const color = getCategoryColor(cat);
-        return (
-          <button
-            key={cat}
-            type="button"
-            onClick={() => toggle(cat)}
-            disabled={disabled}
-            className={`
-              px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-150
-              border-2 
-              ${isSelected 
-                ? 'text-white border-transparent'
-                : 'bg-transparent border-slate-600 text-slate-400 hover:border-slate-500'
-              }
-              ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-            `}
-            style={isSelected ? { backgroundColor: color, borderColor: color } : {}}
-          >
-            {CATEGORY_LABELS[cat]}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 // ============================================================================
 // EXIT RUNG EDITOR ROW
@@ -239,7 +183,8 @@ function TemplateEditor({ template, onSave, onCancel }: TemplateEditorProps) {
   
   const [name, setName] = useState(template?.name || '');
   const [description, setDescription] = useState(template?.description || '');
-  const [targetCategories, setTargetCategories] = useState<Category[]>(
+  // Keep targetCategories for data model compatibility but don't show in UI
+  const [targetCategories] = useState<Category[]>(
     template?.targetCategories || ['blue-chip', 'mid-cap', 'low-cap', 'micro-cap']
   );
   const [exits, setExits] = useState<ExitRung[]>(
@@ -273,6 +218,9 @@ function TemplateEditor({ template, onSave, onCancel }: TemplateEditorProps) {
     }
     return null;
   }, [exits, validation.valid, targetCategories]);
+
+  // Form is valid when name is filled and exits pass validation
+  const isFormValid = name.trim().length > 0 && validation.valid && exits.length > 0;
 
   // Handlers
   const handleRungChange = useCallback((index: number, field: 'sellPercent' | 'multiple', value: number) => {
@@ -345,167 +293,176 @@ function TemplateEditor({ template, onSave, onCancel }: TemplateEditorProps) {
   const tokensRemaining = (DUMMY_TOKEN.tokensOwned * validation.remaining) / 100;
 
   return (
-    <Card className="border-slate-700/50">
-      <CardHeader className="pb-4">
-        <CardTitle className="text-lg">
+    <div className="space-y-8">
+      {/* ================================================================
+          SECTION 1: Page Title and Context
+          ================================================================ */}
+      <div>
+        <h2 className="text-xl font-semibold">
           {isEditing ? 'Edit Strategy' : 'Create New Strategy'}
-        </CardTitle>
-        <CardDescription>
+        </h2>
+        <p className="text-sm text-slate-500 mt-1">
           {isEditing 
             ? `Editing "${template?.name}"${template?.isDefault ? ' (default template)' : ''}`
             : 'Define exit points with sell percentages and price multiples'
           }
-        </CardDescription>
-      </CardHeader>
-      
-      <CardContent className="space-y-6">
-        {/* Basic Info */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="template-name">Strategy Name</Label>
-            <Input
-              id="template-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., My Aggressive Strategy"
-              className="h-9"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="template-desc">Description (optional)</Label>
-            <Input
-              id="template-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Brief description..."
-              className="h-9"
-            />
-          </div>
-        </div>
+        </p>
+      </div>
 
-        {/* Target Categories */}
+      {/* ================================================================
+          SECTION 2: Action Bar (Cancel / Create Strategy)
+          - Visually separated from form fields
+          - Same button quality as Sign Out
+          ================================================================ */}
+      <div className="flex gap-4 pb-2 border-b border-slate-700/30">
+        {/* Cancel - Secondary/Ghost style, same height as primary */}
+        <button
+          onClick={onCancel}
+          className="px-5 py-2.5 rounded-full border border-slate-600 text-slate-300 font-semibold text-sm transition-smooth hover:border-slate-500 hover:text-slate-200 hover:bg-slate-800/30"
+        >
+          Cancel
+        </button>
+        
+        {/* Create Strategy - Primary style matching Sign Out button exactly */}
+        <button
+          onClick={handleSave}
+          disabled={!isFormValid}
+          className="gradient-outline-btn transition-smooth disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:transform-none disabled:hover:shadow-none"
+        >
+          <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-semibold text-sm">
+            {isEditing ? 'Save Changes' : 'Create Strategy'}
+          </span>
+        </button>
+      </div>
+
+      {/* ================================================================
+          SECTION 3: Strategy Identity (Name / Description)
+          ================================================================ */}
+      <div className="max-w-md space-y-4">
         <div className="space-y-2">
-          <Label>Target Categories</Label>
-          <p className="text-xs text-slate-500 mb-2">
-            Select which asset categories this strategy is designed for
-          </p>
-          <CategorySelector 
-            selected={targetCategories} 
-            onChange={setTargetCategories} 
+          <Label htmlFor="template-name">Strategy Name</Label>
+          <Input
+            id="template-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g., My Aggressive Strategy"
+            className="h-10"
           />
         </div>
 
-        {/* Exit Matrix Editor */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label>Exit Points</Label>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Preview using {DUMMY_TOKEN.tokensOwned} tokens @ ${DUMMY_TOKEN.avgCost.toFixed(2)} avg cost (${DUMMY_TOKEN.planBasis.toFixed(2)} plan basis)
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleAddRung}
-              disabled={exits.length >= 10}
-              className="h-8"
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              Add Exit
-            </Button>
-          </div>
-
-          {/* Validation Error */}
-          {!validation.valid && (
-            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-sm text-red-400">
-              {validation.error}
-            </div>
-          )}
-
-          {/* Exit Table */}
-          <div className="border border-slate-700/50 rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-800/50 border-b border-slate-700/50">
-                  <th className="text-left py-2.5 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Exit</th>
-                  <th className="text-left py-2.5 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Sell %</th>
-                  <th className="text-left py-2.5 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Multiple</th>
-                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Tokens</th>
-                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Target</th>
-                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Proceeds</th>
-                  <th className="text-right py-2.5 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Profit</th>
-                  <th className="py-2.5 px-3 w-10"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {exits.map((rung, idx) => (
-                  <RungEditorRow
-                    key={idx}
-                    index={idx}
-                    rung={rung}
-                    calculated={calculatedMatrix[idx] || { 
-                      sellPercent: 0, 
-                      multiple: 0, 
-                      tokensToSell: 0, 
-                      targetPrice: 0, 
-                      proceeds: 0, 
-                      profit: 0 
-                    }}
-                    onChange={handleRungChange}
-                    onDelete={handleDeleteRung}
-                    showDelete={exits.length > 1}
-                  />
-                ))}
-                <RemainingRow 
-                  remaining={validation.remaining} 
-                  tokensRemaining={tokensRemaining} 
-                />
-              </tbody>
-            </table>
-          </div>
-
-          {/* Summary Stats */}
-          {summary && validation.valid && (
-            <div className="grid grid-cols-4 gap-3">
-              <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Exit Points</div>
-                <div className="text-lg font-semibold tabular-nums">{summary.exitCount}</div>
-              </div>
-              <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Avg Multiple</div>
-                <div className="text-lg font-semibold tabular-nums">{summary.avgMultiple.toFixed(1)}×</div>
-              </div>
-              <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Total Proceeds</div>
-                <div className="text-lg font-semibold tabular-nums">{formatPrice(summary.totalProceeds)}</div>
-              </div>
-              <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Expected Profit</div>
-                <div className={`text-lg font-semibold tabular-nums ${summary.totalProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {summary.totalProfit >= 0 ? '+' : ''}{formatPrice(summary.totalProfit)}
-                </div>
-              </div>
-            </div>
-          )}
+        <div className="space-y-2">
+          <Label htmlFor="template-desc">Description (optional)</Label>
+          <textarea
+            id="template-desc"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Brief description of this strategy..."
+            className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+            rows={2}
+          />
         </div>
+      </div>
 
-        {/* Actions */}
-        <div className="flex justify-end gap-3 pt-2 border-t border-slate-700/30">
-          <Button variant="outline" onClick={onCancel}>
-            <X className="h-4 w-4 mr-2" />
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleSave}
-            disabled={!validation.valid || !name.trim()}
+      {/* ================================================================
+          SECTION 4: Exit Points Builder
+          ================================================================ */}
+      <div className="space-y-4">
+        {/* Exit Points Header Row - Title, Preview, Warning, and Add Exit all on same line */}
+        <div className="flex items-center justify-between gap-4">
+          {/* Left side: Title, preview text, and validation warning */}
+          <div className="flex items-center gap-4 flex-wrap">
+            <h3 className="text-base font-semibold">Exit Points</h3>
+            <span className="text-sm text-slate-500">
+              Preview using {DUMMY_TOKEN.tokensOwned} tokens @ ${DUMMY_TOKEN.avgCost.toFixed(2)} avg cost (${DUMMY_TOKEN.planBasis.toFixed(2)} plan basis)
+            </span>
+            {/* Inline Validation Error */}
+            {!validation.valid && (
+              <span className="px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/30 text-xs text-red-400 whitespace-nowrap">
+                {validation.error}
+              </span>
+            )}
+          </div>
+          
+          {/* Right side: Add Exit button - Tier 3 CONTEXTUAL style */}
+          <button
+            onClick={handleAddRung}
+            disabled={exits.length >= 10}
+            className="px-4 py-2 rounded-full border border-slate-600 hover:border-cyan-500/50 text-slate-300 hover:text-cyan-400 font-medium text-sm transition-smooth disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-2 flex-shrink-0"
           >
-            <Save className="h-4 w-4 mr-2" />
-            {isEditing ? 'Save Changes' : 'Create Strategy'}
-          </Button>
+            <Plus className="h-4 w-4" />
+            <span>Add Exit</span>
+          </button>
         </div>
-      </CardContent>
-    </Card>
+
+        {/* Exit Table */}
+        <div className="border border-slate-700/50 rounded-lg overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-800/50 border-b border-slate-700/50">
+                <th className="text-left py-2.5 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Exit</th>
+                <th className="text-left py-2.5 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Sell %</th>
+                <th className="text-left py-2.5 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Multiple</th>
+                <th className="text-right py-2.5 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Tokens</th>
+                <th className="text-right py-2.5 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Target</th>
+                <th className="text-right py-2.5 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Proceeds</th>
+                <th className="text-right py-2.5 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Profit</th>
+                <th className="py-2.5 px-3 w-10"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {exits.map((rung, idx) => (
+                <RungEditorRow
+                  key={idx}
+                  index={idx}
+                  rung={rung}
+                  calculated={calculatedMatrix[idx] || { 
+                    sellPercent: 0, 
+                    multiple: 0, 
+                    tokensToSell: 0, 
+                    targetPrice: 0, 
+                    proceeds: 0, 
+                    profit: 0 
+                  }}
+                  onChange={handleRungChange}
+                  onDelete={handleDeleteRung}
+                  showDelete={exits.length > 1}
+                />
+              ))}
+              <RemainingRow 
+                remaining={validation.remaining} 
+                tokensRemaining={tokensRemaining} 
+              />
+            </tbody>
+          </table>
+        </div>
+
+        {/* ================================================================
+            SECTION 5: Summary Metrics
+            ================================================================ */}
+        {summary && validation.valid && (
+          <div className="grid grid-cols-4 gap-3">
+            <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Exit Points</div>
+              <div className="text-lg font-semibold tabular-nums">{summary.exitCount}</div>
+            </div>
+            <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Avg Multiple</div>
+              <div className="text-lg font-semibold tabular-nums">{summary.avgMultiple.toFixed(1)}×</div>
+            </div>
+            <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Total Proceeds</div>
+              <div className="text-lg font-semibold tabular-nums">{formatPrice(summary.totalProceeds)}</div>
+            </div>
+            <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Expected Profit</div>
+              <div className={`text-lg font-semibold tabular-nums ${summary.totalProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {summary.totalProfit >= 0 ? '+' : ''}{formatPrice(summary.totalProfit)}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -558,21 +515,6 @@ function TemplateRow({ template, onEdit, onDelete, onDuplicate }: TemplateRowPro
           </div>
           {template.description && (
             <p className="text-xs text-slate-500 truncate mt-0.5">{template.description}</p>
-          )}
-        </div>
-
-        {/* Categories */}
-        <div className="flex gap-1">
-          {template.targetCategories.slice(0, 3).map(cat => (
-            <div
-              key={cat}
-              className="w-2 h-2 rounded-full"
-              style={{ backgroundColor: getCategoryColor(cat) }}
-              title={CATEGORY_LABELS[cat]}
-            />
-          ))}
-          {template.targetCategories.length > 3 && (
-            <span className="text-[10px] text-slate-500">+{template.targetCategories.length - 3}</span>
           )}
         </div>
 
@@ -796,10 +738,15 @@ export function StrategyLibrary() {
         <div className="text-sm text-slate-400">
           {templates.length} template{templates.length !== 1 ? 's' : ''} total
         </div>
-        <Button onClick={handleCreate}>
-          <Plus className="h-4 w-4 mr-2" />
-          Create Strategy
-        </Button>
+        <button
+          onClick={handleCreate}
+          className="gradient-outline-btn transition-smooth inline-flex items-center gap-2"
+        >
+          <Plus className="h-4 w-4 text-cyan-400" />
+          <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-semibold text-sm">
+            Create Strategy
+          </span>
+        </button>
       </div>
 
       {/* Default Templates Section */}

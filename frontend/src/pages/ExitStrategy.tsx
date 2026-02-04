@@ -17,6 +17,7 @@ import {
   CATEGORY_LABELS,
   getCategoryColor,
 } from '@/lib/categoryColors';
+import { loadTemplates, type ExitStrategyTemplate } from '@/lib/strategyTemplates';
 
 const EXIT_PLANS_STORAGE_KEY = 'ysl-exit-plans';
 const PLAN_BASIS_CONFIG_KEY = 'ysl-plan-basis-configs';
@@ -79,7 +80,7 @@ function saveLogoCache(logos: Record<string, string>): void {
   }
 }
 
-type PresetType = 'conservative' | 'aggressive' | 'custom';
+type PresetType = string;  // Template ID or 'custom'
 
 interface ExitPlan {
   holdingId: string;
@@ -212,33 +213,49 @@ function calculatePlanBasis(
   }
 }
 
-// Create default exit plan for a holding
+// Create default exit plan for a holding using templates from Strategy Library
 function createDefaultExitPlan(
   holding: Holding,
   category: Category,
-  planBasis: number
+  planBasis: number,
+  availableTemplates: ExitStrategyTemplate[]
 ): ExitPlan | null {
   if (!holding.avgCost) return null;
   
-  let template = category === 'blue-chip' ? BLUE_CHIP_CONSERVATIVE : 
-                 category === 'mid-cap' ? MID_CAP_AGGRESSIVE : LOW_CAP_AGGRESSIVE;
+  // Find the first template - use Blue Chip Conservative as default, or first available
+  const defaultTemplate = availableTemplates.find(t => t.id === 'default-blue-chip-conservative') 
+    || availableTemplates[0];
   
-  const defaultPreset: PresetType = category === 'blue-chip' ? 'conservative' : 'aggressive';
+  if (!defaultTemplate) {
+    console.warn('[ExitStrategy] No templates available for default plan');
+    return null;
+  }
   
-  const rungs = template.map((t, idx) => {
-    const isRemaining = idx === template.length - 1;
-    return {
-      percent: t.percent,
-      multiplier: t.multiplier,
-      targetPrice: isRemaining || t.multiplier === 0 ? 0 : planBasis * t.multiplier,
-      tokensToSell: (holding.tokensOwned * t.percent) / 100
-    };
-  });
+  const templateExits = defaultTemplate.exits;
+  const totalSellPercent = templateExits.reduce((sum, e) => sum + e.sellPercent, 0);
+  const remainingPercent = Math.max(0, 100 - totalSellPercent);
+  
+  const rungs = templateExits.map((exit) => ({
+    percent: exit.sellPercent,
+    multiplier: exit.multiple,
+    targetPrice: exit.multiple === 0 ? 0 : planBasis * exit.multiple,
+    tokensToSell: (holding.tokensOwned * exit.sellPercent) / 100
+  }));
+  
+  // Add remaining row if there's leftover
+  if (remainingPercent > 0) {
+    rungs.push({
+      percent: remainingPercent,
+      multiplier: 0,
+      targetPrice: 0,
+      tokensToSell: (holding.tokensOwned * remainingPercent) / 100
+    });
+  }
   
   return {
     holdingId: holding.id,
     useBase: true,
-    preset: defaultPreset,
+    preset: defaultTemplate.id,
     rungs
   };
 }
@@ -439,6 +456,7 @@ interface AssetRowProps {
   plan: ExitPlan | undefined;
   logoUrl?: string;
   planBasisConfig: PlanBasisConfig;
+  templates: ExitStrategyTemplate[];
   onPlanBasisChange: (config: PlanBasisConfig) => void;
   onPresetChange: (preset: PresetType) => void;
   onUpdateRung: (rungIndex: number, field: 'percent' | 'multiplier', value: number) => void;
@@ -451,6 +469,7 @@ const AssetRow = memo(({
   plan, 
   logoUrl,
   planBasisConfig,
+  templates,
   onPlanBasisChange,
   onPresetChange,
   onUpdateRung
@@ -488,9 +507,16 @@ const AssetRow = memo(({
 
   const isLocked = plan.preset !== 'custom';
   
-  const strategyOptions = category === 'blue-chip' 
-    ? [{ value: 'conservative', label: 'Conservative' }, { value: 'custom', label: 'Custom' }]
-    : [{ value: 'conservative', label: 'Conservative' }, { value: 'aggressive', label: 'Aggressive' }, { value: 'custom', label: 'Custom' }];
+  // Build strategy options from templates - all templates available to all assets
+  const strategyOptions = useMemo(() => {
+    const options = templates.map(t => ({
+      value: t.id,
+      label: t.name
+    }));
+    // Always add Custom option at the end
+    options.push({ value: 'custom', label: 'Custom' });
+    return options;
+  }, [templates]);
 
   // Get color from centralized source
   const catColor = getCategoryColor(category);
@@ -721,10 +747,33 @@ export function ExitStrategy() {
   const [logos, setLogos] = useState<Record<string, string>>(() => loadLogoCache());
   const [exitPlans, setExitPlans] = useState<Record<string, ExitPlan>>(() => loadExitPlans());
   const [planBasisConfigs, setPlanBasisConfigs] = useState<Record<string, PlanBasisConfig>>(() => loadPlanBasisConfigs());
+  const [templates, setTemplates] = useState<ExitStrategyTemplate[]>(() => loadTemplates());
   const [isLoading, setIsLoading] = useState(true);
   const [hasFetchedOnce, setHasFetchedOnce] = useState(false);
   
   const initializedHoldingsRef = useRef<Set<string>>(new Set());
+
+  // Reload templates when localStorage changes (e.g., from Settings)
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'ysl-strategy-templates') {
+        setTemplates(loadTemplates());
+      }
+    };
+    
+    // Also listen for custom event from same tab
+    const handleTemplatesUpdate = () => {
+      setTemplates(loadTemplates());
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('strategyTemplatesUpdated', handleTemplatesUpdate);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('strategyTemplatesUpdated', handleTemplatesUpdate);
+    };
+  }, []);
 
   // Memoize symbols to avoid unnecessary fetches
   const symbols = useMemo(
@@ -849,7 +898,7 @@ export function ExitStrategy() {
         const currentPrice = price?.priceUsd ?? 0;
         const planBasis = calculatePlanBasis(config, holding.avgCost, currentPrice);
         
-        const plan = createDefaultExitPlan(holding, category, planBasis);
+        const plan = createDefaultExitPlan(holding, category, planBasis, templates);
         
         if (plan) {
           newPlans[holding.id] = plan;
@@ -869,7 +918,7 @@ export function ExitStrategy() {
       
       return hasChanges ? newPlans : prevPlans;
     });
-  }, [prices, hasFetchedOnce, getPlanBasisConfig]);
+  }, [prices, hasFetchedOnce, getPlanBasisConfig, templates]);
 
   // Broadcast exit plans updates
   useEffect(() => {
@@ -912,7 +961,7 @@ export function ExitStrategy() {
     });
   }, [prices]);
 
-  // Handle preset change
+  // Handle preset change - now uses template IDs from Strategy Library
   const handlePresetChange = useCallback((holdingId: string, category: Category, preset: PresetType) => {
     const holding = store.holdings.find(h => h.id === holdingId);
     if (!holding?.avgCost) return;
@@ -925,28 +974,42 @@ export function ExitStrategy() {
     setExitPlans(prev => {
       const currentPlan = prev[holdingId];
       
-      let template;
+      // Custom mode - just switch preset, keep rungs
       if (preset === 'custom') {
         return {
           ...prev,
           [holdingId]: { ...currentPlan, preset: 'custom' }
         };
-      } else if (preset === 'conservative') {
-        template = category === 'blue-chip' ? BLUE_CHIP_CONSERVATIVE : 
-                   category === 'mid-cap' ? MID_CAP_CONSERVATIVE : LOW_CAP_CONSERVATIVE;
-      } else {
-        template = category === 'mid-cap' ? MID_CAP_AGGRESSIVE : LOW_CAP_AGGRESSIVE;
       }
       
-      const rungs = template.map((t, idx) => {
-        const isRemaining = idx === template.length - 1;
-        return {
-          percent: t.percent,
-          multiplier: t.multiplier,
-          targetPrice: isRemaining || t.multiplier === 0 ? 0 : planBasis * t.multiplier,
-          tokensToSell: (holding.tokensOwned * t.percent) / 100
-        };
-      });
+      // Find template by ID
+      const template = templates.find(t => t.id === preset);
+      if (!template) {
+        console.warn(`[ExitStrategy] Template not found: ${preset}`);
+        return prev;
+      }
+      
+      // Build rungs from template exits
+      const templateExits = template.exits;
+      const totalSellPercent = templateExits.reduce((sum, e) => sum + e.sellPercent, 0);
+      const remainingPercent = Math.max(0, 100 - totalSellPercent);
+      
+      const rungs = templateExits.map((exit) => ({
+        percent: exit.sellPercent,
+        multiplier: exit.multiple,
+        targetPrice: exit.multiple === 0 ? 0 : planBasis * exit.multiple,
+        tokensToSell: (holding.tokensOwned * exit.sellPercent) / 100
+      }));
+      
+      // Add remaining row if there's leftover
+      if (remainingPercent > 0) {
+        rungs.push({
+          percent: remainingPercent,
+          multiplier: 0,
+          targetPrice: 0,
+          tokensToSell: (holding.tokensOwned * remainingPercent) / 100
+        });
+      }
       
       return {
         ...prev,
@@ -957,9 +1020,10 @@ export function ExitStrategy() {
     if (preset === 'custom') {
       toast.success('Custom mode enabled - you can now edit percentages and multipliers');
     } else {
-      toast.success(`Applied ${preset.charAt(0).toUpperCase() + preset.slice(1)} preset`);
+      const template = templates.find(t => t.id === preset);
+      toast.success(`Applied "${template?.name || preset}" strategy`);
     }
-  }, [prices, getPlanBasisConfig]);
+  }, [prices, getPlanBasisConfig, templates]);
 
   // Handle rung updates
   const handleUpdateRung = useCallback((holdingId: string, rungIndex: number, field: 'percent' | 'multiplier', value: number) => {
@@ -1113,7 +1177,7 @@ export function ExitStrategy() {
 
       {/* Holdings by Category */}
       <div className="space-y-6">
-        {(['blue-chip', 'mid-cap', 'low-cap', 'micro-cap'] as Category[]).map(category => {
+        {(['blue-chip', 'mid-cap', 'low-cap', 'micro-cap'] as Category[]).map((category, categoryIndex) => {
           const holdings = groupedHoldings[category];
           if (holdings.length === 0) return null;
 
@@ -1121,7 +1185,11 @@ export function ExitStrategy() {
           const catLabel = CATEGORY_LABELS[category];
 
           return (
-            <Card key={category} className="overflow-visible border-divide-lighter/30 glass-panel shadow-minimal">
+            <Card 
+              key={category} 
+              className="overflow-visible border-divide-lighter/30 glass-panel shadow-minimal relative"
+              style={{ zIndex: 40 - categoryIndex * 10 }}
+            >
               {/* Category Header with column labels */}
               <div className="px-4 py-3 border-b border-divide-lighter/15">
                 {/* Category name row */}
@@ -1173,6 +1241,7 @@ export function ExitStrategy() {
                       plan={plan}
                       logoUrl={logoUrl}
                       planBasisConfig={planBasisConfig}
+                      templates={templates}
                       onPlanBasisChange={(config) => handlePlanBasisChange(holding.id, config)}
                       onPresetChange={(preset) => handlePresetChange(holding.id, category, preset)}
                       onUpdateRung={(rungIndex, field, value) => handleUpdateRung(holding.id, rungIndex, field, value)}

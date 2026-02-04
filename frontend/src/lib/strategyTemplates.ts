@@ -167,6 +167,8 @@ export function loadTemplates(): ExitStrategyTemplate[] {
 export function saveTemplates(templates: ExitStrategyTemplate[]): void {
   try {
     localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
+    // Dispatch event so other components can react to template changes
+    window.dispatchEvent(new CustomEvent('strategyTemplatesUpdated'));
   } catch (e) {
     console.warn('[StrategyTemplates] Failed to save templates:', e);
   }
