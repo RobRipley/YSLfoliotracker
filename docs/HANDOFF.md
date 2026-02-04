@@ -750,3 +750,87 @@ React.useEffect(() => {
 ---
 
 *Last updated: February 2026*
+
+
+---
+
+### Strategy Library Integration & Button Hierarchy (February 2026)
+
+**Summary:** Integrated Strategy Library templates with Exit Strategy page, fixed z-index layering issues, and implemented consistent 3-tier button visual hierarchy across the app.
+
+**Key Changes:**
+
+#### 1. Strategy Library Templates Now Available to All Assets
+
+Previously, exit strategies were hardcoded by category (Blue Chip got different options than Mid/Low Cap). Now:
+- All templates from the Strategy Library are available for ALL assets regardless of category
+- When admin creates a new template in Settings > Admin > Strategy Library, it immediately appears in Exit Strategy dropdowns
+- Templates sync in real-time via custom event (`strategyTemplatesUpdated`)
+
+**Files Changed:**
+- `/frontend/src/pages/ExitStrategy.tsx` - Imports and uses templates from `strategyTemplates.ts`
+- `/frontend/src/lib/strategyTemplates.ts` - Added `dispatchEvent` on `saveTemplates()` for real-time sync
+
+#### 2. Z-Index Layering Fixes
+
+**Problems Fixed:**
+- Plan basis modal was scrolling in front of header
+- Strategy dropdowns were hiding behind category panels below
+
+**Solutions:**
+- Category cards now have decreasing z-index: Blue Chip (z-40), Mid Cap (z-30), Low Cap (z-20), Micro Cap (z-10)
+- Popover and SelectContent components elevated to z-index 100
+- Header remains at z-50 so it stays above category cards
+
+**Files Changed:**
+- `/frontend/src/components/ui/popover.tsx` - z-index changed from 50 to 100
+- `/frontend/src/components/ui/select.tsx` - z-index changed from 50 to 100
+- `/frontend/src/pages/ExitStrategy.tsx` - Category Cards get dynamic z-index by position
+
+#### 3. Strategy Library Create Form Layout
+
+**Changes:**
+- Exit Points header, preview text, validation warning, and Add Exit button all on single line
+- Warning badge appears inline after preview text
+- Add Exit button right-aligned on that row
+
+**Files Changed:**
+- `/frontend/src/components/StrategyLibrary.tsx`
+
+#### 4. Button Visual Hierarchy (3 Tiers)
+
+Implemented consistent button styling system across the app:
+
+| Tier | Use Case | Style | Examples |
+|------|----------|-------|----------|
+| **Tier 1 - PRIMARY** | Commit/high-stakes actions | `gradient-outline-btn` with glow | Sign Out, Create Strategy, Save Changes |
+| **Tier 2 - SECONDARY** | Cancel/dismiss/back | Ghost outline, muted border, same height | Cancel, Back, Close |
+| **Tier 3 - CONTEXTUAL** | Small, repeatable, in-context actions | Ghost outline with accent text, no glow | Add Exit, Add Row |
+
+**Implementation:**
+```tsx
+// Tier 1 - PRIMARY CTA
+<button className="gradient-outline-btn transition-smooth">
+  <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-semibold">
+    Create Strategy
+  </span>
+</button>
+
+// Tier 2 - SECONDARY
+<button className="px-5 py-2.5 rounded-full border border-slate-600 text-slate-300 font-semibold text-sm hover:border-slate-500">
+  Cancel
+</button>
+
+// Tier 3 - CONTEXTUAL
+<button className="px-4 py-2 rounded-full border border-slate-600 hover:border-cyan-500/50 text-slate-300 hover:text-cyan-400 font-medium text-sm">
+  <Plus className="h-4 w-4" />
+  <span>Add Exit</span>
+</button>
+```
+
+**Files Changed:**
+- `/frontend/src/components/StrategyLibrary.tsx` - Applied all 3 tiers
+
+---
+
+*Last updated: February 3, 2026*
