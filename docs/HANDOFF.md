@@ -905,3 +905,136 @@ Implement DUAL action bars (top + bottom) on the Create/Edit Strategy builder pa
 **Files to modify:**
 - `/frontend/src/components/StrategyLibrary.tsx` - Extract action bar component, add bottom instance
 
+
+
+---
+
+## Big Pending Projects
+
+These are larger feature initiatives that require significant planning and development effort. They are documented here to preserve the vision and requirements for future implementation.
+
+---
+
+### Mobile-Friendly Responsive Design
+
+**Status:** Not started  
+**Effort Estimate:** 1-2 weeks for proper mobile UX
+
+**Vision:**
+Make the app usable on mobile devices. The primary use case for mobile is quick portfolio checks and status updates, not full exit strategy planning.
+
+**Mobile-Specific UX Simplifications:**
+
+**Exit Strategy on Mobile:**
+- Users just pick a preset strategy from a dropdown
+- Simplified view showing key metrics only
+- Icon button opens a modal with minimal rows: just number of tokens and price per exit
+- No complex inline editing of rungs
+- Focus on "where am I at" rather than "let me plan my full exit"
+
+**Portfolio on Mobile:**
+- Card-based layout instead of tables
+- Stacked categories with expandable sections
+- Key metrics visible at a glance (total value, 24h change)
+
+**Technical Approach:**
+- Tailwind responsive prefixes (`md:`, `lg:`) for layout switching
+- Card components for mobile, tables for desktop
+- Bottom tab navigation or hamburger menu
+- Larger touch targets for all interactive elements
+- Full-screen modals instead of inline popovers where needed
+
+**Files likely affected:**
+- All page components in `/frontend/src/pages/`
+- `/frontend/src/components/CompactHoldingsTable.tsx` → needs mobile card variant
+- `/frontend/src/components/Layout.tsx` → responsive navigation
+- `/frontend/src/pages/ExitStrategy.tsx` → simplified mobile view
+
+---
+
+### Associate/Admin Dashboard & Client Management
+
+**Status:** Not started  
+**Effort Estimate:** 4-8 weeks (significant backend + frontend work)
+
+**Vision:**
+Enable financial advisors/associates to manage multiple client portfolios from a centralized dashboard, with collaboration features and alerts.
+
+**Core Features:**
+
+#### 1. Portfolio Sharing & Permissions
+- Users can designate an admin/associate as a **viewer** and/or **editor** of their portfolio
+- Permission levels:
+  - **Viewer:** Can see portfolio, exit strategies, and analytics (read-only)
+  - **Editor:** Can modify holdings, exit strategies, and settings
+- "Last edited by" indicator on portfolio showing who made the most recent change and when
+- Audit log of changes (optional, for compliance)
+
+#### 2. Associate Dashboard
+**Bird's Eye View Analytics:**
+- Total AUM (assets under management) across all clients
+- Aggregated asset holdings with weights across entire clientele
+- List of portfolios sorted by:
+  - Most valuable
+  - Most volatile
+  - Most at-risk
+- Asset popularity rankings:
+  - Most commonly held assets
+  - Heaviest weighted assets across all clients
+
+**Client Portfolio List:**
+- Quick overview cards for each client
+- Key metrics per client: total value, 24h change, risk indicators
+- Search and filter by:
+  - Client name
+  - Assets held (e.g., "show me all clients holding ICP")
+  - Risk level
+  - Portfolio size
+
+#### 3. Asset Intelligence & Flagging
+- **Alerts:** Automatic notifications if a client is exposed to an asset that's dropping significantly
+- **Asset flagging:** Associates can flag assets as "problematic" or "watch" for other associates to see
+- **Associate favorites:** 
+  - Associates can vote/mark their favorite assets
+  - Live list showing associate favorites ranked by votes
+  - Average allocation % for each favorite among that associate's clients
+
+#### 4. Client Communication
+- **Notifications system:** Associates can send time-sensitive alerts to clients about their positions
+- Notification types:
+  - Price alerts ("Your BTC position is down 15% today")
+  - Action recommendations ("Consider taking profits on SOL")
+  - General updates ("Market volatility expected this week")
+- Delivery: In-app notifications, email, or push (mobile)
+
+**Technical Considerations:**
+- **Backend:** Requires significant Motoko canister work:
+  - User-to-user permission mapping
+  - Associate-client relationships
+  - Aggregation queries for dashboard analytics
+  - Notification queue/delivery system
+- **Authentication:** Extend Internet Identity to support role-based access
+- **Data model:** 
+  - New `Associate` entity
+  - `PortfolioPermission` linking users to associates
+  - `AssetFlag` for associate flagging
+  - `Notification` for client alerts
+- **Privacy:** Ensure clients control their own data sharing preferences
+
+**UI Components Needed:**
+- Associate dashboard page (new)
+- Client portfolio cards
+- Permission management modal (in user settings)
+- Asset flagging interface
+- Notification composer
+- Alert/notification inbox for clients
+
+**Files to create:**
+- `/frontend/src/pages/AssociateDashboard.tsx`
+- `/frontend/src/components/ClientPortfolioCard.tsx`
+- `/frontend/src/components/PermissionManager.tsx`
+- `/backend/` - significant canister additions
+
+---
+
+*Last updated: February 3, 2026*
