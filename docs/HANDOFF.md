@@ -1038,3 +1038,56 @@ Enable financial advisors/associates to manage multiple client portfolios from a
 ---
 
 *Last updated: February 3, 2026*
+
+
+### Known Issues / Edge Cases
+
+#### Different Browser Profile = Different Portfolio (Expected Behavior)
+**Issue:** Logging in with the same passkey from a different Chrome profile shows an empty portfolio.
+
+**Explanation:** This is actually expected. Internet Identity generates a different principal ID for each browser/profile combination (security feature to prevent cross-site tracking). Additionally, all user data is stored in localStorage which is per-browser-profile. So even the same passkey in a different profile = different user from the app's perspective.
+
+**Future consideration:** If users want data portability, would need to:
+1. Store data in backend canister (not just localStorage)
+2. Associate data with a user identifier that survives cross-profile access
+3. Or provide import/export functionality
+
+---
+
+#### Exit Strategy Page Shows Empty Categories
+**Issue:** Category headers show holding counts (e.g., "Blue Chip (3)") but no asset rows render inside.
+
+**Root cause:** Two guards filter out holdings:
+1. Line 1121: `if (!holding.avgCost) return;` - holdings without avgCost are excluded from groupedHoldings
+2. Line 505: `if (!holding.avgCost || !plan) return null;` - AssetRow returns null if no exit plan exists
+
+**When this happens:**
+- Holdings added without entering an average cost won't appear
+- Race condition on first load: if prices haven't fetched yet, `hasFetchedOnce` is false, exit plans aren't initialized, rows return null
+- Usually resolves after price fetch completes (1-2 seconds)
+
+**Fix ideas:**
+- Show a loading state per-category while plans are initializing
+- Don't skip holdings without avgCost - show them with $0.00 or "—" 
+- Add better feedback when holdings are filtered out
+
+---
+
+#### Logo Fetch Failures for Specific Coins
+**Issue:** SYRUP logo not loading in fresh browser profile, while other logos (EXE, UMBRA) load after a delay.
+
+**Context:** 
+- Logo cache is in localStorage (per-profile)
+- Fresh profile has no cache, must fetch from CoinGecko
+- SYRUP is mapped to `maple-finance` CoinGecko ID
+
+**Possible causes:**
+1. CoinGecko rate limiting on fresh bulk requests
+2. `maple-finance` mapping might be incorrect
+3. Timing issue with logo fetch vs render
+
+**To investigate:**
+- Check browser console for failed logo fetch requests
+- Verify SYRUP = maple-finance is correct CoinGecko mapping
+- Consider if holding was added WITH coingeckoId stored vs without
+
