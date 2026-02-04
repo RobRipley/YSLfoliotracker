@@ -834,3 +834,23 @@ Implemented consistent button styling system across the app:
 ---
 
 *Last updated: February 3, 2026*
+
+
+---
+
+## Pending Low Priority Tasks
+
+### Exit Strategy Page UI Polish
+
+| Issue | Description | Priority |
+|-------|-------------|----------|
+| **Plan basis modal z-index** | Modal appears in front of the sticky header when scrolling. Should go behind header (z-50). Currently z-100 which is higher than header. | Low |
+| **Strategy dropdown opacity** | SelectContent dropdown is too transparent (`bg-background/95`) compared to plan basis modal (solid `bg-slate-900`). Looks messy/inconsistent. Should match modal opacity. | Low |
+
+**Fix Notes:**
+- Plan basis popover: Change z-index from 100 to something below header's z-50 (e.g., z-40), but still above category cards
+- Strategy dropdown: In `/frontend/src/components/ui/select.tsx`, change `bg-background/95` to `bg-slate-900` or similar solid background to match popover styling
+
+---
+
+*Last updated: February 3, 2026*
