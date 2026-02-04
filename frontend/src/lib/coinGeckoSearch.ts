@@ -42,7 +42,7 @@ export const SYMBOL_TO_COINGECKO_ID: Record<string, string> = {
   'RSR': 'reserve-rights-token',
   'KMNO': 'kamino',
   'DEEP': 'deepbook',
-  'SYRUP': 'maple-finance',
+  'SYRUP': 'syrup',
   'W': 'wormhole',
   'JUP': 'jupiter-exchange-solana',
   'SHIB': 'shiba-inu',

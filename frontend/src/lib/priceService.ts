@@ -302,7 +302,7 @@ class CoinGeckoIdResolver {
     'RSR': 'reserve-rights',
     'KMNO': 'kamino',
     'DEEP': 'deepbook',
-    'SYRUP': 'maple-finance',
+    'SYRUP': 'syrup',
     'W': 'wormhole',
     'JUP': 'jupiter-exchange-solana',
     'SHIB': 'shiba-inu',

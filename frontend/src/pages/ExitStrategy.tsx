@@ -920,7 +920,7 @@ export function ExitStrategy() {
       
       return hasChanges ? newPlans : prevPlans;
     });
-  }, [prices, hasFetchedOnce, getPlanBasisConfig, templates]);
+  }, [prices, hasFetchedOnce, getPlanBasisConfig, templates, store.holdings]);
 
   // Broadcast exit plans updates
   useEffect(() => {
