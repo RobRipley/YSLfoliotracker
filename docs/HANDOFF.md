@@ -1130,7 +1130,140 @@ Enable financial advisors/associates to manage multiple client portfolios from a
 
 ---
 
-*Last updated: February 3, 2026*
+*Last updated: February 13, 2026*
+
+---
+
+### Canister Sync Loop Fix (February 13, 2026)
+
+**Summary:** Diagnosed and fixed an infinite canister save loop that was firing every ~30 seconds during normal idle operation, burning ICP cycles unnecessarily. The fix ensures saves only trigger when the user actually changes something.
+
+#### The Problem
+
+Console monitoring revealed the canister sync system was saving every ~30 seconds even when the user wasn't touching anything:
+
+```
+[CanisterSync] User data changed, queuing save. Hash: q1uu3a → -hwfny8
+[CanisterSync] Saved to canister. New hash: -hwfny8
+[CanisterSync] User data changed, queuing save. Hash: -hwfny8 → w1wxnx
+[CanisterSync] Saved to canister. New hash: w1wxnx
+[CanisterSync] User data changed, queuing save. Hash: w1wxnx → qt4e7l
+... (repeating every 30 seconds forever)
+```
+
+Additionally, once Internet Identity delegation expired (after ~30 minutes), these saves started failing with `400 Invalid delegation expiry` errors — and the system kept retrying the failing saves in a loop.
+
+#### Root Cause
+
+The `Holding` interface includes **cached market data fields** that the price service updates on every tick (~30 seconds):
+
+- `lastPriceUsd` — current price
+- `lastMarketCapUsd` — current market cap
+- `lastChange24hPct` — 24h change percentage
+- `lastMarketDataAt` — timestamp of last price fetch
+- `logoUrl` — resolved logo URL
+- `coingeckoId` — CoinGecko API identifier
+
+The hash function (`hashUserIntent()`) was doing a shallow spread `{ ...h }` which copied ALL fields including these transient ones. So every price tick produced a new hash, which triggered a canister save.
+
+Furthermore, the canister blob itself was storing all this transient data — wasting on-chain storage on information that gets re-fetched fresh from CoinGecko/worker cache on every session anyway.
+
+#### The Fix
+
+Three changes to `/frontend/src/lib/canisterSync.ts`:
+
+**1. `stripHoldingToUserIntent()` helper function**
+
+Destructures out all transient fields, keeping only what the user explicitly entered:
+
+```typescript
+function stripHoldingToUserIntent(h: any): Record<string, unknown> {
+  const { lastPriceUsd, lastMarketCapUsd, lastChange24hPct, 
+          lastMarketDataAt, logoUrl, coingeckoId, ...userFields } = h;
+  return userFields;
+}
+```
+
+What survives: `id`, `symbol`, `tokensOwned`, `avgCost`, `purchaseDate`, `notes`, `categoryLocked`, `lockedCategory`.
+
+**2. `getUserIntentStore()` canonical representation**
+
+Creates a deterministic, user-intent-only snapshot of the store. Used for BOTH hash comparison AND the actual canister blob:
+
+```typescript
+function getUserIntentStore(store: Store): Record<string, unknown> {
+  return {
+    holdings: store.holdings
+      .map(stripHoldingToUserIntent)
+      .sort((a, b) => String(a.id).localeCompare(String(b.id))),
+    settings: store.settings,
+    transactions: store.transactions,
+    cash: store.cash,
+    cashNotes: store.cashNotes || '',
+  };
+}
+```
+
+Excluded at the store level: `lastSeenCategories` (runtime categorization state), `portfolioSnapshots` (derived from price history).
+
+**3. Updated `hashUserIntent()` and `flushSave()` to use canonical store**
+
+- Hash function now hashes `getUserIntentStore(store)` instead of spreading raw holdings
+- `flushSave()` serializes `getUserIntentStore(store)` into the canister blob instead of the full store
+
+#### Testing & Verification
+
+After deploying the fix, console monitoring showed:
+
+**On page load (icp0.io tab):**
+```
+[CanisterSync] Hash baseline set: 14hejr
+[CanisterSync] Loaded from canister, holdings: 15
+[CanisterSync] Skipped save (hydrating)      ← hydration gate prevented save-after-load
+[CanisterSync] Hash baseline set: 14hejr      ← same hash, no drift
+```
+
+**After 60+ seconds of idle with price ticks running:** Zero CanisterSync messages. Complete silence.
+
+**Before fix:** Save every ~30 seconds with constantly changing hashes (`q1uu3a → -hwfny8 → w1wxnx → qt4e7l → ...`).
+
+**After fix:** Hash stays at `14hejr` across unlimited price ticks. Saves only trigger on actual user actions.
+
+#### Architecture Principle
+
+The canister now stores ONLY user intent:
+- What coins do I hold? How many tokens? What did I pay?
+- What are my settings, notes, and cash balance?
+
+The canister does NOT store:
+- Current prices (fetched from CoinGecko/worker cache)
+- Market caps (fetched live)
+- Logos (fetched from API)
+- Categorization state (computed from live market cap)
+
+This is the correct separation — the canister is a persistence layer for user decisions, not a cache for market data.
+
+#### Existing Safety Mechanisms (already in place from prior sessions)
+
+The fix builds on top of two guard mechanisms that were already implemented:
+
+1. **Hydration gate** (`isHydrating` flag): When loading data from the canister on startup, saves are suppressed. Without this, loading data would change the store, which would trigger a save of the same data back to the canister.
+
+2. **Hash baseline update** (`updateHashBaseline()`): Called after hydration completes to set the baseline hash to the current state. Without this, the very first price tick after hydration would see "hash changed!" and trigger a save.
+
+#### Files Changed
+
+| File | Change |
+|------|--------|
+| `frontend/src/lib/canisterSync.ts` | Added `stripHoldingToUserIntent()`, `getUserIntentStore()`. Updated `hashUserIntent()` and `flushSave()` to use canonical store. |
+
+#### Git Commit
+
+```
+0606063 - Fix canister sync loop: strip transient market data from hash AND blob
+```
+
+---
 
 
 ### Known Issues / Edge Cases
