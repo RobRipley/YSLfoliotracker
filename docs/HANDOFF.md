@@ -5,7 +5,7 @@
 **Name:** Yieldschool Portfolio Tracker (YSLfolioTracker)  
 **Purpose:** Crypto portfolio tracking app for manual management with real-time prices, category-based allocation analysis, and exit strategy planning.  
 **Tech Stack:** ICP (Motoko backend), React/TypeScript/Vite frontend, TailwindCSS, Cloudflare Worker price cache  
-**Live URL:** https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io/  
+**Live URL:** https://portfolio.rumilabs.fyi/ (custom domain) or https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io/  
 
 ---
 
@@ -13,7 +13,7 @@
 
 | Component | Canister ID | URL/Location |
 |-----------|-------------|--------------|
-| Frontend (IC) | `t5qhm-myaaa-aaaas-qdwya-cai` | https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io/ |
+| Frontend (IC) | `t5qhm-myaaa-aaaas-qdwya-cai` | https://portfolio.rumilabs.fyi/ (custom) or https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io/ |
 | Backend (IC) | `ranje-7qaaa-aaaas-qdwxq-cai` | - |
 | Frontend (local) | `ulvla-h7777-77774-qaacq-cai` | http://ulvla-h7777-77774-qaacq-cai.localhost:4943/ |
 | Backend (local) | `uxrrr-q7777-77774-qaaaq-cai` | - |
@@ -104,11 +104,26 @@ Low Cap:    ≥ $10M and < $1B
 Micro Cap:  < $10M
 ```
 
-### Data Persistence
-- **Frontend:** All user data in localStorage (per-principal keys)
-- **Backend:** Motoko canister exists but not actively connected
-- **Exit Plans:** Stored in `ysl-exit-plans` localStorage key
-- **Holdings:** Stored in `ysl-holdings` localStorage key
+### Data Persistence (Hybrid: Canister + localStorage)
+- **Canister Storage (primary):** Portfolio holdings synced to ICP backend canister via `canisterSync.ts`
+  - `save_portfolio_blob(principal, blob)` / `load_portfolio_blob(principal)` in `backend/main.mo`
+  - Data stored as serialized JSON blob per principal on-chain
+  - Sync triggered on every store update (debounced) and on initial load
+- **localStorage (fast cache):** Same data also persisted locally for instant loads
+  - Key pattern: `crypto-portfolio-store-{principal}`
+  - On startup: loads localStorage first (instant), then checks canister for newer data
+  - If localStorage empty but canister has data → canister data wins (cross-domain scenario)
+  - If both have data → compares timestamps, newer wins
+- **Exit Plans:** Still localStorage-only in `ysl-exit-plans` key (not yet synced to canister)
+- **Theme/Settings:** localStorage-only in `crypto-portfolio-theme-settings`, `crypto-portfolio-admin-settings`
+
+### Custom Domain & Principal Derivation
+- **Custom Domain:** `portfolio.rumilabs.fyi` registered via `.well-known/ic-domains`
+- **Alternative Origins:** `.well-known/ii-alternative-origins` lists `https://portfolio.rumilabs.fyi` 
+  so Internet Identity derives the same principal regardless of access domain
+- **derivationOrigin:** Auth hook passes `derivationOrigin: 'https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io'`
+  to force consistent principal derivation from canister origin
+- **Result:** Same principal on both `icp0.io` and `rumilabs.fyi`, canister sync provides shared data
 
 ---
 
@@ -199,12 +214,13 @@ npx wrangler deploy
 
 | Issue | Priority | Notes |
 |-------|----------|-------|
-| **On-chain portfolio storage** | **HIGH** | Migrate from localStorage to ICP canister (see details below) |
+| ~~On-chain portfolio storage~~ | ~~HIGH~~ | ✅ DONE — Canister sync implemented, portfolio data persists on-chain |
+| Exit plans not synced to canister | Medium | Exit ladder configs still localStorage-only, need canister sync |
 | 24h % change shows 0.00% | Low | Price providers don't return change data consistently |
-| Backend not connected | Low | Frontend uses localStorage; backend ready but not wired |
+| ~~Backend not connected~~ | ~~Low~~ | ✅ DONE — Backend stores portfolio blobs per principal |
 | R2 bucket disabled | Low | Infrastructure ready for historical snapshots |
 | Large bundle size warning | Low | Vite warns about chunk >500KB; would require code splitting |
-| IC assets security policy | Low | Recommend adding `.ic-assets.json5` |
+| ~~IC assets security policy~~ | ~~Low~~ | ✅ DONE — `.ic-assets.json5` added |
 
 ### HIGH PRIORITY: On-Chain Portfolio Storage Migration
 

@@ -5,7 +5,7 @@
 **Name:** Yieldschool Portfolio Tracker (YSLfolioTracker)  
 **Purpose:** Crypto portfolio tracking app for manual management with real-time prices, category-based allocation analysis, and exit strategy planning.  
 **Tech Stack:** ICP (Motoko backend), React/TypeScript/Vite frontend, TailwindCSS, Cloudflare Worker price cache  
-**Live URL:** https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io/  
+**Live URL:** https://portfolio.rumilabs.fyi/ (custom domain) or https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io/  
 
 ---
 
@@ -13,7 +13,7 @@
 
 | Component | Canister ID | URL/Location |
 |-----------|-------------|--------------|
-| Frontend (IC) | `t5qhm-myaaa-aaaas-qdwya-cai` | https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io/ |
+| Frontend (IC) | `t5qhm-myaaa-aaaas-qdwya-cai` | https://portfolio.rumilabs.fyi/ (custom) or https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io/ |
 | Backend (IC) | `ranje-7qaaa-aaaas-qdwxq-cai` | - |
 | Frontend (local) | `ulvla-h7777-77774-qaacq-cai` | http://ulvla-h7777-77774-qaacq-cai.localhost:4943/ |
 | Backend (local) | `uxrrr-q7777-77774-qaaaq-cai` | - |
@@ -59,7 +59,9 @@ dfx deploy frontend --network ic
 │   │   └── ExitStrategy.tsx           # Exit ladder configuration page
 │   ├── lib/
 │   │   ├── dataModel.ts               # Types, categorization, store
-│   │   ├── store.ts                   # State management, localStorage persistence
+│   │   ├── store.ts                   # State management, localStorage + canister sync
+│   │   ├── canisterSync.ts            # Bidirectional sync with ICP canister storage
+│   │   ├── persistence.ts            # localStorage persistence layer
 │   │   └── priceService.ts            # Multi-provider price fetching
 │   └── hooks/
 │       └── useInternetIdentity.tsx    # ICP authentication
@@ -101,11 +103,12 @@ Low Cap:    ≥ $10M and < $1B
 Micro Cap:  < $10M
 ```
 
-### Data Persistence
-- **Frontend:** All user data in localStorage (per-principal keys)
-- **Backend:** Motoko canister exists but not actively connected
-- **Exit Plans:** Stored in `ysl-exit-plans` localStorage key
-- **Holdings:** Stored in `ysl-holdings` localStorage key
+### Data Persistence (Hybrid: Canister + localStorage)
+- **Canister Storage (primary):** Portfolio holdings synced to ICP backend via `canisterSync.ts`
+- **localStorage (fast cache):** Same data cached locally for instant loads
+- **Sync Logic:** On startup, loads localStorage first, then checks canister for newer data
+- **Exit Plans:** Still localStorage-only in `ysl-exit-plans` key
+- **Holdings:** Stored in canister AND localStorage key `crypto-portfolio-store-{principal}`
 
 ---
 
@@ -160,9 +163,9 @@ npx wrangler deploy
 
 | Issue | Priority | Notes |
 |-------|----------|-------|
+| Exit plans not synced to canister | Medium | Exit ladder configs still localStorage-only |
 | 24h % change shows 0.00% | Low | Price providers don't return change data consistently |
 | Admin Panel blank | Low | Component exists but crashes on load |
-| Backend not connected | Low | Frontend uses localStorage; backend ready but not wired |
 | R2 bucket disabled | Low | Infrastructure ready for historical snapshots |
 
 ---
@@ -197,6 +200,18 @@ Backend uses `persistent actor` with all data marked `transient` (does NOT persi
 
 ### 7. dfx Identity for Deployment
 Use `dfx identity use RobRipley_YSL` before deploying to ensure correct controller.
+
+### 8. Custom Domain & Principal Derivation
+- `portfolio.rumilabs.fyi` is the custom domain, registered via `.well-known/ic-domains`
+- `.well-known/ii-alternative-origins` lists the custom domain so II gives the same principal
+- `derivationOrigin` in auth hook forces principal derivation from canister origin
+- Canister sync (`canisterSync.ts`) ensures data is accessible from any domain
+
+### 9. Canister Sync Architecture
+- `canisterSync.ts` handles bidirectional sync between localStorage and ICP canister
+- Backend stores portfolio as a raw `Blob` per principal (not structured Motoko types)
+- Sync is debounced (2s) to avoid excessive canister calls
+- On first load from a new domain: localStorage empty → canister data loaded → localStorage populated
 
 ---
 
