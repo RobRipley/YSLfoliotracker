@@ -6,12 +6,78 @@ import Time "mo:base/Time";
 import Int "mo:base/Int";
 import Principal "mo:base/Principal";
 import Debug "mo:base/Debug";
+import Nat "mo:base/Nat";
 import AccessControl "authorization/access-control";
 
 persistent actor CryptoPortfolioTracker {
 
   // Initialize the access control system
   transient let accessControlState = AccessControl.initState();
+
+  // ============================================================================
+  // PORTFOLIO BLOB STORAGE (persists across upgrades)
+  // Stores each user's entire portfolio state as a JSON string.
+  // This is the primary storage - localStorage is just a local cache.
+  // ============================================================================
+  transient let portfolioBlobMap = OrderedMap.Make<Principal>(Principal.compare);
+  var portfolioBlobs : OrderedMap.Map<Principal, Text> = portfolioBlobMap.empty<Text>();
+  // Track last-modified timestamps per user
+  var portfolioBlobTimestamps : OrderedMap.Map<Principal, Int> = portfolioBlobMap.empty<Int>();
+
+  /// Save the user's entire portfolio state as a JSON blob.
+  /// The frontend serializes holdings, settings, exit plans, etc. into one string.
+  public shared ({ caller }) func save_portfolio_blob(jsonBlob : Text) : async { ok : Bool; timestamp : Int } {
+    if (Principal.isAnonymous(caller)) {
+      Debug.trap("Anonymous callers cannot save portfolio data");
+    };
+    // Auto-register user if needed (same as initializeAccessControl logic)
+    autoRegister(caller);
+    let now = Time.now();
+    portfolioBlobs := portfolioBlobMap.put(portfolioBlobs, caller, jsonBlob);
+    portfolioBlobTimestamps := portfolioBlobMap.put(portfolioBlobTimestamps, caller, now);
+    { ok = true; timestamp = now };
+  };
+
+  /// Load the user's portfolio state. Returns null if no data saved yet.
+  public query ({ caller }) func load_portfolio_blob() : async ?Text {
+    if (Principal.isAnonymous(caller)) {
+      Debug.trap("Anonymous callers cannot load portfolio data");
+    };
+    portfolioBlobMap.get(portfolioBlobs, caller);
+  };
+
+  /// Get the timestamp of the user's last save (for sync conflict detection).
+  public query ({ caller }) func get_portfolio_timestamp() : async ?Int {
+    if (Principal.isAnonymous(caller)) {
+      Debug.trap("Anonymous callers cannot access portfolio timestamps");
+    };
+    portfolioBlobMap.get(portfolioBlobTimestamps, caller);
+  };
+
+  /// Delete the user's portfolio data (for account reset).
+  public shared ({ caller }) func delete_portfolio_blob() : async { ok : Bool } {
+    if (Principal.isAnonymous(caller)) {
+      Debug.trap("Anonymous callers cannot delete portfolio data");
+    };
+    portfolioBlobs := portfolioBlobMap.delete(portfolioBlobs, caller);
+    portfolioBlobTimestamps := portfolioBlobMap.delete(portfolioBlobTimestamps, caller);
+    { ok = true };
+  };
+
+  /// Admin-only: get total number of users with saved portfolios (for monitoring).
+  public query ({ caller }) func get_portfolio_user_count() : async Nat {
+    if (not (AccessControl.isAdmin(accessControlState, caller))) {
+      Debug.trap("Unauthorized: Only admins can view user counts");
+    };
+    portfolioBlobMap.size(portfolioBlobs);
+  };
+
+  // Auto-register caller as user if not already registered
+  private func autoRegister(caller : Principal) {
+    if (not Principal.isAnonymous(caller)) {
+      AccessControl.initialize(accessControlState, caller);
+    };
+  };
 
   // Initialize auth (first caller becomes admin, others become users)
   public shared ({ caller }) func initializeAccessControl() : async () {

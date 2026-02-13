@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { usePortfolioStore } from '@/lib/store';
 import { useInternetIdentity } from '@/hooks/useInternetIdentity';
+import { useActor } from '@/hooks/useActor';
 import { CompactHoldingsTable } from './CompactHoldingsTable';
 import { NearestExits } from './NearestExits';
 import { type Category, type Holding, getCategoryForHolding } from '@/lib/dataModel';
@@ -49,7 +50,8 @@ function saveLogoCache(logos: Record<string, string>): void {
 
 export const PortfolioDashboard = memo(function PortfolioDashboard() {
   const { principal } = useInternetIdentity();
-  const store = usePortfolioStore(principal);
+  const { actor } = useActor();
+  const store = usePortfolioStore(principal, actor);
   const [prices, setPrices] = useState<Record<string, ExtendedPriceQuote>>({});
   const [logos, setLogos] = useState<Record<string, string>>(() => loadLogoCache());
   const [selectedPreset, setSelectedPreset] = useState<'n4' | 'custom'>('n4');

@@ -6,6 +6,7 @@
  */
 
 import { type Store } from './dataModel';
+import { queueCanisterSave } from './canisterSync';
 
 const STORAGE_KEY_PREFIX = 'crypto-portfolio-store';
 const SCHEMA_VERSION = 1;
@@ -60,6 +61,11 @@ export function saveStore(store: Store): void {
     
     const key = getStorageKey();
     localStorage.setItem(key, JSON.stringify(data));
+    
+    // Also queue async save to canister for cross-device persistence
+    if (currentPrincipal && currentPrincipal !== '2vxsx-fae') {
+      queueCanisterSave(store, currentPrincipal);
+    }
     console.log('[Persistence] Store saved to:', key);
   } catch (error) {
     console.error('Failed to save store to localStorage:', error);

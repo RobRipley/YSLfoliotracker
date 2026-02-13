@@ -26,7 +26,7 @@ import {
   initializeIdCounters,
   calculateWeightedAverage,
 } from './dataModel';
-import { 
+import {
   saveStore, 
   loadStore, 
   clearPersistedData, 
@@ -36,6 +36,8 @@ import {
   isMockDataCleared,
   setMockDataCleared,
 } from './persistence';
+import { loadFromCanister, setActor as setSyncActor, queueCanisterSave } from './canisterSync';
+import type { BackendActor } from '../hooks/useActor';
 
 // Track if store has been initialized for current session
 let storeInitialized = false;
@@ -61,6 +63,45 @@ export function initializeStoreForPrincipal(principal: string | null): void {
   }
   
   storeInitialized = true;
+}
+
+/**
+ * Connect the actor for canister sync and optionally load data from canister.
+ * Called once the actor is ready (after auth + actor creation).
+ * Returns true if canister data was loaded and store was updated.
+ */
+export async function connectCanisterSync(actor: BackendActor, principal: string): Promise<boolean> {
+  // Wire up the sync service
+  setSyncActor(actor);
+  
+  // Try to load from canister
+  const canisterStore = await loadFromCanister(actor);
+  
+  if (canisterStore && canisterStore.holdings && canisterStore.holdings.length > 0) {
+    const localStore = loadStore();
+    const localCount = localStore?.holdings?.length || 0;
+    const canisterCount = canisterStore.holdings.length;
+    
+    console.log('[Store] Canister has', canisterCount, 'holdings, localStorage has', localCount);
+    
+    // Use canister data if it has holdings (authoritative source)
+    resetGlobalStore();
+    Object.assign(globalStore, canisterStore);
+    initializeIdCounters();
+    // Update localStorage to match canister
+    saveStore(globalStore);
+    console.log('[Store] Loaded', canisterCount, 'holdings from canister');
+    return true;
+  } else if (!canisterStore || !canisterStore.holdings || canisterStore.holdings.length === 0) {
+    // Canister is empty - if we have local data, push it up
+    const localStore = loadStore();
+    if (localStore && localStore.holdings && localStore.holdings.length > 0) {
+      console.log('[Store] Canister empty, pushing', localStore.holdings.length, 'local holdings to canister');
+      queueCanisterSave(globalStore, principal);
+    }
+  }
+  
+  return false;
 }
 
 // Load mock data - only called explicitly by user action
@@ -115,20 +156,25 @@ function loadMockDataForUser(): void {
 /**
  * Custom hook for accessing and modifying the portfolio store
  * Now principal-aware - each user gets their own portfolio
+ * Optionally syncs with the ICP backend canister for cross-device persistence
  */
-export function usePortfolioStore(principal?: string | null) {
+export function usePortfolioStore(principal?: string | null, actor?: BackendActor | null) {
   // Force re-render when store changes
   const [version, setVersion] = useState(0);
   const forceUpdate = useCallback(() => setVersion(v => v + 1), []);
   
   // Track current principal
   const lastPrincipal = useRef<string | null | undefined>(undefined);
+  
+  // Track whether canister sync has been done for this session
+  const canisterSynced = useRef(false);
 
   // Initialize store when principal changes
   useEffect(() => {
     if (lastPrincipal.current !== principal) {
       console.log('[Store Hook] Principal changed:', lastPrincipal.current?.slice(0, 8), '->', principal?.slice(0, 8));
       lastPrincipal.current = principal;
+      canisterSynced.current = false; // Reset sync flag on principal change
       
       if (principal && principal !== '2vxsx-fae') {
         initializeStoreForPrincipal(principal);
@@ -136,10 +182,26 @@ export function usePortfolioStore(principal?: string | null) {
       } else if (principal === null) {
         // User logged out - clear store
         resetGlobalStore();
+        setSyncActor(null);
         forceUpdate();
       }
     }
   }, [principal, forceUpdate]);
+
+  // Connect canister sync when actor becomes available
+  useEffect(() => {
+    if (actor && principal && principal !== '2vxsx-fae' && !canisterSynced.current) {
+      canisterSynced.current = true;
+      connectCanisterSync(actor, principal).then(updated => {
+        if (updated) {
+          console.log('[Store Hook] Store updated from canister data');
+          forceUpdate();
+        }
+      });
+    } else if (!actor) {
+      setSyncActor(null);
+    }
+  }, [actor, principal, forceUpdate]);
 
   // Get current store state
   const store = useMemo(() => getStore(), [version]);

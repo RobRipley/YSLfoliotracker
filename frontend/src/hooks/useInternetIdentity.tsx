@@ -19,6 +19,9 @@ const InternetIdentityContext = createContext<InternetIdentityContextValue | und
 // Internet Identity provider URL - using the new II 2.0 gateway
 const II_URL = 'https://id.ai/';
 
+// Canister origin for consistent principal derivation across custom domains
+const CANISTER_ORIGIN = 'https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io';
+
 // Session duration: 8 hours in nanoseconds
 const SESSION_DURATION = BigInt(8 * 60 * 60 * 1000000000);
 
@@ -96,6 +99,7 @@ export function InternetIdentityProvider({ children }: { children: ReactNode }) 
         authClient.login({
           identityProvider: II_URL,
           maxTimeToLive: SESSION_DURATION,
+          derivationOrigin: CANISTER_ORIGIN,
           onSuccess: () => {
             const identity = authClient.getIdentity();
             const principal = identity.getPrincipal().toString();
