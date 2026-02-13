@@ -36,7 +36,7 @@ import {
   isMockDataCleared,
   setMockDataCleared,
 } from './persistence';
-import { loadFromCanister, setActor as setSyncActor, queueCanisterSave } from './canisterSync';
+import { loadFromCanister, setActor as setSyncActor, queueCanisterSave, setHydrating, updateHashBaseline, setSyncPrincipal } from './canisterSync';
 import type { BackendActor } from '../hooks/useActor';
 
 // Track if store has been initialized for current session
@@ -68,36 +68,58 @@ export function initializeStoreForPrincipal(principal: string | null): void {
 /**
  * Connect the actor for canister sync and optionally load data from canister.
  * Called once the actor is ready (after auth + actor creation).
+ * 
+ * Uses hydration gate to prevent save→load→save feedback loop:
+ * 1. Set isHydrating = true
+ * 2. Load from canister, write to store + localStorage
+ * 3. Set hash baseline to the hydrated state
+ * 4. Set isHydrating = false
+ * 
  * Returns true if canister data was loaded and store was updated.
  */
 export async function connectCanisterSync(actor: BackendActor, principal: string): Promise<boolean> {
   // Wire up the sync service
   setSyncActor(actor);
+  setSyncPrincipal(principal);
+  
+  // Set hash baseline for current local state BEFORE loading from canister
+  // This way if canister has nothing, we won't re-save what's already there
+  updateHashBaseline(globalStore);
   
   // Try to load from canister
   const canisterStore = await loadFromCanister(actor);
   
   if (canisterStore && canisterStore.holdings && canisterStore.holdings.length > 0) {
-    const localStore = loadStore();
-    const localCount = localStore?.holdings?.length || 0;
+    const localCount = globalStore.holdings?.length || 0;
     const canisterCount = canisterStore.holdings.length;
     
     console.log('[Store] Canister has', canisterCount, 'holdings, localStorage has', localCount);
     
-    // Use canister data if it has holdings (authoritative source)
+    // === HYDRATION GATE: suppress canister saves during restore ===
+    setHydrating(true);
+    
     resetGlobalStore();
     Object.assign(globalStore, canisterStore);
     initializeIdCounters();
-    // Update localStorage to match canister
+    // Save to localStorage (but queueCanisterSave will be suppressed)
     saveStore(globalStore);
+    
+    // Set hash baseline to the hydrated state so the first price tick
+    // after hydration doesn't trigger a canister save
+    updateHashBaseline(globalStore);
+    
+    setHydrating(false);
+    // === END HYDRATION GATE ===
+    
     console.log('[Store] Loaded', canisterCount, 'holdings from canister');
     return true;
   } else if (!canisterStore || !canisterStore.holdings || canisterStore.holdings.length === 0) {
     // Canister is empty - if we have local data, push it up
-    const localStore = loadStore();
-    if (localStore && localStore.holdings && localStore.holdings.length > 0) {
-      console.log('[Store] Canister empty, pushing', localStore.holdings.length, 'local holdings to canister');
-      queueCanisterSave(globalStore, principal);
+    if (globalStore.holdings && globalStore.holdings.length > 0) {
+      console.log('[Store] Canister empty, pushing', globalStore.holdings.length, 'local holdings to canister');
+      // Temporarily clear the hash baseline so this save goes through
+      updateHashBaseline({ ...globalStore, holdings: [] } as any);
+      queueCanisterSave(globalStore);
     }
   }
   
@@ -183,6 +205,7 @@ export function usePortfolioStore(principal?: string | null, actor?: BackendActo
         // User logged out - clear store
         resetGlobalStore();
         setSyncActor(null);
+        setSyncPrincipal(null);
         forceUpdate();
       }
     }

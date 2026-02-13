@@ -6,7 +6,9 @@
  * 
  * Strategy:
  * - Writes: save to localStorage immediately, then async-save to canister
- * - Reads on init: load from canister (authoritative), fall back to localStorage
+ *   ONLY when user-intent data has actually changed (hash comparison)
+ * - Reads on init: load from canister once (authoritative), fall back to localStorage
+ * - Hydration gate: prevents save-after-load feedback loops
  * - Debounced saves: batch rapid changes into a single canister write
  */
 
@@ -18,11 +20,95 @@ const MAX_DEBOUNCE_MS = 10000; // Force save after 10s even if changes keep comi
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 let firstChangeTime: number | null = null;
-let pendingBlob: string | null = null;
 let currentActor: BackendActor | null = null;
+let currentPrincipal: string | null = null;
 let isSaving = false;
 
-// Listeners for sync status UI feedback
+// ============================================================================
+// HYDRATION GATE
+// Prevents the save→load→save feedback loop
+// ============================================================================
+let isHydrating = false;
+
+/**
+ * Set hydration state. While hydrating, canister saves are suppressed.
+ */
+export function setHydrating(hydrating: boolean): void {
+  isHydrating = hydrating;
+}
+
+// ============================================================================
+// HASH-BASED SAVE DEDUPLICATION
+// Only save to canister when user-intent data has actually changed
+// ============================================================================
+let lastSavedHash: string = '';
+
+/**
+ * Strip a holding down to user-intent fields only.
+ * Removes transient/derived market data that changes on every price tick
+ * (prices, market cap, 24h change, logos, timestamps).
+ * These get re-fetched fresh on every session from CoinGecko/worker cache.
+ */
+function stripHoldingToUserIntent(h: any): Record<string, unknown> {
+  const { lastPriceUsd, lastMarketCapUsd, lastChange24hPct, lastMarketDataAt, logoUrl, coingeckoId, ...userFields } = h;
+  return userFields;
+}
+
+/**
+ * Create a canonical user-intent-only representation of the store.
+ * Used for both hashing (change detection) and the actual canister blob.
+ * 
+ * What's included (user decisions):
+ *   holdings (id, symbol, tokensOwned, avgCost, purchaseDate, notes, categoryLocked, lockedCategory)
+ *   settings, transactions, cash, cashNotes
+ * 
+ * What's excluded (derived/transient):
+ *   lastPriceUsd, lastMarketCapUsd, lastChange24hPct, lastMarketDataAt (price ticks)
+ *   logoUrl, coingeckoId (fetched from API)
+ *   lastSeenCategories (runtime categorization state)
+ *   portfolioSnapshots (derived from price history)
+ */
+function getUserIntentStore(store: Store): Record<string, unknown> {
+  return {
+    holdings: store.holdings
+      .map(stripHoldingToUserIntent)
+      .sort((a, b) => String(a.id).localeCompare(String(b.id))),
+    settings: store.settings,
+    transactions: store.transactions,
+    cash: store.cash,
+    cashNotes: store.cashNotes || '',
+  };
+}
+
+/**
+ * Fast djb2 hash for comparing store states.
+ * Only hashes user-intent data — excludes transient/derived fields.
+ */
+function hashUserIntent(store: Store): string {
+  const str = JSON.stringify(getUserIntentStore(store));
+  
+  // djb2 hash
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) & 0xffffffff;
+  }
+  return hash.toString(36);
+}
+
+/**
+ * Update the baseline hash to the current store state.
+ * Call this after hydration to prevent the first post-hydration tick
+ * from triggering a save.
+ */
+export function updateHashBaseline(store: Store): void {
+  lastSavedHash = hashUserIntent(store);
+  console.log('[CanisterSync] Hash baseline set:', lastSavedHash);
+}
+
+
+// ============================================================================
+// SYNC STATUS LISTENERS (for UI feedback)
+// ============================================================================
 type SyncStatus = 'idle' | 'saving' | 'saved' | 'error' | 'loading';
 type SyncListener = (status: SyncStatus, detail?: string) => void;
 const listeners: Set<SyncListener> = new Set();
@@ -36,35 +122,56 @@ function emit(status: SyncStatus, detail?: string) {
   listeners.forEach(fn => fn(status, detail));
 }
 
+// ============================================================================
+// ACTOR MANAGEMENT
+// ============================================================================
+
 /**
- * Set the actor instance to use for canister calls.
- * Called when the actor is created/updated from useActor hook.
+ * Set the actor instance for canister calls.
  */
 export function setActor(actor: BackendActor | null): void {
   currentActor = actor;
 }
 
 /**
- * Queue a save to the canister. Debounced to avoid hammering the canister
- * on every keystroke or price update.
+ * Set the principal for canister saves.
  */
-export function queueCanisterSave(store: Store, principal: string): void {
-  if (!currentActor) {
-    // No actor yet (not logged in, or actor still initializing)
-    // Data is still safe in localStorage
+export function setSyncPrincipal(principal: string | null): void {
+  currentPrincipal = principal;
+}
+
+
+// ============================================================================
+// SAVE (localStorage → canister)
+// ============================================================================
+
+/**
+ * Queue a save to the canister. Debounced and hash-checked.
+ * 
+ * Saves are skipped when:
+ * - No actor or principal (not logged in)
+ * - Currently hydrating from canister (prevents save→load→save loop)
+ * - User-intent data hasn't changed since last save (hash comparison)
+ */
+export function queueCanisterSave(store: Store): void {
+  // Gate 1: Not connected
+  if (!currentActor || !currentPrincipal) return;
+  
+  // Gate 2: Hydration in progress
+  if (isHydrating) {
+    console.log('[CanisterSync] Skipped save (hydrating)');
+    return;
+  }
+  
+  // Gate 3: Hash comparison — skip if user-intent data unchanged
+  const currentHash = hashUserIntent(store);
+  if (currentHash === lastSavedHash) {
+    // Data hasn't meaningfully changed (just price ticks, snapshots, etc.)
     return;
   }
 
-  // Serialize the store
-  const blob = JSON.stringify({
-    version: 1,
-    timestamp: Date.now(),
-    principal,
-    store,
-  });
-
-  pendingBlob = blob;
-
+  console.log('[CanisterSync] User data changed, queuing save. Hash:', lastSavedHash, '→', currentHash);
+  
   if (!firstChangeTime) {
     firstChangeTime = Date.now();
   }
@@ -72,32 +179,48 @@ export function queueCanisterSave(store: Store, principal: string): void {
   // Clear existing debounce timer
   if (saveTimeout) clearTimeout(saveTimeout);
 
-  // Force save if we've been accumulating changes too long
+  // Force save if accumulating changes too long
   const elapsed = Date.now() - firstChangeTime;
   if (elapsed >= MAX_DEBOUNCE_MS) {
-    flushSave();
+    flushSave(store, currentHash);
     return;
   }
 
-  // Otherwise debounce
-  saveTimeout = setTimeout(flushSave, DEBOUNCE_MS);
+  // Capture for the debounced closure
+  const storeSnapshot = store;
+  const hash = currentHash;
+  saveTimeout = setTimeout(() => flushSave(storeSnapshot, hash), DEBOUNCE_MS);
 }
 
-async function flushSave(): Promise<void> {
-  if (!pendingBlob || !currentActor || isSaving) return;
+async function flushSave(store: Store, hash: string): Promise<void> {
+  if (!currentActor || !currentPrincipal || isSaving) return;
 
-  const blob = pendingBlob;
-  pendingBlob = null;
-  firstChangeTime = null;
+  // Final hash check (data may have reverted during debounce)
+  const finalHash = hashUserIntent(store);
+  if (finalHash === lastSavedHash) {
+    console.log('[CanisterSync] Skipped save (hash reverted during debounce)');
+    firstChangeTime = null;
+    return;
+  }
+
   isSaving = true;
   emit('saving');
+
+  // Only persist user-intent data — no prices, market caps, or other derived fields
+  const userIntentStore = getUserIntentStore(store);
+  const blob = JSON.stringify({
+    version: 1,
+    timestamp: Date.now(),
+    principal: currentPrincipal,
+    store: userIntentStore,
+  });
 
   try {
     const result = await currentActor.save_portfolio_blob(blob);
     if (result.ok) {
-      console.log('[CanisterSync] Saved to canister, timestamp:', result.timestamp.toString());
+      lastSavedHash = finalHash;
+      console.log('[CanisterSync] Saved to canister. New hash:', lastSavedHash);
       emit('saved');
-      // Reset to idle after a brief display
       setTimeout(() => emit('idle'), 2000);
     } else {
       console.error('[CanisterSync] Save returned ok=false');
@@ -106,26 +229,30 @@ async function flushSave(): Promise<void> {
   } catch (err) {
     console.error('[CanisterSync] Failed to save to canister:', err);
     emit('error', err instanceof Error ? err.message : 'Unknown error');
-    // Data is still safe in localStorage - will retry on next change
   } finally {
     isSaving = false;
-  }
-
-  // If more changes came in while we were saving, flush again
-  if (pendingBlob) {
-    setTimeout(flushSave, DEBOUNCE_MS);
+    firstChangeTime = null;
   }
 }
+
+
+// ============================================================================
+// LOAD (canister → localStorage)
+// ============================================================================
 
 /**
  * Force an immediate save to canister (e.g., before page unload).
  */
-export async function forceSave(): Promise<void> {
+export async function forceSave(store: Store): Promise<void> {
   if (saveTimeout) {
     clearTimeout(saveTimeout);
     saveTimeout = null;
   }
-  await flushSave();
+  if (!currentActor || !currentPrincipal) return;
+  const hash = hashUserIntent(store);
+  if (hash !== lastSavedHash) {
+    await flushSave(store, hash);
+  }
 }
 
 /**

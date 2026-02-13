@@ -64,9 +64,8 @@ export function saveStore(store: Store): void {
     
     // Also queue async save to canister for cross-device persistence
     if (currentPrincipal && currentPrincipal !== '2vxsx-fae') {
-      queueCanisterSave(store, currentPrincipal);
+      queueCanisterSave(store);
     }
-    console.log('[Persistence] Store saved to:', key);
   } catch (error) {
     console.error('Failed to save store to localStorage:', error);
     throw new Error('Failed to persist data');
