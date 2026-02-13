@@ -25,6 +25,45 @@ let currentPrincipal: string | null = null;
 let isSaving = false;
 
 // ============================================================================
+// USER PROFILE (synced inside the portfolio blob)
+// ============================================================================
+interface SyncProfile {
+  firstName: string;
+  lastName: string;
+}
+let currentProfile: SyncProfile | null = null;
+
+/**
+ * Set the user profile to include in canister blob saves.
+ * Called from Layout.tsx when profile is saved or loaded.
+ */
+export function setSyncProfile(profile: SyncProfile | null): void {
+  currentProfile = profile;
+}
+
+/**
+ * Get the currently loaded profile (synchronous read).
+ * Layout.tsx polls this after canister sync instead of relying solely on events.
+ */
+export function getSyncProfile(): SyncProfile | null {
+  return currentProfile;
+}
+
+/**
+ * Update the profile AND trigger a canister save.
+ * Called when user saves their name in the modal.
+ * Always forces a save because the profile may exist in localStorage
+ * but not yet in the canister blob (e.g., cross-device first use).
+ */
+export function updateProfileAndSave(profile: SyncProfile, store: Store): void {
+  currentProfile = profile;
+  // Always force a save — the profile might be in localStorage but not in the canister blob
+  lastSavedHash = '';
+  console.log('[CanisterSync] Profile updated, forcing blob save:', profile.firstName, profile.lastName);
+  queueCanisterSave(store);
+}
+
+// ============================================================================
 // HYDRATION GATE
 // Prevents the save→load→save feedback loop
 // ============================================================================
@@ -61,6 +100,7 @@ function stripHoldingToUserIntent(h: any): Record<string, unknown> {
  * What's included (user decisions):
  *   holdings (id, symbol, tokensOwned, avgCost, purchaseDate, notes, categoryLocked, lockedCategory)
  *   settings, transactions, cash, cashNotes
+ *   userProfile (firstName, lastName)
  * 
  * What's excluded (derived/transient):
  *   lastPriceUsd, lastMarketCapUsd, lastChange24hPct, lastMarketDataAt (price ticks)
@@ -77,6 +117,7 @@ function getUserIntentStore(store: Store): Record<string, unknown> {
     transactions: store.transactions,
     cash: store.cash,
     cashNotes: store.cashNotes || '',
+    userProfile: currentProfile || { firstName: '', lastName: '' },
   };
 }
 
@@ -257,9 +298,9 @@ export async function forceSave(store: Store): Promise<void> {
 
 /**
  * Load portfolio data from the canister.
- * Returns the parsed Store or null if no data exists.
+ * Returns the parsed Store and userProfile, or null if no data exists.
  */
-export async function loadFromCanister(actor: BackendActor): Promise<Store | null> {
+export async function loadFromCanister(actor: BackendActor): Promise<{ store: Store; userProfile?: SyncProfile } | null> {
   emit('loading');
   try {
     const result = await actor.load_portfolio_blob();
@@ -267,8 +308,16 @@ export async function loadFromCanister(actor: BackendActor): Promise<Store | nul
     if (result && result.length > 0) {
       const parsed = JSON.parse(result[0]);
       console.log('[CanisterSync] Loaded from canister, holdings:', parsed.store?.holdings?.length || 0);
+      
+      // Extract profile from blob if present
+      const userProfile = parsed.store?.userProfile as SyncProfile | undefined;
+      if (userProfile && (userProfile.firstName || userProfile.lastName)) {
+        currentProfile = userProfile;
+        console.log('[CanisterSync] Loaded profile from blob:', userProfile.firstName, userProfile.lastName);
+      }
+      
       emit('idle');
-      return parsed.store || null;
+      return { store: parsed.store || null, userProfile };
     }
     console.log('[CanisterSync] No data in canister for this user');
     emit('idle');

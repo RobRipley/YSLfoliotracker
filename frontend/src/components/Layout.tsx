@@ -1,9 +1,11 @@
-import { ReactNode, useEffect, useState, useCallback } from 'react';
+import { ReactNode, useEffect, useState, useCallback, useRef } from 'react';
 import { useInternetIdentity } from '@/hooks/useInternetIdentity';
 import { useActor, type UserProfile } from '@/hooks/useActor';
 import { useQueryClient } from '@tanstack/react-query';
 import { Wallet, TrendingUp, Settings, Loader2, Target, Pencil, Cog } from 'lucide-react';
 import { NamePromptModal } from './NamePromptModal';
+import { setSyncProfile, updateProfileAndSave, getSyncProfile } from '@/lib/canisterSync';
+import { getStore } from '@/lib/dataModel';
 import { toast } from 'sonner';
 
 type Tab = 'landing' | 'portfolio' | 'exit-strategy' | 'market' | 'settings';
@@ -49,9 +51,16 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
   const [isEditMode, setIsEditMode] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [useLocalStorage, setUseLocalStorage] = useState(false);
+  const profileLoadedForPrincipal = useRef<string | null>(null);
 
   // Load profile when actor is ready OR fall back to localStorage
+  // Guarded by ref to prevent re-running when actor reference changes
   useEffect(() => {
+    // Skip if we've already loaded for this principal (with actor available)
+    if (profileLoadedForPrincipal.current === principal && actor) return;
+    // Don't mark as loaded until actor is available (or we have an error)
+    if (!actor && !actorError) return;
+    
     const loadProfile = async () => {
       // Check if user already skipped the name prompt - if so, never show it again
       const wasSkipped = localStorage.getItem(NAME_PROMPT_SKIPPED_KEY);
@@ -62,6 +71,7 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
       }
 
       setIsLoadingProfile(true);
+      let foundProfile = false;
       
       // First try to load from localStorage (fast)
       const localProfileKey = `${LOCAL_PROFILE_KEY}-${principal}`;
@@ -70,7 +80,9 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
         try {
           const parsed = deserializeProfile(localProfile);
           setProfile(parsed);
-          console.log('[Layout] Profile loaded from localStorage:', parsed);
+          setSyncProfile({ firstName: parsed.firstName, lastName: parsed.lastName });
+          foundProfile = !!(parsed.firstName || parsed.lastName);
+          console.log('[Layout] Profile loaded from localStorage:', parsed.firstName, parsed.lastName);
         } catch (e) {
           console.warn('[Layout] Failed to parse local profile:', e);
         }
@@ -80,15 +92,29 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
       if (actor) {
         try {
           const result = await actor.get_profile();
-          if (result && result.length > 0) {
+          if (result && result.length > 0 && (result[0].firstName || result[0].lastName)) {
             setProfile(result[0]);
-            // Sync to localStorage
+            setSyncProfile({ firstName: result[0].firstName, lastName: result[0].lastName });
             localStorage.setItem(localProfileKey, serializeProfile(result[0]));
-            console.log('[Layout] Profile loaded from backend:', result[0]);
+            foundProfile = true;
+            console.log('[Layout] Profile loaded from backend:', result[0].firstName, result[0].lastName);
             setUseLocalStorage(false);
-          } else {
-            // No profile exists on backend - check if we should show prompt
-            if (!wasSkipped && !localProfile) {
+          } else if (!foundProfile) {
+            // Backend returned nothing useful - check canister blob (sync read)
+            const blobProfile = getSyncProfile();
+            if (blobProfile && (blobProfile.firstName || blobProfile.lastName)) {
+              console.log('[Layout] Profile from canister blob (sync read):', blobProfile.firstName, blobProfile.lastName);
+              const recovered: UserProfile = {
+                firstName: blobProfile.firstName,
+                lastName: blobProfile.lastName,
+                updatedAt: BigInt(Date.now() * 1000000),
+              };
+              setProfile(recovered);
+              localStorage.setItem(localProfileKey, serializeProfile(recovered));
+              localStorage.setItem(NAME_PROMPT_SKIPPED_KEY, 'true');
+              foundProfile = true;
+            }
+            if (!foundProfile && !wasSkipped && !localProfile) {
               console.log('[Layout] No profile found, showing name prompt');
               setShowNamePrompt(true);
             }
@@ -96,25 +122,50 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
         } catch (error) {
           console.error('[Layout] Failed to load profile from backend, using localStorage fallback:', error);
           setUseLocalStorage(true);
-          // Show a one-time warning toast if actor fails
-          if (!localProfile && !wasSkipped) {
+          if (!foundProfile && !wasSkipped) {
             setShowNamePrompt(true);
           }
         }
       } else if (actorError) {
         console.log('[Layout] No actor available, using localStorage fallback');
         setUseLocalStorage(true);
-        // Check if we should show prompt
-        if (!wasSkipped && !localProfile) {
+        if (!foundProfile && !wasSkipped && !localProfile) {
           setShowNamePrompt(true);
         }
       }
       
       setIsLoadingProfile(false);
+      profileLoadedForPrincipal.current = principal;
     };
 
     loadProfile();
   }, [actor, actorError, isAuthenticated, principal]);
+
+  // Listen for profile loaded from canister blob (cross-device sync)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { firstName: string; lastName: string };
+      if (detail && (detail.firstName || detail.lastName)) {
+        console.log('[Layout] Profile loaded from canister blob:', detail.firstName, detail.lastName);
+        const newProfile: UserProfile = {
+          firstName: detail.firstName,
+          lastName: detail.lastName,
+          updatedAt: BigInt(Date.now() * 1000000),
+        };
+        setProfile(newProfile);
+        // Also cache to localStorage
+        if (principal) {
+          const localProfileKey = `${LOCAL_PROFILE_KEY}-${principal}`;
+          localStorage.setItem(localProfileKey, serializeProfile(newProfile));
+        }
+        // Mark prompt as skipped since we have a name
+        localStorage.setItem(NAME_PROMPT_SKIPPED_KEY, 'true');
+        setShowNamePrompt(false);
+      }
+    };
+    window.addEventListener('canister-profile-loaded', handler);
+    return () => window.removeEventListener('canister-profile-loaded', handler);
+  }, [principal]);
 
   // Watch for successful login and transition to portfolio
   useEffect(() => {
@@ -131,6 +182,7 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
       await clear();
       setProfile(null);
       setUseLocalStorage(false);
+      profileLoadedForPrincipal.current = null;
       // Clear all cached data on logout
       queryClient.clear();
       // Navigate to landing
@@ -194,6 +246,9 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
     
     // Mark that we've saved/prompted - don't show modal again automatically
     localStorage.setItem(NAME_PROMPT_SKIPPED_KEY, 'true');
+
+    // Also save profile into the canister portfolio blob for cross-device sync
+    updateProfileAndSave({ firstName, lastName }, getStore());
     
     toast.success(firstName || lastName ? 'Name saved!' : 'Profile updated');
     setIsSavingProfile(false);

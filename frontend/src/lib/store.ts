@@ -76,8 +76,9 @@ export function initializeStoreForPrincipal(principal: string | null): void {
  * 4. Set isHydrating = false
  * 
  * Returns true if canister data was loaded and store was updated.
+ * Also returns userProfile if found in the canister blob.
  */
-export async function connectCanisterSync(actor: BackendActor, principal: string): Promise<boolean> {
+export async function connectCanisterSync(actor: BackendActor, principal: string): Promise<{ loaded: boolean; userProfile?: { firstName: string; lastName: string } }> {
   // Wire up the sync service
   setSyncActor(actor);
   setSyncPrincipal(principal);
@@ -87,7 +88,9 @@ export async function connectCanisterSync(actor: BackendActor, principal: string
   updateHashBaseline(globalStore);
   
   // Try to load from canister
-  const canisterStore = await loadFromCanister(actor);
+  const canisterResult = await loadFromCanister(actor);
+  const canisterStore = canisterResult?.store || null;
+  const canisterProfile = canisterResult?.userProfile || null;
   
   if (canisterStore && canisterStore.holdings && canisterStore.holdings.length > 0) {
     const localCount = globalStore.holdings?.length || 0;
@@ -112,7 +115,7 @@ export async function connectCanisterSync(actor: BackendActor, principal: string
     // === END HYDRATION GATE ===
     
     console.log('[Store] Loaded', canisterCount, 'holdings from canister');
-    return true;
+    return { loaded: true, userProfile: canisterProfile || undefined };
   } else if (!canisterStore || !canisterStore.holdings || canisterStore.holdings.length === 0) {
     // Canister is empty - if we have local data, push it up
     if (globalStore.holdings && globalStore.holdings.length > 0) {
@@ -123,7 +126,7 @@ export async function connectCanisterSync(actor: BackendActor, principal: string
     }
   }
   
-  return false;
+  return { loaded: false, userProfile: canisterProfile || undefined };
 }
 
 // Load mock data - only called explicitly by user action
@@ -215,10 +218,16 @@ export function usePortfolioStore(principal?: string | null, actor?: BackendActo
   useEffect(() => {
     if (actor && principal && principal !== '2vxsx-fae' && !canisterSynced.current) {
       canisterSynced.current = true;
-      connectCanisterSync(actor, principal).then(updated => {
-        if (updated) {
+      connectCanisterSync(actor, principal).then(result => {
+        if (result.loaded) {
           console.log('[Store Hook] Store updated from canister data');
           forceUpdate();
+        }
+        // Dispatch profile from canister blob for Layout to pick up
+        if (result.userProfile && (result.userProfile.firstName || result.userProfile.lastName)) {
+          window.dispatchEvent(new CustomEvent('canister-profile-loaded', {
+            detail: result.userProfile,
+          }));
         }
       });
     } else if (!actor) {
