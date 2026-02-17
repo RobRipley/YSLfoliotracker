@@ -131,31 +131,43 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
   }, [actor]);
 
   // Pre-seed registry if it's small (one-time per browser)
+  // Fetches from Cloudflare Worker registry (which has ~500 coins with logos from CoinGecko)
   useEffect(() => {
     if (!actor || logoRegistry.size > 100) return;
 
     const SEED_KEY = 'ysl-logo-registry-seeded';
     if (localStorage.getItem(SEED_KEY)) return;
 
-    console.log('[PortfolioDashboard] Registry is small, attempting pre-seed...');
+    console.log('[PortfolioDashboard] Registry is small, attempting pre-seed from worker...');
     (async () => {
       try {
+        // Use the Cloudflare Worker registry (avoids CoinGecko CORS issues from IC domain)
         const response = await fetch(
-          'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false'
+          'https://ysl-price-cache.robertripleyjunior.workers.dev/registry/latest.json'
         );
-        if (!response.ok) return;
+        if (!response.ok) {
+          console.warn(`[PortfolioDashboard] Worker registry returned ${response.status}`);
+          return;
+        }
 
-        const coins = await response.json();
+        const registry = await response.json();
         const entries: Array<[string, string]> = [];
-        for (const coin of coins) {
-          if (coin.id && coin.image) {
-            entries.push([coin.id, coin.image]);
+
+        // Worker registry format: { byId: { coingeckoId: { logoUrl, ... } } }
+        if (registry?.byId) {
+          for (const [id, entry] of Object.entries(registry.byId)) {
+            const logoUrl = (entry as any)?.logoUrl;
+            if (id && logoUrl) {
+              entries.push([id, logoUrl]);
+            }
           }
         }
 
+        console.log(`[PortfolioDashboard] Worker registry has ${entries.length} logos to seed`);
+
         if (entries.length > 0) {
           const added = await writeLogosToRegistry(actor, entries);
-          console.log(`[PortfolioDashboard] Pre-seeded ${added} logos to registry`);
+          console.log(`[PortfolioDashboard] Pre-seeded ${added} logos to canister registry`);
           localStorage.setItem(SEED_KEY, Date.now().toString());
 
           // Reload registry with new entries
