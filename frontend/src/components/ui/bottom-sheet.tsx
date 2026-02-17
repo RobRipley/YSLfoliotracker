@@ -7,7 +7,7 @@ interface BottomSheetProps {
   children: React.ReactNode;
 }
 
-const DISMISS_THRESHOLD = 100; // px dragged down to trigger close
+const DISMISS_THRESHOLD = 60; // px dragged down to trigger close
 
 /**
  * BottomSheet component for mobile progressive disclosure.
@@ -15,56 +15,84 @@ const DISMISS_THRESHOLD = 100; // px dragged down to trigger close
  * Supports drag-to-dismiss: grab the drag handle and pull down to close.
  */
 export const BottomSheet: React.FC<BottomSheetProps> = ({ open, onOpenChange, children }) => {
-  const [closing, setClosing] = React.useState(false);
+  const [phase, setPhase] = React.useState<'entering' | 'open' | 'closing' | 'closed'>('closed');
   const [dragY, setDragY] = React.useState(0);
   const [isDragging, setIsDragging] = React.useState(false);
   const dragStartY = React.useRef(0);
   const sheetRef = React.useRef<HTMLDivElement>(null);
 
+  // Manage open/close lifecycle
+  React.useEffect(() => {
+    if (open && (phase === 'closed' || phase === 'closing')) {
+      setDragY(0);
+      setIsDragging(false);
+      setPhase('entering');
+    } else if (!open && phase !== 'closed') {
+      setPhase('closed');
+    }
+  }, [open]);
+
   // Handle escape key
   React.useEffect(() => {
-    if (!open) return;
+    if (phase === 'closed') return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') handleClose();
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [open]);
+  }, [phase]);
 
-  // Body scroll lock
+  // Body scroll lock — prevent background page scrolling & pull-to-refresh
   React.useEffect(() => {
-    if (open) {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => { document.body.style.overflow = prev; };
-    }
-  }, [open]);
+    if (phase === 'closed') return;
 
-  // Reset drag state when sheet opens
-  React.useEffect(() => {
-    if (open) {
-      setDragY(0);
-      setIsDragging(false);
-      setClosing(false);
-    }
-  }, [open]);
+    const prevOverflow = document.body.style.overflow;
+    const prevOverscroll = document.body.style.overscrollBehavior;
+    const prevTouchAction = document.body.style.touchAction;
+    const prevPosition = document.body.style.position;
+    const prevWidth = document.body.style.width;
+    const scrollY = window.scrollY;
+
+    document.body.style.overflow = 'hidden';
+    document.body.style.overscrollBehavior = 'none';
+    document.body.style.touchAction = 'none';
+    // Fix iOS Safari scroll bleed: pin the body in place
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+    document.body.style.top = `-${scrollY}px`;
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.overscrollBehavior = prevOverscroll;
+      document.body.style.touchAction = prevTouchAction;
+      document.body.style.position = prevPosition;
+      document.body.style.width = prevWidth;
+      document.body.style.top = '';
+      window.scrollTo(0, scrollY);
+    };
+  }, [phase]);
 
   const handleClose = React.useCallback(() => {
-    setClosing(true);
+    setPhase('closing');
   }, []);
 
-  const handleAnimationEnd = React.useCallback(() => {
-    if (closing) {
-      setClosing(false);
+  // After close animation/transition ends, actually unmount
+  const handleTransitionEnd = React.useCallback(() => {
+    if (phase === 'closing') {
+      setPhase('closed');
       setDragY(0);
       onOpenChange(false);
     }
-  }, [closing, onOpenChange]);
+  }, [phase, onOpenChange]);
 
-  // Drag-to-dismiss touch handlers (on the drag handle area)
+  const handleAnimationEnd = React.useCallback(() => {
+    if (phase === 'entering') {
+      setPhase('open');
+    }
+  }, [phase]);
+
+  // Drag-to-dismiss touch handlers (on the drag handle area only)
   const onTouchStart = React.useCallback((e: React.TouchEvent) => {
-    // Only allow drag when sheet is scrolled to top
-    if (sheetRef.current && sheetRef.current.scrollTop > 0) return;
     dragStartY.current = e.touches[0].clientY;
     setIsDragging(true);
   }, []);
@@ -75,8 +103,6 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({ open, onOpenChange, ch
     // Only allow dragging downward
     if (delta > 0) {
       setDragY(delta);
-      // Prevent scroll while dragging
-      e.preventDefault();
     }
   }, [isDragging]);
 
@@ -84,7 +110,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({ open, onOpenChange, ch
     if (!isDragging) return;
     setIsDragging(false);
     if (dragY > DISMISS_THRESHOLD) {
-      // Dismiss
+      // Dismiss — slide to bottom from current position (no flash)
       handleClose();
     } else {
       // Snap back
@@ -92,18 +118,29 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({ open, onOpenChange, ch
     }
   }, [isDragging, dragY, handleClose]);
 
-  if (!open) return null;
+  if (phase === 'closed') return null;
 
-  const sheetStyle: React.CSSProperties = {
-    ...(closing
-      ? { animation: 'slideDown 200ms ease-in forwards' }
-      : dragY > 0
-        ? { transform: `translateY(${dragY}px)`, transition: isDragging ? 'none' : 'transform 200ms ease-out' }
-        : { animation: 'slideUp 250ms ease-out' }
-    ),
-  };
+  // Compute sheet transform
+  let sheetStyle: React.CSSProperties;
+  if (phase === 'entering') {
+    sheetStyle = { animation: 'slideUp 250ms ease-out' };
+  } else if (phase === 'closing') {
+    // Slide from current position to off-screen — no flash
+    sheetStyle = {
+      transform: 'translateY(100%)',
+      transition: 'transform 200ms ease-in',
+    };
+  } else if (dragY > 0) {
+    sheetStyle = {
+      transform: `translateY(${dragY}px)`,
+      transition: isDragging ? 'none' : 'transform 200ms ease-out',
+    };
+  } else {
+    sheetStyle = {};
+  }
 
-  const backdropOpacity = dragY > 0 ? Math.max(0, 1 - dragY / 400) : undefined;
+  const backdropOpacity = dragY > 0 ? Math.max(0, 1 - dragY / 300) : undefined;
+  const isClosingOrDragging = phase === 'closing' || dragY > 0;
 
   return (
     <div className="fixed inset-0 z-[60]">
@@ -111,21 +148,24 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({ open, onOpenChange, ch
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-sm"
         style={{
-          animation: closing ? 'fadeOut 200ms ease-out forwards' : (dragY > 0 ? undefined : 'fadeIn 200ms ease-out'),
-          opacity: backdropOpacity,
+          animation: phase === 'entering' ? 'fadeIn 200ms ease-out' : undefined,
+          opacity: phase === 'closing' ? 0 : backdropOpacity,
+          transition: phase === 'closing' ? 'opacity 200ms ease-in' : undefined,
         }}
         onClick={handleClose}
       />
       {/* Sheet */}
       <div
         ref={sheetRef}
-        className="fixed bottom-0 left-0 right-0 z-[60] max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-slate-700 bg-slate-900/95 shadow-xl"
-        style={sheetStyle}
+        className="fixed bottom-0 left-0 right-0 z-[60] max-h-[85vh] rounded-t-2xl border-t border-slate-700 bg-slate-900/95 shadow-xl overflow-y-auto overscroll-none"
+        style={{ ...sheetStyle, touchAction: 'pan-y' }}
         onAnimationEnd={handleAnimationEnd}
+        onTransitionEnd={handleTransitionEnd}
       >
-        {/* Drag handle + header — sticky so X is always visible */}
+        {/* Drag handle — touch target for drag-to-dismiss */}
         <div
           className="sticky top-0 z-10 bg-slate-900/95 rounded-t-2xl"
+          style={{ touchAction: 'none' }}
           onTouchStart={onTouchStart}
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
