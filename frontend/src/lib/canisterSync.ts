@@ -86,10 +86,13 @@ let lastSavedHash: string = '';
  * Strip a holding down to user-intent fields only.
  * Removes transient/derived market data that changes on every price tick
  * (prices, market cap, 24h change, logos, timestamps).
- * These get re-fetched fresh on every session from CoinGecko/worker cache.
+ *
+ * Note: coingeckoId is KEPT because it's stable user intent (which specific
+ * coin the user meant). logoUrl is stripped because it comes from the shared
+ * on-chain logo registry, not per-user data.
  */
 function stripHoldingToUserIntent(h: any): Record<string, unknown> {
-  const { lastPriceUsd, lastMarketCapUsd, lastChange24hPct, lastMarketDataAt, logoUrl, coingeckoId, ...userFields } = h;
+  const { lastPriceUsd, lastMarketCapUsd, lastChange24hPct, lastMarketDataAt, logoUrl, ...userFields } = h;
   return userFields;
 }
 
@@ -98,13 +101,13 @@ function stripHoldingToUserIntent(h: any): Record<string, unknown> {
  * Used for both hashing (change detection) and the actual canister blob.
  * 
  * What's included (user decisions):
- *   holdings (id, symbol, tokensOwned, avgCost, purchaseDate, notes, categoryLocked, lockedCategory)
+ *   holdings (id, symbol, tokensOwned, avgCost, purchaseDate, notes, categoryLocked, lockedCategory, coingeckoId)
  *   settings, transactions, cash, cashNotes
  *   userProfile (firstName, lastName)
- * 
+ *
  * What's excluded (derived/transient):
  *   lastPriceUsd, lastMarketCapUsd, lastChange24hPct, lastMarketDataAt (price ticks)
- *   logoUrl, coingeckoId (fetched from API)
+ *   logoUrl (comes from shared on-chain logo registry, not per-user data)
  *   lastSeenCategories (runtime categorization state)
  *   portfolioSnapshots (derived from price history)
  */
@@ -326,5 +329,60 @@ export async function loadFromCanister(actor: BackendActor): Promise<{ store: St
     console.error('[CanisterSync] Failed to load from canister:', err);
     emit('error', 'Failed to load from canister');
     return null;
+  }
+}
+
+
+// ============================================================================
+// SHARED LOGO REGISTRY (on-chain, shared across all users)
+// ============================================================================
+
+/**
+ * Load the entire shared logo registry from the canister.
+ * Returns a Map of coingeckoId → logoUrl.
+ * This is a query call (free, fast).
+ */
+export async function loadLogoRegistry(actor: BackendActor): Promise<Map<string, string>> {
+  try {
+    const entries = await actor.get_logo_registry();
+    const map = new Map<string, string>();
+    for (const [id, url] of entries) {
+      map.set(id, url);
+    }
+    console.log(`[CanisterSync] Loaded logo registry: ${map.size} entries`);
+    return map;
+  } catch (err) {
+    console.error('[CanisterSync] Failed to load logo registry:', err);
+    return new Map();
+  }
+}
+
+/**
+ * Write a single logo to the shared registry.
+ * Update call (costs cycles, but minimal for a single entry).
+ */
+export async function writeLogoToRegistry(actor: BackendActor, coingeckoId: string, logoUrl: string): Promise<void> {
+  try {
+    await actor.set_logo(coingeckoId, logoUrl);
+    console.log(`[CanisterSync] Wrote logo to registry: ${coingeckoId}`);
+  } catch (err) {
+    console.error(`[CanisterSync] Failed to write logo ${coingeckoId}:`, err);
+  }
+}
+
+/**
+ * Bulk write logos to the shared registry.
+ * Only writes entries that don't already exist (canister-side dedup).
+ * Returns the number of new entries added.
+ */
+export async function writeLogosToRegistry(actor: BackendActor, entries: Array<[string, string]>): Promise<number> {
+  if (entries.length === 0) return 0;
+  try {
+    const count = await actor.set_logos_bulk(entries);
+    console.log(`[CanisterSync] Bulk wrote ${Number(count)} new logos to registry (${entries.length} submitted)`);
+    return Number(count);
+  } catch (err) {
+    console.error('[CanisterSync] Failed to bulk write logos:', err);
+    return 0;
   }
 }

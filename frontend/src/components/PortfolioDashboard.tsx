@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePortfolioStore } from '@/lib/store';
 import { useInternetIdentity } from '@/hooks/useInternetIdentity';
 import { useActor } from '@/hooks/useActor';
@@ -18,11 +18,12 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { 
-  loadCategoryExpandState, 
-  saveCategoryExpandState, 
-  getDefaultExpandedCategories 
+import {
+  loadCategoryExpandState,
+  saveCategoryExpandState,
+  getDefaultExpandedCategories
 } from '@/lib/categoryExpandState';
+import { loadLogoRegistry, writeLogosToRegistry } from '@/lib/canisterSync';
 
 const aggregator = getPriceAggregator();
 const marketDataService = getMarketDataService();
@@ -64,6 +65,10 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
   const [editAvgCost, setEditAvgCost] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const { allocations: allocationData } = usePortfolioSnapshots();
+
+  // Shared on-chain logo registry: coingeckoId → logoUrl
+  const [logoRegistry, setLogoRegistry] = useState<Map<string, string>>(new Map());
+  const logoRegistryLoaded = useRef(false);
 
   // Convert allocations array to Record<Category, number> for AllocationDonutChart
   const allocations = useMemo(() => {
@@ -114,55 +119,142 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     }
   }, [symbols]);
 
-  // Fetch logos for all symbols (only once when symbols change)
-  // Uses stored CoinGecko IDs when available for more reliable logo resolution
+  // Load shared logo registry from canister (once per session)
+  useEffect(() => {
+    if (!actor || logoRegistryLoaded.current) return;
+    logoRegistryLoaded.current = true;
+
+    loadLogoRegistry(actor).then(registry => {
+      setLogoRegistry(registry);
+      console.log(`[PortfolioDashboard] Logo registry loaded: ${registry.size} entries`);
+    });
+  }, [actor]);
+
+  // Pre-seed registry if it's small (one-time per browser)
+  useEffect(() => {
+    if (!actor || logoRegistry.size > 100) return;
+
+    const SEED_KEY = 'ysl-logo-registry-seeded';
+    if (localStorage.getItem(SEED_KEY)) return;
+
+    console.log('[PortfolioDashboard] Registry is small, attempting pre-seed...');
+    (async () => {
+      try {
+        const response = await fetch(
+          'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false'
+        );
+        if (!response.ok) return;
+
+        const coins = await response.json();
+        const entries: Array<[string, string]> = [];
+        for (const coin of coins) {
+          if (coin.id && coin.image) {
+            entries.push([coin.id, coin.image]);
+          }
+        }
+
+        if (entries.length > 0) {
+          const added = await writeLogosToRegistry(actor, entries);
+          console.log(`[PortfolioDashboard] Pre-seeded ${added} logos to registry`);
+          localStorage.setItem(SEED_KEY, Date.now().toString());
+
+          // Reload registry with new entries
+          const updated = await loadLogoRegistry(actor);
+          setLogoRegistry(updated);
+        }
+      } catch (err) {
+        console.warn('[PortfolioDashboard] Pre-seed failed:', err);
+      }
+    })();
+  }, [actor, logoRegistry.size]);
+
+  // Fetch logos: check on-chain registry first, then CoinGecko for misses, write back new logos
   const fetchLogos = useCallback(async () => {
     if (!symbols.length) return;
     try {
-      // Build symbol -> CoinGecko ID map from holdings that have stored IDs
+      const allLogos: Record<string, string> = {};
+      const newRegistryEntries: Array<[string, string]> = [];
+
+      // Step 1: Build symbol->coingeckoId map and resolve from registry
+      const symbolsMissingFromRegistry: string[] = [];
       const symbolToIdMap: Record<string, string> = {};
+
       for (const holding of store.holdings) {
         const symbol = holding.symbol.toUpperCase();
         if (holding.coingeckoId) {
           symbolToIdMap[symbol] = holding.coingeckoId;
-          console.log(`[PortfolioDashboard] Using stored CoinGecko ID for ${symbol}: ${holding.coingeckoId}`);
+          const registryLogo = logoRegistry.get(holding.coingeckoId);
+          if (registryLogo) {
+            allLogos[symbol] = registryLogo;
+          } else {
+            symbolsMissingFromRegistry.push(symbol);
+          }
+        } else {
+          symbolsMissingFromRegistry.push(symbol);
         }
       }
-      
-      // Collect all logos before updating state (avoid race conditions)
-      let allLogos: Record<string, string> = {};
-      
-      // Fetch logos using CoinGecko IDs for holdings that have them
-      const idsToFetch = Object.keys(symbolToIdMap);
-      if (idsToFetch.length > 0) {
-        const idBasedLogos = await aggregator.getLogosWithIds(symbolToIdMap);
-        allLogos = { ...allLogos, ...idBasedLogos };
+
+      console.log(`[PortfolioDashboard] Registry hits: ${Object.keys(allLogos).length}, misses: ${symbolsMissingFromRegistry.length}`);
+
+      // Step 2: Fetch misses with coingeckoIds from CoinGecko
+      const idsToFetch: Record<string, string> = {};
+      for (const sym of symbolsMissingFromRegistry) {
+        if (symbolToIdMap[sym]) {
+          idsToFetch[sym] = symbolToIdMap[sym];
+        }
       }
-      
-      // For symbols without stored IDs, use the standard symbol-based lookup
-      const symbolsWithoutIds = symbols.filter(s => !symbolToIdMap[s]);
+
+      if (Object.keys(idsToFetch).length > 0) {
+        const idBasedLogos = await aggregator.getLogosWithIds(idsToFetch);
+        for (const [sym, url] of Object.entries(idBasedLogos)) {
+          allLogos[sym] = url;
+          const cgId = idsToFetch[sym];
+          if (cgId && url) {
+            newRegistryEntries.push([cgId, url]);
+          }
+        }
+      }
+
+      // Step 3: For symbols without coingeckoIds, use symbol-based lookup
+      const symbolsWithoutIds = symbolsMissingFromRegistry.filter(s => !symbolToIdMap[s]);
       if (symbolsWithoutIds.length > 0) {
-        console.log(`[PortfolioDashboard] Fetching logos for symbols without stored IDs: ${symbolsWithoutIds.join(', ')}`);
         const symbolBasedLogos = await aggregator.getLogos(symbolsWithoutIds);
-        allLogos = { ...allLogos, ...symbolBasedLogos };
+        for (const [sym, url] of Object.entries(symbolBasedLogos)) {
+          allLogos[sym] = url;
+        }
       }
-      
-      // Update state once with all logos combined
-      // ID-based logos take priority (applied first, then symbol-based)
+
+      // Step 4: Update React state + localStorage cache
       setLogos(prev => {
         const updated = { ...prev, ...allLogos };
-        saveLogoCache(updated);  // Persist to localStorage
+        saveLogoCache(updated);
         return updated;
       });
+
+      // Step 5: Write newly fetched logos back to shared registry (fire-and-forget)
+      if (newRegistryEntries.length > 0 && actor) {
+        writeLogosToRegistry(actor, newRegistryEntries).then(count => {
+          if (count > 0) {
+            setLogoRegistry(prev => {
+              const updated = new Map(prev);
+              for (const [id, url] of newRegistryEntries) {
+                updated.set(id, url);
+              }
+              return updated;
+            });
+          }
+        });
+      }
+
       console.log(`[PortfolioDashboard] Set ${Object.keys(allLogos).length} logos total`);
     } catch (err) {
       console.error('Failed to fetch logos', err);
     }
-  }, [symbols, store.holdings]);
+  }, [symbols, store.holdings, logoRegistry, actor]);
 
   useEffect(() => {
     fetchPrices();
-    fetchLogos(); // Fetch logos on initial load
+    fetchLogos();
     const interval = setInterval(fetchPrices, 30_000);
     return () => clearInterval(interval);
   }, [fetchPrices, fetchLogos]);

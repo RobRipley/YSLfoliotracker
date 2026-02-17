@@ -7,6 +7,7 @@ import Int "mo:base/Int";
 import Principal "mo:base/Principal";
 import Debug "mo:base/Debug";
 import Nat "mo:base/Nat";
+import Iter "mo:base/Iter";
 import AccessControl "authorization/access-control";
 
 persistent actor CryptoPortfolioTracker {
@@ -70,6 +71,56 @@ persistent actor CryptoPortfolioTracker {
       Debug.trap("Unauthorized: Only admins can view user counts");
     };
     portfolioBlobMap.size(portfolioBlobs);
+  };
+
+  // ============================================================================
+  // SHARED LOGO REGISTRY FUNCTIONS
+  // ============================================================================
+
+  /// Get the entire shared logo registry as an array of (coingeckoId, logoUrl) pairs.
+  /// Query call (free, fast) - any authenticated user can read.
+  public query ({ caller }) func get_logo_registry() : async [(Text, Text)] {
+    if (Principal.isAnonymous(caller)) {
+      Debug.trap("Anonymous callers cannot access the logo registry");
+    };
+    Iter.toArray(textMap.entries(logoRegistry));
+  };
+
+  /// Add or update a single logo in the shared registry.
+  /// Update call - any authenticated user can write.
+  public shared ({ caller }) func set_logo(coingeckoId : Text, logoUrl : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Debug.trap("Unauthorized: Only users can update the logo registry");
+    };
+    logoRegistry := textMap.put(logoRegistry, coingeckoId, logoUrl);
+  };
+
+  /// Bulk add logos to the shared registry.
+  /// Only adds entries that don't already exist (won't overwrite).
+  /// Returns the number of NEW entries added.
+  public shared ({ caller }) func set_logos_bulk(entries : [(Text, Text)]) : async Nat {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Debug.trap("Unauthorized: Only users can update the logo registry");
+    };
+    var count : Nat = 0;
+    for ((coingeckoId, logoUrl) in entries.vals()) {
+      switch (textMap.get(logoRegistry, coingeckoId)) {
+        case (?_existing) {};
+        case null {
+          logoRegistry := textMap.put(logoRegistry, coingeckoId, logoUrl);
+          count += 1;
+        };
+      };
+    };
+    count;
+  };
+
+  /// Get the number of entries in the logo registry (for monitoring).
+  public query ({ caller }) func get_logo_registry_size() : async Nat {
+    if (Principal.isAnonymous(caller)) {
+      Debug.trap("Anonymous callers cannot access the logo registry");
+    };
+    textMap.size(logoRegistry);
   };
 
   // Auto-register caller as user if not already registered
@@ -165,6 +216,13 @@ persistent actor CryptoPortfolioTracker {
   // Market data cache is shared across all users (public read access)
   transient let textMap = OrderedMap.Make<Text>(Text.compare);
   transient var marketDataCache : OrderedMap.Map<Text, [MarketAsset]> = textMap.empty<[MarketAsset]>();
+
+  // ============================================================================
+  // SHARED LOGO REGISTRY (persists across upgrades, shared across ALL users)
+  // Maps coingeckoId → logoUrl. Any authenticated user can read/write.
+  // When any user resolves a logo, it becomes available to all users instantly.
+  // ============================================================================
+  var logoRegistry : OrderedMap.Map<Text, Text> = textMap.empty<Text>();
 
   type Holding = {
     ticker : Text;

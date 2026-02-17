@@ -26,6 +26,12 @@ export interface BackendActor {
   load_portfolio_blob: () => Promise<[] | [string]>;
   get_portfolio_timestamp: () => Promise<[] | [bigint]>;
   delete_portfolio_blob: () => Promise<{ ok: boolean }>;
+
+  // Shared logo registry methods
+  get_logo_registry: () => Promise<Array<[string, string]>>;
+  set_logo: (coingeckoId: string, logoUrl: string) => Promise<void>;
+  set_logos_bulk: (entries: Array<[string, string]>) => Promise<bigint>;
+  get_logo_registry_size: () => Promise<bigint>;
 }
 
 // ============================================================================
@@ -67,6 +73,12 @@ const idlFactory = ({ IDL }: { IDL: any }) => {
     load_portfolio_blob: IDL.Func([], [IDL.Opt(IDL.Text)], ['query']),
     get_portfolio_timestamp: IDL.Func([], [IDL.Opt(IDL.Int)], ['query']),
     delete_portfolio_blob: IDL.Func([], [DeleteResult], []),
+
+    // Shared logo registry
+    get_logo_registry: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text))], ['query']),
+    set_logo: IDL.Func([IDL.Text, IDL.Text], [], []),
+    set_logos_bulk: IDL.Func([IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text))], [IDL.Nat], []),
+    get_logo_registry_size: IDL.Func([], [IDL.Nat], ['query']),
   });
 };
 
