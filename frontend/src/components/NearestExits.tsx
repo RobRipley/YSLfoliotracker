@@ -103,7 +103,7 @@ export const NearestExits = memo(function NearestExits({
             {nearestExits.map((exit) => (
               <div
                 key={`${exit.holdingId}-${exit.rungIndex}`}
-                className="flex items-center justify-between rounded-md bg-secondary/40 px-2.5 py-2 text-xs"
+                className="flex flex-col sm:flex-row sm:items-center sm:justify-between rounded-md bg-secondary/40 px-2.5 py-2 text-xs gap-1 sm:gap-0"
               >
                 <div className="flex items-center gap-2.5">
                   <span className="font-semibold text-foreground/90">

@@ -235,3 +235,58 @@
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground));
 }
+
+/* ── Mobile optimizations ─────────────────────────────── */
+
+/* Prevent horizontal overflow on mobile */
+html, body {
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Ensure the root doesn't cause overflow */
+#root {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+/* Mobile-specific spacing for the main content area */
+@media (max-width: 639px) {
+  /* Tighter padding on mobile */
+  .container {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  /* Reduce scrollbar width on mobile */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  /* Ensure touch targets are at least 44px */
+  button, a, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Exception for inline/icon-only buttons that are explicitly small */
+  .compact-btn {
+    min-height: unset;
+    min-width: unset;
+  }
+
+  /* Add bottom padding for mobile nav bar */
+  main {
+    padding-bottom: 4.5rem !important;
+  }
+}
+
+/* Safe area insets for notched phones */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  @media (max-width: 639px) {
+    .mobile-nav-bar {
+      padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
+    }
+  }
+}

@@ -55,7 +55,7 @@ export const DialogContent: React.FC<DialogSectionProps> = ({
 }) => (
   <div
     className={
-      "rounded-2xl border border-slate-700 bg-slate-900/95 p-4 shadow-xl max-h-[85vh] overflow-y-auto " +
+      "rounded-2xl border border-slate-700 bg-slate-900/95 p-4 shadow-xl max-h-[85vh] overflow-y-auto w-[calc(100vw-2rem)] sm:w-auto sm:min-w-[400px] max-w-[calc(100vw-2rem)] sm:max-w-lg " +
       className
     }
   >

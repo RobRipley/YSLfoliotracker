@@ -22,12 +22,12 @@ export function Landing({ onEnterPortfolio }: LandingProps) {
   };
 
   return (
-    <div className="min-h-[calc(100vh-200px)] flex items-center justify-center atmospheric-bg">
-      <div className="text-center space-y-8 max-w-3xl px-6 relative z-10">
-        <h1 className="text-5xl md:text-7xl font-bold font-heading text-foreground tracking-tight">
+    <div className="min-h-[calc(100vh-200px)] flex items-center justify-center atmospheric-bg px-4">
+      <div className="text-center space-y-6 sm:space-y-8 max-w-3xl px-2 sm:px-6 relative z-10">
+        <h1 className="text-3xl sm:text-5xl md:text-7xl font-bold font-heading text-foreground tracking-tight">
           <span className="gradient-underline">Yieldschool Portfolio Tracker</span>
         </h1>
-        <p className="text-xl md:text-2xl text-muted-foreground font-light tracking-tight">
+        <p className="text-lg sm:text-xl md:text-2xl text-muted-foreground font-light tracking-tight">
           A calm way to track crypto performance.
         </p>
         <button 

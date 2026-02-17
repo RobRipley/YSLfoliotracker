@@ -610,16 +610,16 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
 
     return (
       <div
-        className="flex items-center justify-between rounded-xl px-4 py-2 mb-2 mx-2"
+        className="flex items-center justify-between rounded-xl px-3 sm:px-4 py-2 mb-2 mx-0 sm:mx-2"
         style={{
           background: categoryGradient(category),
           border: `1px solid ${accentColor}33`
         }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 w-full">
           <button
             onClick={() => onToggleCategory(category)}
-            className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-black/20 text-foreground/80 shadow-sm transition-smooth hover:bg-black/40"
+            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/20 text-foreground/80 shadow-sm transition-smooth hover:bg-black/40 compact-btn !min-h-0 !min-w-0"
           >
             {isExpanded ? (
               <ChevronDown className="h-3.5 w-3.5" />
@@ -628,12 +628,13 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
             )}
           </button>
           <div
-            className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold text-primary-foreground shadow-md"
+            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold text-primary-foreground shadow-md"
             style={{ backgroundColor: color }}
           >
             {CATEGORY_LABELS[category].charAt(0)}
           </div>
-          <div className="flex items-center gap-3">
+          {/* Desktop: full info row */}
+          <div className="hidden sm:flex items-center gap-3">
             <span className="text-sm font-semibold tracking-tight text-foreground/90">
               {CATEGORY_LABELS[category]}
             </span>
@@ -652,9 +653,17 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
               Share <span className="font-medium text-foreground/90">{formatPercent(total.share, 1)}</span>
             </span>
           </div>
+          {/* Mobile: compact info */}
+          <div className="sm:hidden flex items-center justify-between flex-1 min-w-0">
+            <span className="text-xs font-semibold tracking-tight text-foreground/90 truncate">
+              {CATEGORY_LABELS[category]}
+            </span>
+            <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+              <span className="text-xs font-mono font-medium text-foreground/90">{formatUsd(total.value)}</span>
+              <span className="text-[10px] font-mono text-foreground/60">{formatPercent(total.share, 1)}</span>
+            </div>
+          </div>
         </div>
-
-        {/* Per-category controls removed per requirements */}
       </div>
     );
   };
@@ -669,126 +678,203 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
     const percentChange = 0; // Not available in current ExtendedPriceQuote
 
     return (
-      <div
-        key={holding.id}
-        className="group grid grid-cols-[1.6fr_1.2fr_0.8fr_1fr_1fr_1fr_0.8fr_1.2fr_1.4fr_auto] items-center gap-2 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth"
-      >
-        {/* 1. Symbol */}
-        <div className="flex items-center gap-3">
-          {logos[holding.symbol] ? (
-            <img
-              src={logos[holding.symbol]}
-              alt={holding.symbol}
-              className="h-8 w-8 rounded-full object-contain shadow-md"
-              onError={(e) => {
-                const target = e.currentTarget;
-                target.style.display = 'none';
-                const fallback = target.nextElementSibling as HTMLElement;
-                if (fallback) fallback.style.display = 'flex';
-              }}
-            />
-          ) : null}
-          <div
-            className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold text-primary-foreground shadow-md"
-            style={{ 
-              backgroundColor: categoryColor(category),
-              display: logos[holding.symbol] ? 'none' : 'flex'
-            }}
-          >
-            {holding.symbol.charAt(0).toUpperCase()}
-          </div>
-          <span className="text-base font-semibold text-foreground">{holding.symbol}</span>
-        </div>
-
-        {/* 2. Value */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/90">{formatUsd(value)}</div>
-        </div>
-
-        {/* 3. Share */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/80">{formatPercent(posShare, 1)}</div>
-        </div>
-
-        {/* 4. Price */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/90">{formatPrice(price)}</div>
-        </div>
-
-        {/* 5. Tokens */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/90">{formatTokens(holding.tokensOwned)}</div>
-        </div>
-
-        {/* 6. Avg Cost */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/90">
-            {holding.avgCost ? formatPrice(holding.avgCost) : '—'}
-          </div>
-        </div>
-
-        {/* 7. 24H % Change */}
-        <div className="text-sm">
-          <div
-            className={cn(
-              'font-mono',
-              percentChange > 0 ? 'text-emerald-400' : percentChange < 0 ? 'text-rose-400' : 'text-muted-foreground'
-            )}
-          >
-            {percentChange > 0 ? '+' : ''}
-            {percentChange.toFixed(2)}%
-          </div>
-        </div>
-
-        {/* 8. Exit */}
-        <div className="flex items-center justify-start">
-          {renderExitLadderCompact(holding, category)}
-        </div>
-
-        {/* 9. Notes - inline editable */}
-        <div 
-          className="text-[11px] cursor-pointer rounded px-1 -mx-1 hover:bg-white/5"
-          onClick={() => editingNotesId !== holding.id && startNotesEdit(holding)}
+      <div key={holding.id}>
+        {/* Desktop: 10-column grid row */}
+        <div
+          className="group hidden sm:grid grid-cols-[1.6fr_1.2fr_0.8fr_1fr_1fr_1fr_0.8fr_1.2fr_1.4fr_auto] items-center gap-2 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth"
         >
-          {editingNotesId === holding.id ? (
-            <input
-              ref={notesInputRef}
-              type="text"
-              value={notesInputValue}
-              onChange={(e) => setNotesInputValue(e.target.value)}
-              onKeyDown={(e) => handleNotesKeyDown(e, holding.id)}
-              onBlur={() => handleNotesBlur(holding.id)}
-              className="w-full bg-transparent text-foreground/90 outline-none border-b border-primary/50 focus:border-primary py-0.5"
-              placeholder="Add note..."
-            />
-          ) : (
-            <span className={holding.notes ? 'text-muted-foreground/90' : 'text-muted-foreground/50 italic'}>
-              {holding.notes || 'No notes yet'}
-            </span>
-          )}
+          {/* 1. Symbol */}
+          <div className="flex items-center gap-3">
+            {logos[holding.symbol] ? (
+              <img
+                src={logos[holding.symbol]}
+                alt={holding.symbol}
+                className="h-8 w-8 rounded-full object-contain shadow-md"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  target.style.display = 'none';
+                  const fallback = target.nextElementSibling as HTMLElement;
+                  if (fallback) fallback.style.display = 'flex';
+                }}
+              />
+            ) : null}
+            <div
+              className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold text-primary-foreground shadow-md"
+              style={{
+                backgroundColor: categoryColor(category),
+                display: logos[holding.symbol] ? 'none' : 'flex'
+              }}
+            >
+              {holding.symbol.charAt(0).toUpperCase()}
+            </div>
+            <span className="text-base font-semibold text-foreground">{holding.symbol}</span>
+          </div>
+
+          {/* 2. Value */}
+          <div className="text-sm">
+            <div className="font-mono text-foreground/90">{formatUsd(value)}</div>
+          </div>
+
+          {/* 3. Share */}
+          <div className="text-sm">
+            <div className="font-mono text-foreground/80">{formatPercent(posShare, 1)}</div>
+          </div>
+
+          {/* 4. Price */}
+          <div className="text-sm">
+            <div className="font-mono text-foreground/90">{formatPrice(price)}</div>
+          </div>
+
+          {/* 5. Tokens */}
+          <div className="text-sm">
+            <div className="font-mono text-foreground/90">{formatTokens(holding.tokensOwned)}</div>
+          </div>
+
+          {/* 6. Avg Cost */}
+          <div className="text-sm">
+            <div className="font-mono text-foreground/90">
+              {holding.avgCost ? formatPrice(holding.avgCost) : '—'}
+            </div>
+          </div>
+
+          {/* 7. 24H % Change */}
+          <div className="text-sm">
+            <div
+              className={cn(
+                'font-mono',
+                percentChange > 0 ? 'text-emerald-400' : percentChange < 0 ? 'text-rose-400' : 'text-muted-foreground'
+              )}
+            >
+              {percentChange > 0 ? '+' : ''}
+              {percentChange.toFixed(2)}%
+            </div>
+          </div>
+
+          {/* 8. Exit */}
+          <div className="flex items-center justify-start">
+            {renderExitLadderCompact(holding, category)}
+          </div>
+
+          {/* 9. Notes - inline editable */}
+          <div
+            className="text-[11px] cursor-pointer rounded px-1 -mx-1 hover:bg-white/5"
+            onClick={() => editingNotesId !== holding.id && startNotesEdit(holding)}
+          >
+            {editingNotesId === holding.id ? (
+              <input
+                ref={notesInputRef}
+                type="text"
+                value={notesInputValue}
+                onChange={(e) => setNotesInputValue(e.target.value)}
+                onKeyDown={(e) => handleNotesKeyDown(e, holding.id)}
+                onBlur={() => handleNotesBlur(holding.id)}
+                className="w-full bg-transparent text-foreground/90 outline-none border-b border-primary/50 focus:border-primary py-0.5"
+                placeholder="Add note..."
+              />
+            ) : (
+              <span className={holding.notes ? 'text-muted-foreground/90' : 'text-muted-foreground/50 italic'}>
+                {holding.notes || 'No notes yet'}
+              </span>
+            )}
+          </div>
+
+          {/* 10. Actions - fixed utility column, always visible */}
+          <div className="flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-white/5 hover:text-foreground compact-btn"
+              onClick={() => handleEditHolding(holding)}
+              type="button"
+              title="Edit holding"
+            >
+              <Edit className="h-3.5 w-3.5" />
+            </button>
+            <button
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-rose-500/10 hover:text-rose-400 compact-btn"
+              onClick={() => handleRemoveHolding(holding)}
+              type="button"
+              title="Delete holding"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
 
-        {/* 10. Actions - fixed utility column, always visible */}
-        <div className="flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {/* Edit button - compact icon */}
-          <button
-            className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-white/5 hover:text-foreground"
-            onClick={() => handleEditHolding(holding)}
-            type="button"
-            title="Edit holding"
-          >
-            <Edit className="h-3.5 w-3.5" />
-          </button>
-
-          {/* Delete button - compact icon with red tint on hover */}
-          <button
-            className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-rose-500/10 hover:text-rose-400"
-            onClick={() => handleRemoveHolding(holding)}
-            type="button"
-            title="Delete holding"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+        {/* Mobile: Card-based layout */}
+        <div
+          className="sm:hidden rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)]"
+        >
+          {/* Top row: Symbol + Value + Actions */}
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2.5">
+              {logos[holding.symbol] ? (
+                <img
+                  src={logos[holding.symbol]}
+                  alt={holding.symbol}
+                  className="h-7 w-7 rounded-full object-contain shadow-md"
+                  onError={(e) => {
+                    const target = e.currentTarget;
+                    target.style.display = 'none';
+                    const fallback = target.nextElementSibling as HTMLElement;
+                    if (fallback) fallback.style.display = 'flex';
+                  }}
+                />
+              ) : null}
+              <div
+                className="flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold text-primary-foreground shadow-md"
+                style={{
+                  backgroundColor: categoryColor(category),
+                  display: logos[holding.symbol] ? 'none' : 'flex'
+                }}
+              >
+                {holding.symbol.charAt(0).toUpperCase()}
+              </div>
+              <span className="text-sm font-semibold text-foreground">{holding.symbol}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-mono font-semibold text-foreground/90">{formatUsd(value)}</span>
+              <div className="flex items-center gap-1">
+                <button
+                  className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-white/5 hover:text-foreground compact-btn"
+                  onClick={() => handleEditHolding(holding)}
+                  type="button"
+                >
+                  <Edit className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-rose-500/10 hover:text-rose-400 compact-btn"
+                  onClick={() => handleRemoveHolding(holding)}
+                  type="button"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+          {/* Detail grid: 2x2 compact layout */}
+          <div className="grid grid-cols-3 gap-x-4 gap-y-1 text-xs">
+            <div>
+              <span className="text-muted-foreground/60">Price</span>
+              <div className="font-mono text-foreground/90">{formatPrice(price)}</div>
+            </div>
+            <div>
+              <span className="text-muted-foreground/60">Tokens</span>
+              <div className="font-mono text-foreground/90">{formatTokens(holding.tokensOwned)}</div>
+            </div>
+            <div>
+              <span className="text-muted-foreground/60">Share</span>
+              <div className="font-mono text-foreground/80">{formatPercent(posShare, 1)}</div>
+            </div>
+            {holding.avgCost && (
+              <div>
+                <span className="text-muted-foreground/60">Avg Cost</span>
+                <div className="font-mono text-foreground/90">{formatPrice(holding.avgCost)}</div>
+              </div>
+            )}
+            <div>
+              <span className="text-muted-foreground/60">Exit</span>
+              {renderExitLadderCompact(holding, category)}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -803,114 +889,181 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
     const posShare = share(value, totals.totalValue);
 
     return (
-      <div
-        key={holding.id}
-        className="group grid grid-cols-[1.6fr_1.2fr_0.8fr_1fr_1fr_1fr_0.8fr_1.2fr_1.4fr_auto] items-center gap-2 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth"
-      >
-        {/* 1. Symbol */}
-        <div className="flex items-center gap-3">
-          {logos[holding.symbol] ? (
-            <img
-              src={logos[holding.symbol]}
-              alt={holding.symbol}
-              className="h-8 w-8 rounded-full object-contain shadow-md"
-              onError={(e) => {
-                const target = e.currentTarget;
-                target.style.display = 'none';
-                const fallback = target.nextElementSibling as HTMLElement;
-                if (fallback) fallback.style.display = 'flex';
-              }}
-            />
-          ) : null}
-          <div
-            className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold text-primary-foreground shadow-md"
-            style={{ 
-              backgroundColor: categoryColor('stablecoin'),
-              display: logos[holding.symbol] ? 'none' : 'flex'
-            }}
-          >
-            {holding.symbol.charAt(0).toUpperCase()}
-          </div>
-          <span className="text-base font-semibold text-foreground">{holding.symbol}</span>
-        </div>
-
-        {/* 2. Value */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/90">{formatUsd(value)}</div>
-        </div>
-
-        {/* 3. Share */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/80">{formatPercent(posShare, 1)}</div>
-        </div>
-
-        {/* 4. Price */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/90">{formatPrice(price)}</div>
-        </div>
-
-        {/* 5. Tokens */}
-        <div className="text-sm">
-          <div className="font-mono text-foreground/90">{formatTokens(holding.tokensOwned)}</div>
-        </div>
-
-        {/* 6. Avg Cost - dash for stablecoins */}
-        <div className="text-sm">
-          <div className="font-mono text-muted-foreground">—</div>
-        </div>
-
-        {/* 7. 24h Change - dash for stablecoins */}
-        <div className="text-sm">
-          <div className="font-mono text-muted-foreground">—</div>
-        </div>
-
-        {/* 8. Exit - No plan for stablecoins */}
-        <div className="text-xs">
-          <div className="text-muted-foreground/60">No plan</div>
-        </div>
-
-        {/* 9. Notes - inline editable */}
-        <div 
-          className="text-[11px] cursor-pointer rounded px-1 -mx-1 hover:bg-white/5"
-          onClick={() => editingNotesId !== holding.id && startNotesEdit(holding)}
+      <div key={holding.id}>
+        {/* Desktop: 10-column grid */}
+        <div
+          className="group hidden sm:grid grid-cols-[1.6fr_1.2fr_0.8fr_1fr_1fr_1fr_0.8fr_1.2fr_1.4fr_auto] items-center gap-2 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth"
         >
-          {editingNotesId === holding.id ? (
-            <input
-              ref={notesInputRef}
-              type="text"
-              value={notesInputValue}
-              onChange={(e) => setNotesInputValue(e.target.value)}
-              onKeyDown={(e) => handleNotesKeyDown(e, holding.id)}
-              onBlur={() => handleNotesBlur(holding.id)}
-              className="w-full bg-transparent text-foreground/90 outline-none border-b border-primary/50 focus:border-primary py-0.5"
-              placeholder="Add note..."
-            />
-          ) : (
-            <span className={holding.notes ? 'text-muted-foreground/90' : 'text-muted-foreground/50 italic'}>
-              {holding.notes || 'No notes yet'}
-            </span>
-          )}
+          {/* 1. Symbol */}
+          <div className="flex items-center gap-3">
+            {logos[holding.symbol] ? (
+              <img
+                src={logos[holding.symbol]}
+                alt={holding.symbol}
+                className="h-8 w-8 rounded-full object-contain shadow-md"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  target.style.display = 'none';
+                  const fallback = target.nextElementSibling as HTMLElement;
+                  if (fallback) fallback.style.display = 'flex';
+                }}
+              />
+            ) : null}
+            <div
+              className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold text-primary-foreground shadow-md"
+              style={{
+                backgroundColor: categoryColor('stablecoin'),
+                display: logos[holding.symbol] ? 'none' : 'flex'
+              }}
+            >
+              {holding.symbol.charAt(0).toUpperCase()}
+            </div>
+            <span className="text-base font-semibold text-foreground">{holding.symbol}</span>
+          </div>
+
+          {/* 2. Value */}
+          <div className="text-sm">
+            <div className="font-mono text-foreground/90">{formatUsd(value)}</div>
+          </div>
+
+          {/* 3. Share */}
+          <div className="text-sm">
+            <div className="font-mono text-foreground/80">{formatPercent(posShare, 1)}</div>
+          </div>
+
+          {/* 4. Price */}
+          <div className="text-sm">
+            <div className="font-mono text-foreground/90">{formatPrice(price)}</div>
+          </div>
+
+          {/* 5. Tokens */}
+          <div className="text-sm">
+            <div className="font-mono text-foreground/90">{formatTokens(holding.tokensOwned)}</div>
+          </div>
+
+          {/* 6. Avg Cost - dash for stablecoins */}
+          <div className="text-sm">
+            <div className="font-mono text-muted-foreground">—</div>
+          </div>
+
+          {/* 7. 24h Change - dash for stablecoins */}
+          <div className="text-sm">
+            <div className="font-mono text-muted-foreground">—</div>
+          </div>
+
+          {/* 8. Exit - No plan for stablecoins */}
+          <div className="text-xs">
+            <div className="text-muted-foreground/60">No plan</div>
+          </div>
+
+          {/* 9. Notes - inline editable */}
+          <div
+            className="text-[11px] cursor-pointer rounded px-1 -mx-1 hover:bg-white/5"
+            onClick={() => editingNotesId !== holding.id && startNotesEdit(holding)}
+          >
+            {editingNotesId === holding.id ? (
+              <input
+                ref={notesInputRef}
+                type="text"
+                value={notesInputValue}
+                onChange={(e) => setNotesInputValue(e.target.value)}
+                onKeyDown={(e) => handleNotesKeyDown(e, holding.id)}
+                onBlur={() => handleNotesBlur(holding.id)}
+                className="w-full bg-transparent text-foreground/90 outline-none border-b border-primary/50 focus:border-primary py-0.5"
+                placeholder="Add note..."
+              />
+            ) : (
+              <span className={holding.notes ? 'text-muted-foreground/90' : 'text-muted-foreground/50 italic'}>
+                {holding.notes || 'No notes yet'}
+              </span>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-white/5 hover:text-foreground compact-btn"
+              onClick={() => handleEditHolding(holding)}
+              type="button"
+              title="Edit holding"
+            >
+              <Edit className="h-3.5 w-3.5" />
+            </button>
+            <button
+              className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-rose-500/10 hover:text-rose-400 compact-btn"
+              onClick={() => handleRemoveHolding(holding)}
+              type="button"
+              title="Delete holding"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
 
-        {/* Actions - fixed utility column, always visible (not toggleable) */}
-        <div className="flex flex-col items-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-white/5 hover:text-foreground"
-            onClick={() => handleEditHolding(holding)}
-            type="button"
-            title="Edit holding"
-          >
-            <Edit className="h-3.5 w-3.5" />
-          </button>
-
-          <button
-            className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-smooth hover:bg-rose-500/10 hover:text-rose-400"
-            onClick={() => handleRemoveHolding(holding)}
-            type="button"
-            title="Delete holding"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+        {/* Mobile: Card-based layout */}
+        <div
+          className="sm:hidden rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)]"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              {logos[holding.symbol] ? (
+                <img
+                  src={logos[holding.symbol]}
+                  alt={holding.symbol}
+                  className="h-7 w-7 rounded-full object-contain shadow-md"
+                  onError={(e) => {
+                    const target = e.currentTarget;
+                    target.style.display = 'none';
+                    const fallback = target.nextElementSibling as HTMLElement;
+                    if (fallback) fallback.style.display = 'flex';
+                  }}
+                />
+              ) : null}
+              <div
+                className="flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold text-primary-foreground shadow-md"
+                style={{
+                  backgroundColor: categoryColor('stablecoin'),
+                  display: logos[holding.symbol] ? 'none' : 'flex'
+                }}
+              >
+                {holding.symbol.charAt(0).toUpperCase()}
+              </div>
+              <span className="text-sm font-semibold text-foreground">{holding.symbol}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-mono font-semibold text-foreground/90">{formatUsd(value)}</span>
+              <div className="flex items-center gap-1">
+                <button
+                  className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-white/5 hover:text-foreground compact-btn"
+                  onClick={() => handleEditHolding(holding)}
+                  type="button"
+                >
+                  <Edit className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-rose-500/10 hover:text-rose-400 compact-btn"
+                  onClick={() => handleRemoveHolding(holding)}
+                  type="button"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-x-4 gap-y-1 mt-2 text-xs">
+            <div>
+              <span className="text-muted-foreground/60">Price</span>
+              <div className="font-mono text-foreground/90">{formatPrice(price)}</div>
+            </div>
+            <div>
+              <span className="text-muted-foreground/60">Tokens</span>
+              <div className="font-mono text-foreground/90">{formatTokens(holding.tokensOwned)}</div>
+            </div>
+            <div>
+              <span className="text-muted-foreground/60">Share</span>
+              <div className="font-mono text-foreground/80">{formatPercent(posShare, 1)}</div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -923,123 +1076,170 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
     const cashShareValue = cashShare;
 
     return (
-      <div 
-        className="grid grid-cols-[1.6fr_1.2fr_0.8fr_1fr_1fr_1fr_0.8fr_1.2fr_1.4fr_auto] items-center gap-2 rounded-lg border border-teal-500/20 px-3 py-2"
-        style={{
-          background: 'linear-gradient(135deg, rgba(20, 184, 166, 0.06) 0%, rgba(15, 118, 110, 0.02) 100%)',
-        }}
-      >
-        {/* 1. Symbol - Cash Balance label with icon */}
-        <div className="flex items-center gap-3">
-          <div 
-            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full shadow-md"
-            style={{
-              background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)',
-              boxShadow: '0 2px 8px rgba(20, 184, 166, 0.25)',
-            }}
-          >
-            <DollarSign className="h-3.5 w-3.5 text-white" />
+      <>
+        {/* Desktop: grid row */}
+        <div
+          className="hidden sm:grid grid-cols-[1.6fr_1.2fr_0.8fr_1fr_1fr_1fr_0.8fr_1.2fr_1.4fr_auto] items-center gap-2 rounded-lg border border-teal-500/20 px-3 py-2"
+          style={{
+            background: 'linear-gradient(135deg, rgba(20, 184, 166, 0.06) 0%, rgba(15, 118, 110, 0.02) 100%)',
+          }}
+        >
+          {/* 1. Symbol - Cash Balance label with icon */}
+          <div className="flex items-center gap-3">
+            <div
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full shadow-md"
+              style={{
+                background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)',
+                boxShadow: '0 2px 8px rgba(20, 184, 166, 0.25)',
+              }}
+            >
+              <DollarSign className="h-3.5 w-3.5 text-white" />
+            </div>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-foreground/90 whitespace-nowrap">Cash Balance</span>
+                <span
+                  className="rounded-full px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-wider whitespace-nowrap"
+                  style={{
+                    background: 'rgba(20, 184, 166, 0.15)',
+                    color: '#2dd4bf',
+                    border: '1px solid rgba(20, 184, 166, 0.25)',
+                  }}
+                >
+                  Manual
+                </span>
+              </div>
+              <span className="text-[10px] text-muted-foreground/50">Dry powder</span>
+            </div>
           </div>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-foreground/90 whitespace-nowrap">Cash Balance</span>
-              <span 
-                className="rounded-full px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-wider whitespace-nowrap"
+
+          {/* 2. Value - editable inline */}
+          <div className="flex items-center gap-1">
+            {isEditingCash ? (
+              <div className="flex items-center">
+                <span className="text-lg font-bold text-emerald-400 mr-0.5">$</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={cashInput}
+                  onChange={(e) => setCashInput(e.target.value)}
+                  onKeyDown={handleCashKeyDown}
+                  onBlur={handleCashBlur}
+                  autoFocus
+                  className="w-20 bg-transparent text-lg font-bold text-emerald-400 outline-none border-b-2 border-emerald-400/50 focus:border-emerald-400 transition-colors"
+                  placeholder="0"
+                />
+                {cashSaveStatus === 'saving' && (
+                  <Loader2 className="ml-1 h-4 w-4 text-emerald-400 animate-spin" />
+                )}
+                {cashSaveStatus === 'saved' && (
+                  <Check className="ml-1 h-4 w-4 text-emerald-400" />
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={startCashEdit}
+                className="group flex items-center gap-1 rounded-md px-1 py-0.5 hover:bg-white/5 transition-colors cursor-text"
+              >
+                <span className="text-lg font-bold text-emerald-400 group-hover:underline group-hover:decoration-emerald-400/40 group-hover:underline-offset-2 transition-all">
+                  {formatCashDisplay(cash)}
+                </span>
+                <Pencil className="h-3 w-3 text-emerald-400/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </button>
+            )}
+          </div>
+
+          {/* 3. Share */}
+          <div className="text-sm">
+            <span className="font-mono text-foreground/80">{formatPercent(cashShareValue, 1)}</span>
+          </div>
+
+          {/* 4-8. Empty for cash */}
+          <div></div>
+          <div></div>
+          <div></div>
+          <div></div>
+          <div></div>
+
+          {/* 9. Notes */}
+          <div
+            className="text-[11px] cursor-pointer rounded px-1 -mx-1 hover:bg-white/5"
+            onClick={() => !isEditingCashNotes && startCashNotesEdit()}
+          >
+            {isEditingCashNotes ? (
+              <input
+                ref={cashNotesInputRef}
+                type="text"
+                value={cashNotesInput}
+                onChange={(e) => setCashNotesInput(e.target.value)}
+                onKeyDown={handleCashNotesKeyDown}
+                onBlur={handleCashNotesBlur}
+                className="w-full bg-transparent text-foreground/90 outline-none border-b border-primary/50 focus:border-primary py-0.5"
+                placeholder="Add note..."
+              />
+            ) : (
+              <span className={cashNotes ? 'text-muted-foreground/90' : 'text-muted-foreground/50 italic'}>
+                {cashNotes || 'No notes yet'}
+              </span>
+            )}
+          </div>
+
+          {/* 10. Actions - empty */}
+          <div></div>
+        </div>
+
+        {/* Mobile: Cash card */}
+        <div
+          className="sm:hidden rounded-lg border border-teal-500/20 px-3 py-3"
+          style={{
+            background: 'linear-gradient(135deg, rgba(20, 184, 166, 0.06) 0%, rgba(15, 118, 110, 0.02) 100%)',
+          }}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full shadow-md"
                 style={{
-                  background: 'rgba(20, 184, 166, 0.15)',
-                  color: '#2dd4bf',
-                  border: '1px solid rgba(20, 184, 166, 0.25)',
+                  background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)',
+                  boxShadow: '0 2px 8px rgba(20, 184, 166, 0.25)',
                 }}
               >
-                Manual
-              </span>
+                <DollarSign className="h-3.5 w-3.5 text-white" />
+              </div>
+              <div>
+                <span className="text-sm font-semibold text-foreground/90">Cash</span>
+                <span className="text-[10px] text-muted-foreground/50 ml-1.5">Dry powder</span>
+              </div>
             </div>
-            <span className="text-[10px] text-muted-foreground/50">Dry powder</span>
+            <div className="flex items-center gap-1">
+              {isEditingCash ? (
+                <div className="flex items-center">
+                  <span className="text-base font-bold text-emerald-400 mr-0.5">$</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={cashInput}
+                    onChange={(e) => setCashInput(e.target.value)}
+                    onKeyDown={handleCashKeyDown}
+                    onBlur={handleCashBlur}
+                    autoFocus
+                    className="w-16 bg-transparent text-base font-bold text-emerald-400 outline-none border-b-2 border-emerald-400/50 focus:border-emerald-400 transition-colors"
+                    placeholder="0"
+                  />
+                </div>
+              ) : (
+                <button
+                  onClick={startCashEdit}
+                  className="text-base font-bold text-emerald-400 compact-btn !min-h-0 !min-w-0"
+                >
+                  {formatCashDisplay(cash)}
+                </button>
+              )}
+              <span className="text-xs font-mono text-foreground/60 ml-2">{formatPercent(cashShareValue, 1)}</span>
+            </div>
           </div>
         </div>
-
-        {/* 2. Value - editable inline */}
-        <div className="flex items-center gap-1">
-          {isEditingCash ? (
-            <div className="flex items-center">
-              <span className="text-lg font-bold text-emerald-400 mr-0.5">$</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={cashInput}
-                onChange={(e) => setCashInput(e.target.value)}
-                onKeyDown={handleCashKeyDown}
-                onBlur={handleCashBlur}
-                autoFocus
-                className="w-20 bg-transparent text-lg font-bold text-emerald-400 outline-none border-b-2 border-emerald-400/50 focus:border-emerald-400 transition-colors"
-                placeholder="0"
-              />
-              {cashSaveStatus === 'saving' && (
-                <Loader2 className="ml-1 h-4 w-4 text-emerald-400 animate-spin" />
-              )}
-              {cashSaveStatus === 'saved' && (
-                <Check className="ml-1 h-4 w-4 text-emerald-400" />
-              )}
-            </div>
-          ) : (
-            <button
-              onClick={startCashEdit}
-              className="group flex items-center gap-1 rounded-md px-1 py-0.5 hover:bg-white/5 transition-colors cursor-text"
-            >
-              <span className="text-lg font-bold text-emerald-400 group-hover:underline group-hover:decoration-emerald-400/40 group-hover:underline-offset-2 transition-all">
-                {formatCashDisplay(cash)}
-              </span>
-              <Pencil className="h-3 w-3 text-emerald-400/40 opacity-0 group-hover:opacity-100 transition-opacity" />
-            </button>
-          )}
-        </div>
-
-        {/* 3. Share */}
-        <div className="text-sm">
-          <span className="font-mono text-foreground/80">{formatPercent(cashShareValue, 1)}</span>
-        </div>
-
-        {/* 4. Price - empty for cash */}
-        <div></div>
-
-        {/* 5. Tokens - empty for cash */}
-        <div></div>
-
-        {/* 6. Avg Cost - empty for cash */}
-        <div></div>
-
-        {/* 7. 24H - empty for cash */}
-        <div></div>
-
-        {/* 8. Exit - empty for cash */}
-        <div></div>
-
-        {/* 9. Notes - Cash supports inline notes editing */}
-        <div 
-          className="text-[11px] cursor-pointer rounded px-1 -mx-1 hover:bg-white/5"
-          onClick={() => !isEditingCashNotes && startCashNotesEdit()}
-        >
-          {isEditingCashNotes ? (
-            <input
-              ref={cashNotesInputRef}
-              type="text"
-              value={cashNotesInput}
-              onChange={(e) => setCashNotesInput(e.target.value)}
-              onKeyDown={handleCashNotesKeyDown}
-              onBlur={handleCashNotesBlur}
-              className="w-full bg-transparent text-foreground/90 outline-none border-b border-primary/50 focus:border-primary py-0.5"
-              placeholder="Add note..."
-            />
-          ) : (
-            <span className={cashNotes ? 'text-muted-foreground/90' : 'text-muted-foreground/50 italic'}>
-              {cashNotes || 'No notes yet'}
-            </span>
-          )}
-        </div>
-
-        {/* 10. Actions - empty for Cash row */}
-        <div></div>
-      </div>
+      </>
     );
   };
 
@@ -1049,17 +1249,17 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
 
   return (
     <Card className="glass-panel border-divide/80 shadow-[0_22px_60px_rgba(0,0,0,0.75)] !p-0">
-      <div className="flex items-center justify-between px-4 py-2">
+      <div className="flex items-center justify-between px-3 sm:px-4 py-2">
         {/* Left side: POSITIONS label + count badge + info icon */}
-        <div className="flex items-center gap-2.5">
-          <span className="text-xl font-bold uppercase tracking-[0.10em] text-foreground">
+        <div className="flex items-center gap-2 sm:gap-2.5">
+          <span className="text-base sm:text-xl font-bold uppercase tracking-[0.10em] text-foreground">
             Positions
           </span>
           <Badge
             variant="outline"
-            className="border-none bg-black/40 px-2 py-0.5 text-[11px] font-medium text-foreground/80"
+            className="border-none bg-black/40 px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-[11px] font-medium text-foreground/80"
           >
-            {totalPositions} {totalPositions === 1 ? 'position' : 'positions'}
+            {totalPositions}
           </Badge>
           {/* Info tooltip - positioned after count badge, applies to Positions section */}
           <Popover>
@@ -1104,7 +1304,7 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
 
       <div className="border-t border-divide/60" />
 
-      <div className="px-4 py-3">
+      <div className="px-2 sm:px-4 py-3">
         <div className="space-y-4">
           {displayedCategories.map(category => {
             const holdings = groups[category] || [];
@@ -1133,9 +1333,9 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
                     {/* For Cash & Stablecoins: always render cash row first */}
                     {isCashCategory && renderCashBalanceRow()}
                     
-                    {/* Column headers: only show if there are stablecoin assets (below cash row) */}
+                    {/* Column headers: only show if there are stablecoin assets (below cash row) - desktop only */}
                     {isCashCategory && hasStablecoinAssets && (
-                      <div className="flex items-center justify-between px-1 mt-3 mb-1">
+                      <div className="hidden sm:flex items-center justify-between px-1 mt-3 mb-1">
                         <div className="grid w-full grid-cols-[1.6fr_1.2fr_0.8fr_1fr_1fr_1fr_0.8fr_1.2fr_1.4fr_auto] gap-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">
                           <span className="pl-10">Symbol</span>
                           <span>Value</span>
@@ -1146,15 +1346,14 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
                           <span>24h</span>
                           <span>Exit</span>
                           <span>Notes</span>
-                          {/* Actions column - no header label */}
                           <span></span>
                         </div>
                       </div>
                     )}
-                    
-                    {/* For non-stablecoin categories: show headers only if there are holdings */}
+
+                    {/* For non-stablecoin categories: show headers only if there are holdings - desktop only */}
                     {!isCashCategory && sortedHoldings.length > 0 && (
-                      <div className="flex items-center justify-between px-1 mt-2 mb-1">
+                      <div className="hidden sm:flex items-center justify-between px-1 mt-2 mb-1">
                         <div className="grid w-full grid-cols-[1.6fr_1.2fr_0.8fr_1fr_1fr_1fr_0.8fr_1.2fr_1.4fr_auto] gap-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/60">
                           <span className="pl-10">Symbol</span>
                           <span>Value</span>
@@ -1165,7 +1364,6 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
                           <span>24h</span>
                           <span>Exit</span>
                           <span>Notes</span>
-                          {/* Actions column - no header label */}
                           <span></span>
                         </div>
                       </div>

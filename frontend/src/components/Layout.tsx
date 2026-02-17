@@ -2,7 +2,7 @@ import { ReactNode, useEffect, useState, useCallback, useRef } from 'react';
 import { useInternetIdentity } from '@/hooks/useInternetIdentity';
 import { useActor, type UserProfile } from '@/hooks/useActor';
 import { useQueryClient } from '@tanstack/react-query';
-import { Wallet, TrendingUp, Settings, Loader2, Target, Pencil, Cog } from 'lucide-react';
+import { Wallet, TrendingUp, Settings, Loader2, Target, Pencil, Cog, Menu, X } from 'lucide-react';
 import { NamePromptModal } from './NamePromptModal';
 import { setSyncProfile, updateProfileAndSave, getSyncProfile } from '@/lib/canisterSync';
 import { getStore } from '@/lib/dataModel';
@@ -291,32 +291,32 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
   return (
     <div className="min-h-screen flex flex-col">
       {/* Navbar - 64px height with refined spacing */}
-      <header className="border-b border-divide-lighter/25 glass-panel sticky top-0 z-50 h-16">
-        <div className="container mx-auto px-6 h-full">
+      <header className="border-b border-divide-lighter/25 glass-panel sticky top-0 z-50 h-14 sm:h-16">
+        <div className="container mx-auto px-4 sm:px-6 h-full">
           <div className="flex items-center justify-between h-full">
             {/* Left: Minimal Brand */}
-            <div className="flex items-center space-x-2.5">
-              <img 
-                src="/yieldschool-logo.jpeg" 
-                alt="Yieldschool" 
-                className="w-9 h-9 rounded-lg object-cover"
+            <div className="flex items-center space-x-2 sm:space-x-2.5">
+              <img
+                src="/yieldschool-logo.jpeg"
+                alt="Yieldschool"
+                className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg object-cover"
               />
-              <div className="flex items-baseline gap-1.5">
-                <h1 className="text-base font-bold font-heading tracking-tight gradient-underline">
+              <div className="flex items-baseline gap-1 sm:gap-1.5">
+                <h1 className="text-sm sm:text-base font-bold font-heading tracking-tight gradient-underline">
                   Yieldschool
                 </h1>
-                <span className="text-sm text-foreground/60 font-medium">Portfolio Tracker</span>
+                <span className="hidden sm:inline text-sm text-foreground/60 font-medium">Portfolio Tracker</span>
               </div>
             </div>
 
-            {/* Center: Navigation Tabs with refined hover states */}
+            {/* Center: Navigation Tabs - hidden on mobile (shown in bottom nav) */}
             {isAuthenticated && (
               <nav className="hidden md:flex space-x-1">
                 <button
                   onClick={() => onTabChange('portfolio')}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-smooth ${
-                    activeTab === 'portfolio' 
-                      ? 'text-foreground bg-secondary/12 shadow-xs' 
+                    activeTab === 'portfolio'
+                      ? 'text-foreground bg-secondary/12 shadow-xs'
                       : 'text-muted-foreground hover:text-foreground hover:bg-secondary/6'
                   }`}
                 >
@@ -326,8 +326,8 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
                 <button
                   onClick={() => onTabChange('exit-strategy')}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-smooth ${
-                    activeTab === 'exit-strategy' 
-                      ? 'text-foreground bg-secondary/12 shadow-xs' 
+                    activeTab === 'exit-strategy'
+                      ? 'text-foreground bg-secondary/12 shadow-xs'
                       : 'text-muted-foreground hover:text-foreground hover:bg-secondary/6'
                   }`}
                 >
@@ -337,8 +337,8 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
                 <button
                   onClick={() => onTabChange('market')}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-smooth ${
-                    activeTab === 'market' 
-                      ? 'text-foreground bg-secondary/12 shadow-xs' 
+                    activeTab === 'market'
+                      ? 'text-foreground bg-secondary/12 shadow-xs'
                       : 'text-muted-foreground hover:text-foreground hover:bg-secondary/6'
                   }`}
                 >
@@ -348,8 +348,8 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
                 <button
                   onClick={() => onTabChange('settings')}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-smooth ${
-                    activeTab === 'settings' 
-                      ? 'text-foreground bg-secondary/12 shadow-xs' 
+                    activeTab === 'settings'
+                      ? 'text-foreground bg-secondary/12 shadow-xs'
                       : 'text-muted-foreground hover:text-foreground hover:bg-secondary/6'
                   }`}
                 >
@@ -360,33 +360,34 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
             )}
 
             {/* Right: Name Display + Auth Button */}
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 sm:space-x-4">
               {isAuthenticated && !isLoadingProfile && !actorFetching && (
                 <button
                   onClick={handleEditName}
-                  className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-smooth group"
+                  className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-smooth group compact-btn"
                 >
                   {displayName ? (
-                    <span className="hidden sm:inline">{displayName}</span>
+                    <span>{displayName}</span>
                   ) : (
-                    <span className="hidden sm:inline text-muted-foreground/70">Add name</span>
+                    <span className="text-muted-foreground/70">Add name</span>
                   )}
                   <Pencil className="h-3.5 w-3.5 opacity-50 group-hover:opacity-100 transition-opacity" />
                 </button>
               )}
-              
+
               {isAuthenticated && identity ? (
-                <div className="flex items-center space-x-3">
-                  <button 
-                    onClick={handleAuth} 
+                <div className="flex items-center space-x-2 sm:space-x-3">
+                  <button
+                    onClick={handleAuth}
                     disabled={isLoggingIn}
-                    className="gradient-outline-btn text-sm transition-smooth disabled:opacity-50 inline-flex items-center gap-2"
+                    className="gradient-outline-btn text-xs sm:text-sm transition-smooth disabled:opacity-50 inline-flex items-center gap-1.5 sm:gap-2 compact-btn !min-h-[36px] !min-w-0"
                   >
                     {isLoggingIn ? (
                       <>
                         <Loader2 className="h-3 w-3 animate-spin" />
                         <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-semibold">
-                          Disconnecting...
+                          <span className="hidden sm:inline">Disconnecting...</span>
+                          <span className="sm:hidden">...</span>
                         </span>
                       </>
                     ) : (
@@ -397,16 +398,17 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
                   </button>
                 </div>
               ) : (
-                <button 
-                  onClick={handleAuth} 
-                  disabled={isLoggingIn} 
-                  className="gradient-outline-btn text-sm transition-smooth disabled:opacity-50 inline-flex items-center gap-2"
+                <button
+                  onClick={handleAuth}
+                  disabled={isLoggingIn}
+                  className="gradient-outline-btn text-xs sm:text-sm transition-smooth disabled:opacity-50 inline-flex items-center gap-1.5 sm:gap-2 compact-btn !min-h-[36px] !min-w-0"
                 >
                   {isLoggingIn ? (
                     <>
                       <Loader2 className="h-3 w-3 animate-spin" />
                       <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-semibold">
-                        Connecting...
+                        <span className="hidden sm:inline">Connecting...</span>
+                        <span className="sm:hidden">...</span>
                       </span>
                     </>
                   ) : (
@@ -423,10 +425,62 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
 
       {/* Main Content with refined spacing rhythm */}
       <main className="flex-1">
-        <div className="container mx-auto px-6 py-5">
+        <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-5">
           {children}
         </div>
       </main>
+
+      {/* Mobile Bottom Navigation - only for authenticated users */}
+      {isAuthenticated && (
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-divide-lighter/25 glass-panel mobile-nav-bar">
+          <div className="flex items-center justify-around px-2 py-2">
+            <button
+              onClick={() => onTabChange('portfolio')}
+              className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg text-[10px] font-medium transition-smooth compact-btn !min-h-0 !min-w-0 ${
+                activeTab === 'portfolio'
+                  ? 'text-primary'
+                  : 'text-muted-foreground'
+              }`}
+            >
+              <Wallet className="h-5 w-5" />
+              Portfolio
+            </button>
+            <button
+              onClick={() => onTabChange('exit-strategy')}
+              className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg text-[10px] font-medium transition-smooth compact-btn !min-h-0 !min-w-0 ${
+                activeTab === 'exit-strategy'
+                  ? 'text-primary'
+                  : 'text-muted-foreground'
+              }`}
+            >
+              <Target className="h-5 w-5" />
+              Exits
+            </button>
+            <button
+              onClick={() => onTabChange('market')}
+              className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg text-[10px] font-medium transition-smooth compact-btn !min-h-0 !min-w-0 ${
+                activeTab === 'market'
+                  ? 'text-primary'
+                  : 'text-muted-foreground'
+              }`}
+            >
+              <TrendingUp className="h-5 w-5" />
+              Market
+            </button>
+            <button
+              onClick={() => onTabChange('settings')}
+              className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg text-[10px] font-medium transition-smooth compact-btn !min-h-0 !min-w-0 ${
+                activeTab === 'settings'
+                  ? 'text-primary'
+                  : 'text-muted-foreground'
+              }`}
+            >
+              <Cog className="h-5 w-5" />
+              Settings
+            </button>
+          </div>
+        </nav>
+      )}
 
       {/* Name Prompt Modal */}
       <NamePromptModal

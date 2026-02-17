@@ -400,8 +400,8 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
           </div>
         </Card>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,3.5fr)_minmax(0,1.8fr)]">
-          <div className="space-y-4">
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-[minmax(0,3.5fr)_minmax(0,1.8fr)]">
+          <div className="space-y-4 min-w-0">
             <CompactHoldingsTable
               groups={groups}
               prices={prices}
@@ -439,9 +439,9 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
                         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 0 20px rgba(139, 92, 246, 0.15)'
                       }}
                     >
-                      <span 
-                        className="text-4xl font-bold tracking-tight text-foreground"
-                        style={{ 
+                      <span
+                        className="text-2xl sm:text-4xl font-bold tracking-tight text-foreground"
+                        style={{
                           textShadow: '0 0 8px rgba(139, 92, 246, 0.6), 0 0 20px rgba(139, 92, 246, 0.4), 0 0 40px rgba(99, 102, 241, 0.25)'
                         }}
                       >

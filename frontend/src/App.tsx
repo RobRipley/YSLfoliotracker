@@ -134,7 +134,7 @@ function App() {
         <ErrorBoundary>
           <AppContent />
         </ErrorBoundary>
-        <Toaster position="top-right" />
+        <Toaster position="top-center" />
       </ThemeProvider>
     </QueryClientProvider>
   );
