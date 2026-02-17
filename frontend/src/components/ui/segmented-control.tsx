@@ -18,6 +18,7 @@ export interface SegmentedControlProps {
   tabs: SegmentedTab[];
   variant?: 'default' | 'amber';
   size?: 'sm' | 'md';
+  mobileIconOnly?: boolean;
   className?: string;
 }
 
@@ -27,6 +28,7 @@ export function SegmentedControl({
   tabs,
   variant = 'default',
   size = 'md',
+  mobileIconOnly = false,
   className,
 }: SegmentedControlProps) {
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -141,7 +143,9 @@ export function SegmentedControl({
                 {tab.icon}
               </span>
             )}
-            {tab.shortLabel ? (
+            {mobileIconOnly && tab.icon ? (
+              <span className="hidden md:inline">{tab.label}</span>
+            ) : tab.shortLabel ? (
               <>
                 <span className="hidden md:inline">{tab.label}</span>
                 <span className="md:hidden">{tab.shortLabel}</span>

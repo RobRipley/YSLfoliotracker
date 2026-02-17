@@ -612,6 +612,7 @@ export function SettingsPage() {
           tabs={currentSubTabs}
           variant={activeSection === 'admin' ? 'amber' : 'default'}
           size="sm"
+          mobileIconOnly
         />
       </div>
 
