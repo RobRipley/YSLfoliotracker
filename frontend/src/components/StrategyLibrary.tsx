@@ -487,132 +487,214 @@ function TemplateRow({ template, onEdit, onDelete, onDuplicate }: TemplateRowPro
 
   const validation = useMemo(() => validateExits(template.exits), [template.exits]);
 
+  const expandedDetail = (
+    <div className="border border-slate-700/30 rounded-lg overflow-hidden">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-slate-800/30 border-b border-slate-700/30">
+            <th className="text-left py-2 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Exit</th>
+            <th className="text-right py-2 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Sell %</th>
+            <th className="text-right py-2 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Multiple</th>
+          </tr>
+        </thead>
+        <tbody>
+          {template.exits.map((exit, idx) => (
+            <tr key={idx} className="border-b border-slate-700/20 last:border-0">
+              <td className="py-2 px-3 text-slate-400">Exit {idx + 1}</td>
+              <td className="py-2 px-3 text-right tabular-nums">{exit.sellPercent}%</td>
+              <td className="py-2 px-3 text-right tabular-nums">{exit.multiple}×</td>
+            </tr>
+          ))}
+          <tr className="bg-slate-800/20">
+            <td className="py-2 px-3 text-slate-300 font-medium">Remaining</td>
+            <td className="py-2 px-3 text-right tabular-nums text-slate-400">{validation.remaining.toFixed(1)}%</td>
+            <td className="py-2 px-3 text-right text-slate-500">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+
   return (
     <div className="border-b border-slate-700/30 last:border-0">
-      {/* Main Row */}
-      <div 
-        className="px-4 py-3 hover:bg-slate-800/30 transition-colors cursor-pointer flex items-center gap-4"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        {/* Expand Toggle */}
-        <button className="p-1 hover:bg-slate-700/30 rounded transition-colors">
-          {isExpanded ? (
-            <ChevronDown className="h-4 w-4 text-slate-500" />
-          ) : (
-            <ChevronRight className="h-4 w-4 text-slate-500" />
-          )}
-        </button>
+      {/* Desktop Row */}
+      <div className="hidden md:block">
+        <div
+          className="px-4 py-3 hover:bg-slate-800/30 transition-colors cursor-pointer flex items-center gap-4"
+          onClick={() => setIsExpanded(!isExpanded)}
+        >
+          {/* Expand Toggle */}
+          <button className="p-1 hover:bg-slate-700/30 rounded transition-colors compact-btn">
+            {isExpanded ? (
+              <ChevronDown className="h-4 w-4 text-slate-500" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-slate-500" />
+            )}
+          </button>
 
-        {/* Name & Badges */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-sm">{template.name}</span>
-            {template.isDefault && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-cyan-500/30 text-cyan-400">
-                Default
-              </Badge>
+          {/* Name & Badges */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-sm">{template.name}</span>
+              {template.isDefault && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-cyan-500/30 text-cyan-400">
+                  Default
+                </Badge>
+              )}
+            </div>
+            {template.description && (
+              <p className="text-xs text-slate-500 truncate mt-0.5">{template.description}</p>
             )}
           </div>
-          {template.description && (
-            <p className="text-xs text-slate-500 truncate mt-0.5">{template.description}</p>
+
+          {/* Stats */}
+          <div className="text-right w-16">
+            <div className="text-sm tabular-nums">{template.exits.length}</div>
+            <div className="text-[10px] text-slate-500">exits</div>
+          </div>
+
+          <div className="text-right w-20">
+            <div className="text-sm tabular-nums">{summary.avgMultiple.toFixed(1)}×</div>
+            <div className="text-[10px] text-slate-500">avg mult</div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 compact-btn"
+                    onClick={() => onEdit(template)}
+                  >
+                    <Edit2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Edit</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 compact-btn"
+                    onClick={() => onDuplicate(template)}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Duplicate</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 text-slate-500 hover:text-red-400 compact-btn"
+                    onClick={() => onDelete(template.id)}
+                  >
+                    {template.isDefault ? <RotateCcw className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {template.isDefault ? 'Reset to Default' : 'Delete'}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        </div>
+
+        {/* Desktop Expanded Detail */}
+        {isExpanded && (
+          <div className="px-4 pb-4 pt-0 ml-10">
+            {expandedDetail}
+          </div>
+        )}
+      </div>
+
+      {/* Mobile Card */}
+      <div className="md:hidden px-4 py-3">
+        {/* Name + Badge */}
+        <div className="flex items-center gap-2 mb-1">
+          <span className="font-medium text-sm">{template.name}</span>
+          {template.isDefault && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-cyan-500/30 text-cyan-400">
+              Default
+            </Badge>
           )}
         </div>
 
-        {/* Stats */}
-        <div className="text-right w-16">
-          <div className="text-sm tabular-nums">{template.exits.length}</div>
-          <div className="text-[10px] text-slate-500">exits</div>
-        </div>
+        {/* Description */}
+        {template.description && (
+          <p className="text-xs text-slate-500 mb-2">{template.description}</p>
+        )}
 
-        <div className="text-right w-20">
-          <div className="text-sm tabular-nums">{summary.avgMultiple.toFixed(1)}×</div>
-          <div className="text-[10px] text-slate-500">avg mult</div>
+        {/* Stats */}
+        <div className="border-t border-slate-700/20 my-2 pt-2">
+          <div className="flex items-center gap-3 text-xs text-slate-400">
+            <span className="tabular-nums">{template.exits.length} exits</span>
+            <span className="text-slate-600">·</span>
+            <span className="tabular-nums">{summary.avgMultiple.toFixed(1)}× avg multiple</span>
+          </div>
         </div>
 
         {/* Actions */}
-        <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0"
-                  onClick={() => onEdit(template)}
-                >
-                  <Edit2 className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Edit</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0"
-                  onClick={() => onDuplicate(template)}
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Duplicate</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 text-slate-500 hover:text-red-400"
-                  onClick={() => onDelete(template.id)}
-                >
-                  {template.isDefault ? <RotateCcw className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {template.isDefault ? 'Reset to Default' : 'Delete'}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-      </div>
-
-      {/* Expanded Detail */}
-      {isExpanded && (
-        <div className="px-4 pb-4 pt-0 ml-10">
-          <div className="border border-slate-700/30 rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-800/30 border-b border-slate-700/30">
-                  <th className="text-left py-2 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Exit</th>
-                  <th className="text-right py-2 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Sell %</th>
-                  <th className="text-right py-2 px-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Multiple</th>
-                </tr>
-              </thead>
-              <tbody>
-                {template.exits.map((exit, idx) => (
-                  <tr key={idx} className="border-b border-slate-700/20 last:border-0">
-                    <td className="py-2 px-3 text-slate-400">Exit {idx + 1}</td>
-                    <td className="py-2 px-3 text-right tabular-nums">{exit.sellPercent}%</td>
-                    <td className="py-2 px-3 text-right tabular-nums">{exit.multiple}×</td>
-                  </tr>
-                ))}
-                <tr className="bg-slate-800/20">
-                  <td className="py-2 px-3 text-slate-300 font-medium">Remaining</td>
-                  <td className="py-2 px-3 text-right tabular-nums text-slate-400">{validation.remaining.toFixed(1)}%</td>
-                  <td className="py-2 px-3 text-right text-slate-500">—</td>
-                </tr>
-              </tbody>
-            </table>
+        <div className="border-t border-slate-700/20 my-2 pt-2">
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-3 text-xs compact-btn"
+              onClick={() => onEdit(template)}
+            >
+              <Edit2 className="h-3.5 w-3.5 mr-1.5" />
+              Edit
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-3 text-xs compact-btn"
+              onClick={() => onDuplicate(template)}
+            >
+              <Copy className="h-3.5 w-3.5 mr-1.5" />
+              Copy
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-3 text-xs text-slate-500 hover:text-red-400 compact-btn"
+              onClick={() => onDelete(template.id)}
+            >
+              {template.isDefault ? <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> : <Trash2 className="h-3.5 w-3.5 mr-1.5" />}
+              {template.isDefault ? 'Reset' : 'Delete'}
+            </Button>
           </div>
         </div>
-      )}
+
+        {/* Mobile Expand/Collapse */}
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex items-center gap-1.5 text-xs text-cyan-400 mt-1 py-1 compact-btn"
+        >
+          {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          {isExpanded ? 'Hide exits' : 'View exits'}
+        </button>
+
+        {/* Mobile Expanded Detail */}
+        {isExpanded && (
+          <div className="mt-2">
+            {expandedDetail}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

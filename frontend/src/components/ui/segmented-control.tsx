@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 export interface SegmentedTab {
   id: string;
   label: string;
+  shortLabel?: string;
   icon?: React.ReactNode;
 }
 
@@ -140,7 +141,14 @@ export function SegmentedControl({
                 {tab.icon}
               </span>
             )}
-            <span>{tab.label}</span>
+            {tab.shortLabel ? (
+              <>
+                <span className="hidden md:inline">{tab.label}</span>
+                <span className="md:hidden">{tab.shortLabel}</span>
+              </>
+            ) : (
+              <span>{tab.label}</span>
+            )}
           </button>
         );
       })}

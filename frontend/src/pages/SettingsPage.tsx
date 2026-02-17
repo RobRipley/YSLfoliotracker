@@ -220,7 +220,7 @@ export function SettingsPage() {
     { id: 'thresholds', label: 'Thresholds', icon: <TrendingUp className="h-4 w-4" /> },
     { id: 'providers', label: 'Providers', icon: <Wifi className="h-4 w-4" /> },
     { id: 'tools', label: 'Tools', icon: <FlaskConical className="h-4 w-4" /> },
-    { id: 'strategy-library', label: 'Strategy Library', icon: <Library className="h-4 w-4" /> },
+    { id: 'strategy-library', label: 'Strategy Library', shortLabel: 'Strategies', icon: <Library className="h-4 w-4" /> },
   ];
 
   // Top-level tabs (Settings always visible, Admin only for admins)

@@ -11,7 +11,8 @@ import { usePortfolioStore } from '@/lib/store';
 import { useInternetIdentity } from '@/hooks/useInternetIdentity';
 import { getPriceAggregator, type ExtendedPriceQuote } from '@/lib/priceService';
 import { toast } from 'sonner';
-import { ChevronDown, ChevronRight, Loader2, Settings2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, Settings2, X } from 'lucide-react';
+import { BottomSheet, BottomSheetHeader, BottomSheetContent } from '@/components/ui/bottom-sheet';
 import { formatPrice } from '@/lib/formatting';
 import {
   CATEGORY_LABELS,
@@ -460,19 +461,21 @@ interface AssetRowProps {
   onPlanBasisChange: (config: PlanBasisConfig) => void;
   onPresetChange: (preset: PresetType) => void;
   onUpdateRung: (rungIndex: number, field: 'percent' | 'multiplier', value: number) => void;
+  onMobileTap?: () => void;
 }
 
-const AssetRow = memo(({ 
-  holding, 
-  price, 
-  category, 
-  plan, 
+const AssetRow = memo(({
+  holding,
+  price,
+  category,
+  plan,
   logoUrl,
   planBasisConfig,
   templates,
   onPlanBasisChange,
   onPresetChange,
-  onUpdateRung
+  onUpdateRung,
+  onMobileTap
 }: AssetRowProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -526,8 +529,44 @@ const AssetRow = memo(({
 
   return (
     <div className="border-b border-divide-lighter/10 last:border-0">
-      {/* Data Row - values only, no labels */}
-      <div className="px-4 py-3 hover:bg-secondary/4 transition-colors duration-150">
+      {/* Mobile Compact Row */}
+      <div className="md:hidden">
+        <button
+          onClick={onMobileTap}
+          className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-secondary/4 transition-colors duration-150 compact-btn"
+        >
+          {/* Logo */}
+          {logoUrl ? (
+            <img src={logoUrl} alt={holding.symbol} className="h-7 w-7 rounded-full object-contain flex-shrink-0" />
+          ) : (
+            <div
+              className="flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold text-white flex-shrink-0"
+              style={{ backgroundColor: catColor }}
+            >
+              {holding.symbol.charAt(0).toUpperCase()}
+            </div>
+          )}
+          {/* Symbol */}
+          <span className="font-semibold text-sm">{holding.symbol}</span>
+          {/* Position Value */}
+          <div className="ml-auto text-right">
+            <div className="text-sm font-medium tabular-nums">{formatPrice(positionValue)}</div>
+          </div>
+          {/* Unrealized P/L % */}
+          <div className="text-right w-16">
+            <span className={`text-xs font-medium tabular-nums ${unrealizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
+              {totalCost > 0
+                ? `${unrealizedPnL >= 0 ? '+' : ''}${((unrealizedPnL / totalCost) * 100).toFixed(1)}%`
+                : '—'}
+            </span>
+          </div>
+          {/* Chevron */}
+          <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+        </button>
+      </div>
+
+      {/* Desktop Data Row - values only, no labels */}
+      <div className="hidden md:block px-4 py-3 hover:bg-secondary/4 transition-colors duration-150">
         <div className="flex items-center gap-4">
           {/* Expand Button */}
           <button
@@ -645,10 +684,10 @@ const AssetRow = memo(({
         </div>
       </div>
 
-      {/* Expanded Exit Ladder Table */}
+      {/* Expanded Exit Ladder Table (desktop only — mobile uses bottom sheet) */}
       {isExpanded && (
-        <div 
-          className="px-4 pb-4 overflow-hidden"
+        <div
+          className="hidden md:block px-4 pb-4 overflow-hidden"
           style={{ animation: 'expandRow 180ms ease-out' }}
         >
           <div className="text-xs text-muted-foreground/60 mb-3 pl-1">
@@ -755,6 +794,7 @@ export function ExitStrategy() {
   const [templates, setTemplates] = useState<ExitStrategyTemplate[]>(() => loadTemplates());
   const [isLoading, setIsLoading] = useState(true);
   const [hasFetchedOnce, setHasFetchedOnce] = useState(false);
+  const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
   
   const initializedHoldingsRef = useRef<Set<string>>(new Set());
 
@@ -1219,8 +1259,8 @@ export function ExitStrategy() {
                   <Badge variant="secondary" className="text-[10px] px-2 py-0.5">{holdings.length}</Badge>
                 </div>
                 
-                {/* Column headers row */}
-                <div className="flex items-center gap-4 text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">
+                {/* Column headers row (desktop only) */}
+                <div className="hidden md:flex items-center gap-4 text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">
                   {/* Expand button placeholder */}
                   <div className="w-8 flex-shrink-0" />
                   {/* Asset */}
@@ -1259,6 +1299,7 @@ export function ExitStrategy() {
                       onPlanBasisChange={(config) => handlePlanBasisChange(holding.id, config)}
                       onPresetChange={(preset) => handlePresetChange(holding.id, category, preset)}
                       onUpdateRung={(rungIndex, field, value) => handleUpdateRung(holding.id, rungIndex, field, value)}
+                      onMobileTap={() => setSelectedAsset(holding.id)}
                     />
                   );
                 })}
@@ -1277,11 +1318,242 @@ export function ExitStrategy() {
       {store.holdings.length > 0 && !hasEligibleHoldings && (
         <Card className="p-12 text-center glass-panel border-divide-lighter/30">
           <p className="text-muted-foreground">
-            No holdings with average cost data. 
+            No holdings with average cost data.
             Add an average cost to your holdings in the Portfolio page to create exit strategies.
           </p>
         </Card>
       )}
+
+      {/* Mobile Asset Detail Bottom Sheet */}
+      <BottomSheet
+        open={selectedAsset !== null}
+        onOpenChange={(open) => { if (!open) setSelectedAsset(null); }}
+      >
+        {selectedAsset && (() => {
+          const holding = store.holdings.find(h => h.id === selectedAsset);
+          if (!holding) return null;
+          const price = prices[holding.symbol.toUpperCase()];
+          const plan = exitPlans[holding.id];
+          if (!holding.avgCost || !plan) return null;
+
+          const logoUrl = logos[holding.symbol.toUpperCase()];
+          const planBasisConfig = getPlanBasisConfig(holding.id);
+          const avgCost = holding.avgCost || 0;
+          const currentPrice = price?.priceUsd ?? 0;
+          const planBasis = calculatePlanBasis(planBasisConfig, avgCost, currentPrice);
+          const positionValue = holding.tokensOwned * currentPrice;
+          const totalCost = holding.tokensOwned * avgCost;
+          const unrealizedPnL = positionValue - totalCost;
+          const marketCap = price?.marketCapUsd ?? holding.lastMarketCapUsd ?? 0;
+          const category = marketCap > 0 ? getCategoryForHolding(holding, marketCap) : 'micro-cap' as Category;
+          const catColor = getCategoryColor(category);
+          const isLocked = plan.preset !== 'custom';
+
+          // Build strategy options from templates
+          const strategyOptions = templates.map(t => ({ value: t.id, label: t.name }));
+          strategyOptions.push({ value: 'custom', label: 'Custom' });
+
+          // Calculate expected profit
+          let totalRevenue = 0;
+          plan.rungs.forEach(rung => {
+            const tokens = rung.tokensToSell ?? 0;
+            const targetPrice = rung.targetPrice ?? 0;
+            const multiplier = rung.multiplier ?? 0;
+            if (multiplier > 0 && !isNaN(tokens) && !isNaN(targetPrice)) {
+              totalRevenue += tokens * targetPrice;
+            }
+          });
+          const expectedProfit = isNaN(totalRevenue) || isNaN(totalCost) ? 0 : totalRevenue - totalCost;
+
+          return (
+            <>
+              <BottomSheetHeader onClose={() => setSelectedAsset(null)}>
+                {logoUrl ? (
+                  <img src={logoUrl} alt={holding.symbol} className="h-8 w-8 rounded-full object-contain flex-shrink-0" />
+                ) : (
+                  <div
+                    className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold text-white flex-shrink-0"
+                    style={{ backgroundColor: catColor }}
+                  >
+                    {holding.symbol.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <div className="font-semibold text-lg leading-tight">{holding.symbol}</div>
+                  <div className="text-xs text-muted-foreground truncate">{holding.name || holding.symbol}</div>
+                </div>
+              </BottomSheetHeader>
+
+              <BottomSheetContent>
+                {/* Position Details */}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm mb-4">
+                  <div>
+                    <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-0.5">Tokens</div>
+                    <div className="tabular-nums">{formatTokensSmart(holding.tokensOwned)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-0.5">Current Price</div>
+                    <div className="tabular-nums">{formatPrice(currentPrice)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-0.5">Position Value</div>
+                    <div className="font-medium tabular-nums">{formatPrice(positionValue)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-0.5">Total Cost</div>
+                    <div className="tabular-nums text-foreground/70">{formatPrice(totalCost)}</div>
+                  </div>
+                  <div className="col-span-2">
+                    <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-0.5">Unrealized P/L</div>
+                    <div className={`font-medium tabular-nums ${unrealizedPnL >= 0 ? 'text-success' : 'text-danger'}`}>
+                      {unrealizedPnL >= 0 ? '+' : ''}{formatPrice(unrealizedPnL)}
+                      <span className="text-xs ml-1.5">
+                        {totalCost > 0 ? `(${unrealizedPnL >= 0 ? '+' : ''}${((unrealizedPnL / totalCost) * 100).toFixed(1)}%)` : ''}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-divide-lighter/15 my-4" />
+
+                {/* Strategy Controls */}
+                <div className="space-y-3 mb-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">Plan Basis</span>
+                    <PlanBasisPopover
+                      symbol={holding.symbol}
+                      holdingId={holding.id}
+                      config={planBasisConfig}
+                      avgCost={avgCost}
+                      currentPrice={currentPrice}
+                      onSave={(config) => handlePlanBasisChange(holding.id, config)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">Strategy</span>
+                    <div className="w-48">
+                      <Select
+                        value={plan.preset}
+                        onValueChange={(value) => handlePresetChange(holding.id, category, value as PresetType)}
+                      >
+                        <SelectTrigger className="w-full h-8 text-xs bg-secondary/10 border-divide-lighter/20">
+                          <span className="text-xs text-foreground/90 truncate">
+                            {strategyOptions.find(opt => opt.value === plan.preset)?.label || 'Select...'}
+                          </span>
+                        </SelectTrigger>
+                        <SelectContent className="z-[70]">
+                          {strategyOptions.map(opt => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">Expected Profit</span>
+                    <div className="text-right">
+                      <span className={`font-semibold tabular-nums ${expectedProfit >= 0 ? 'text-success' : 'text-danger'}`}>
+                        {expectedProfit >= 0 ? '+' : ''}{formatPrice(expectedProfit)}
+                      </span>
+                      <span className={`text-[10px] tabular-nums ml-1.5 ${expectedProfit >= 0 ? 'text-success/70' : 'text-danger/70'}`}>
+                        {totalCost > 0 ? `(${expectedProfit >= 0 ? '+' : ''}${((expectedProfit / totalCost) * 100).toFixed(1)}%)` : ''}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-divide-lighter/15 my-4" />
+
+                {/* Exit Ladder */}
+                <div>
+                  <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-2">Exit Ladder</div>
+                  <div className="text-xs text-muted-foreground/60 mb-3">
+                    Each rung is a price target where you'll sell a portion of your position.
+                  </div>
+                  <div className="overflow-x-auto -mx-4 px-4">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-divide-lighter/10">
+                          <th className="text-left py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Exit</th>
+                          <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Sell %</th>
+                          <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Multiple</th>
+                          <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Tokens</th>
+                          <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Target</th>
+                          <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Proceeds</th>
+                          <th className="text-right py-2.5 px-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Profit</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {plan.rungs.map((rung, idx) => {
+                          const proceeds = (rung.tokensToSell ?? 0) * (rung.targetPrice ?? 0);
+                          const profitFromSale = proceeds - ((rung.tokensToSell ?? 0) * avgCost);
+                          const isRemaining = idx === plan.rungs.length - 1;
+
+                          return (
+                            <tr key={idx} className="border-b border-divide-lighter/5 last:border-0">
+                              <td className="py-3 px-3 text-sm text-foreground/80">
+                                {isRemaining ? 'Rem.' : `Exit ${idx + 1}`}
+                              </td>
+                              <td className="py-3 px-3 text-right">
+                                {isRemaining ? (
+                                  <div className="text-sm text-foreground/60 tabular-nums">{(rung.percent ?? 0).toFixed(1)}%</div>
+                                ) : (
+                                  <Input
+                                    type="number"
+                                    value={rung.percent ?? 0}
+                                    onChange={(e) => handleUpdateRung(holding.id, idx, 'percent', parseFloat(e.target.value) || 0)}
+                                    className="w-16 h-7 text-right text-sm ml-auto tabular-nums compact-btn"
+                                    min="0"
+                                    max="100"
+                                    disabled={isLocked}
+                                  />
+                                )}
+                              </td>
+                              <td className="py-3 px-3 text-right">
+                                {isRemaining ? (
+                                  <div className="text-sm text-foreground/60">—</div>
+                                ) : (
+                                  <Input
+                                    type="number"
+                                    value={rung.multiplier ?? 0}
+                                    onChange={(e) => handleUpdateRung(holding.id, idx, 'multiplier', parseFloat(e.target.value) || 0)}
+                                    className="w-16 h-7 text-right text-sm ml-auto tabular-nums compact-btn"
+                                    min="0"
+                                    step="0.1"
+                                    disabled={isLocked}
+                                  />
+                                )}
+                              </td>
+                              <td className="py-3 px-3 text-right text-sm text-foreground/70 tabular-nums">
+                                {formatTokensSmart(rung.tokensToSell ?? 0)}
+                              </td>
+                              <td className="py-3 px-3 text-right text-sm font-medium text-foreground/90 tabular-nums">
+                                {(rung.multiplier ?? 0) === 0 ? '—' : formatPrice(rung.targetPrice ?? 0)}
+                              </td>
+                              <td className="py-3 px-3 text-right text-sm text-foreground/70 tabular-nums">
+                                {(rung.multiplier ?? 0) === 0 ? '—' : formatPrice(proceeds)}
+                              </td>
+                              <td className="py-3 px-3 text-right">
+                                {(rung.multiplier ?? 0) === 0 ? (
+                                  <span className="text-sm text-foreground/60">—</span>
+                                ) : (
+                                  <span className={`text-sm font-medium tabular-nums ${profitFromSale >= 0 ? 'text-success' : 'text-danger'}`}>
+                                    {profitFromSale >= 0 ? '+' : ''}{formatPrice(profitFromSale)}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </BottomSheetContent>
+            </>
+          );
+        })()}
+      </BottomSheet>
     </div>
   );
 }
