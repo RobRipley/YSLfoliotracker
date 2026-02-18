@@ -1,3 +1,4 @@
+# ⚠️ DO NOT rename — deployed worker URL depends on this name
 name = "ysl-price-cache"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"

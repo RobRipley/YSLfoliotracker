@@ -2,6 +2,7 @@ import { useState, useMemo, memo, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { type PortfolioSnapshot } from '@/lib/dataModel';
+import { getActiveBrand } from '@/lib/branding';
 
 type TimeRange = '1D' | '1W' | '1M' | '3M' | 'YTD';
 
@@ -30,6 +31,7 @@ export const PerformanceLineChart = memo(function PerformanceLineChart({
   snapshots 
 }: PerformanceLineChartProps) {
   const [timeRange, setTimeRange] = useState<TimeRange>('1M');
+  const brand = getActiveBrand();
 
   const chartData = useMemo(() => {
     const now = Date.now();
@@ -103,8 +105,8 @@ export const PerformanceLineChart = memo(function PerformanceLineChart({
             <LineChart data={chartData}>
               <defs>
                 <linearGradient id="lineGradient" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#06b6d4" />
-                  <stop offset="100%" stopColor="#7c3aed" />
+                  <stop offset="0%" stopColor={brand.gradientFrom} />
+                  <stop offset="100%" stopColor={brand.gradientTo} />
                 </linearGradient>
                 <filter id="glow">
                   <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
@@ -141,7 +143,7 @@ export const PerformanceLineChart = memo(function PerformanceLineChart({
                 stroke="url(#lineGradient)"
                 strokeWidth={2.5}
                 dot={false}
-                activeDot={{ r: 5, strokeWidth: 0, fill: '#06b6d4' }}
+                activeDot={{ r: 5, strokeWidth: 0, fill: brand.gradientFrom }}
                 animationDuration={300}
                 animationEasing="ease-out"
                 isAnimationActive={true}

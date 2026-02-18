@@ -1,4 +1,4 @@
-# Yieldschool Portfolio Tracker
+# Onchain Portfolio Tracker
 
 ## Overview
 A cryptocurrency portfolio tracking application that allows users to manually manage their crypto holdings, view real-time prices, analyze portfolio performance, and discover new investment opportunities through market data exploration. The application includes comprehensive data persistence and import/export functionality with optimized performance for smooth real-time updates. The application features an advanced theme system with multiple predefined themes, each maintaining atmospheric layered gradients, balanced contrast, and translucent glass-blur panels for a premium, airy aesthetic with absolutely no solid color blocks or gradient fills anywhere in the interface.
@@ -32,7 +32,7 @@ A cryptocurrency portfolio tracking application that allows users to manually ma
 - Create a shared **Layout/AppShell** component that wraps all routes: Landing, Portfolio, Market, Admin, Test, and Auth
 - **Fix**: Implement authentication fixes globally within the Layout/AppShell component to ensure consistent behavior across all routes
 - Implement consistent navbar layout across all pages:
-  - **Left section**: Minimal wordmark "Yieldschool" with light gradient border underline + text "Portfolio Tracker" (no gradient block background)
+  - **Left section**: Minimal brand wordmark with light gradient border underline + text "Portfolio Tracker" (no gradient block background)
   - **Center section**: Route tabs for navigation between pages with subdued hover glow
   - **Right section**: Pill-shaped authentication button with transparent interior, cyan→violet gradient outline, minimal padding, and soft hover/focus glow states (no solid fills)
     - Shows "Sign In" when user is not authenticated
@@ -40,7 +40,7 @@ A cryptocurrency portfolio tracking application that allows users to manually ma
     - Displays loading state during authentication process
     - **Fix**: Uses identical authentication flow as landing page "Sign In to Portfolio" button
     - **Fix**: Maintains identical pill-style gradient outline design, hover glow effects, and proper state transitions
-- Update browser `<title>`, OpenGraph title, and navbar brand text to "Yieldschool Portfolio Tracker"
+- Update browser `<title>`, OpenGraph title, and navbar brand text to "Onchain Portfolio Tracker"
 - Ensure route switching preserves consistent navbar, background, borders, and button styling across all pages
 - Maintain existing business logic and data layer functionality without changes
 - Navbar height: 64px with container padding-x: 24px for consistent spacing
@@ -99,7 +99,7 @@ A cryptocurrency portfolio tracking application that allows users to manually ma
 ### Landing Page Redesign
 - Redesign Landing page with elegant, professional centered layout:
   - **Enhanced Background**: Apply subtle layered graphite-to-blue-slate vertical gradient background with peripheral vignette from selected theme with atmospheric depth and radial gradient lighting around the title (no solid blocks)
-  - Display centered glowing app title "Yieldschool Portfolio Tracker" as main header using Space Grotesk weight 600 with refined typography and subtle luminous effect
+  - Display centered glowing app title "Onchain Portfolio Tracker" as main header using Space Grotesk weight 600 with refined typography and subtle luminous effect
   - Add small tagline below title in muted text gray: "A calm way to track crypto performance."
   - **Refined Action Button**: Include single centered pill-shaped "Sign In to Portfolio" button styled as elegant gradient-outline pill with transparent interior, theme-appropriate cyan→violet gradient border, minimal padding, and refined glow feedback on hover with 150ms ease-out transitions (no solid fills)
   - Apply theme tokens to all Landing page elements with max-width container (1440px) center-aligned

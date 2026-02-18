@@ -1,5 +1,5 @@
 {
-  "name": "ysl-price-cache",
+  "name": "onchain-folio-price-cache",
   "version": "1.0.0",
   "description": "Cloudflare Worker for caching cryptocurrency prices and registry data",
   "main": "src/index.ts",

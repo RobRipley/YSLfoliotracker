@@ -7,6 +7,7 @@ import { NamePromptModal } from './NamePromptModal';
 import { setSyncProfile, updateProfileAndSave, getSyncProfile } from '@/lib/canisterSync';
 import { getStore } from '@/lib/dataModel';
 import { toast } from 'sonner';
+import { getActiveBrand, type BrandConfig } from '@/lib/branding';
 
 type Tab = 'landing' | 'portfolio' | 'exit-strategy' | 'market' | 'settings';
 
@@ -43,6 +44,14 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
   const { actor, isFetching: actorFetching, error: actorError } = useActor();
   const queryClient = useQueryClient();
   const isAuthenticated = identity !== null && principal !== null && principal !== '2vxsx-fae';
+
+  // Branding state (reactive to admin toggle)
+  const [brand, setBrand] = useState<BrandConfig>(getActiveBrand);
+  useEffect(() => {
+    const handler = (e: Event) => setBrand((e as CustomEvent).detail as BrandConfig);
+    window.addEventListener('brandingChanged', handler);
+    return () => window.removeEventListener('brandingChanged', handler);
+  }, []);
 
   // Profile state
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -297,15 +306,14 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
             {/* Left: Minimal Brand */}
             <div className="flex items-center space-x-2 sm:space-x-2.5">
               <img
-                src="/yieldschool-logo.jpeg"
-                alt="Yieldschool"
+                src={brand.logoSrc}
+                alt={brand.logoAlt}
                 className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg object-cover"
               />
               <div className="flex items-baseline gap-1 sm:gap-1.5">
                 <h1 className="text-sm sm:text-base font-bold font-heading tracking-tight gradient-underline">
-                  Yieldschool
+                  {brand.navTitle}
                 </h1>
-                <span className="hidden sm:inline text-sm text-foreground/60 font-medium">Portfolio Tracker</span>
               </div>
             </div>
 
@@ -385,13 +393,13 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
                     {isLoggingIn ? (
                       <>
                         <Loader2 className="h-3 w-3 animate-spin" />
-                        <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-semibold">
+                        <span className="text-gradient-brand font-semibold">
                           <span className="hidden sm:inline">Disconnecting...</span>
                           <span className="sm:hidden">...</span>
                         </span>
                       </>
                     ) : (
-                      <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-semibold">
+                      <span className="text-gradient-brand font-semibold">
                         Sign Out
                       </span>
                     )}
@@ -406,13 +414,13 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
                   {isLoggingIn ? (
                     <>
                       <Loader2 className="h-3 w-3 animate-spin" />
-                      <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-semibold">
+                      <span className="text-gradient-brand font-semibold">
                         <span className="hidden sm:inline">Connecting...</span>
                         <span className="sm:hidden">...</span>
                       </span>
                     </>
                   ) : (
-                    <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-semibold">
+                    <span className="text-gradient-brand font-semibold">
                       Sign In
                     </span>
                   )}

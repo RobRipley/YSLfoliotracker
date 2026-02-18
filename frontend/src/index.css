@@ -39,6 +39,12 @@
     --ring: 189 94% 43%;
     
     --radius: 0.5rem;
+
+    /* Brand gradient (neutral defaults; overridden at runtime by branding.ts) */
+    --brand-gradient-from: #34d399;
+    --brand-gradient-to: #d176e8;
+    --brand-glow-from: rgba(52, 211, 153, 0.12);
+    --brand-glow-to: rgba(209, 118, 232, 0.08);
     
     /* Enhanced divider tones (10-15% opacity) */
     --divide-lighter: 210 20% 88%;
@@ -137,15 +143,15 @@
   /* Gradient outline button with refined glow feedback */
   .gradient-outline-btn {
     @apply relative px-4 py-2 rounded-full bg-transparent border border-transparent;
-    background-image: linear-gradient(hsl(var(--background)), hsl(var(--background))), 
-                      linear-gradient(135deg, #06b6d4, #7c3aed);
+    background-image: linear-gradient(hsl(var(--background)), hsl(var(--background))),
+                      linear-gradient(135deg, var(--brand-gradient-from), var(--brand-gradient-to));
     background-origin: border-box;
     background-clip: padding-box, border-box;
     transition: all 150ms ease-out;
   }
   
   .gradient-outline-btn:hover {
-    box-shadow: 0 0 16px rgba(6, 182, 212, 0.12), 0 0 24px rgba(124, 58, 237, 0.08);
+    box-shadow: 0 0 16px var(--brand-glow-from), 0 0 24px var(--brand-glow-to);
     transform: translateY(-1px);
   }
   
@@ -177,7 +183,21 @@
 @layer utilities {
   /* Text gradient utilities */
   .text-gradient-cyan-violet {
-    @apply bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent;
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(to right, var(--brand-gradient-from), var(--brand-gradient-to));
+  }
+
+  /* Brand-aware gradient text */
+  .text-gradient-brand {
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    background-image: linear-gradient(to right, var(--brand-gradient-from), var(--brand-gradient-to));
+  }
+
+  /* Brand-aware gradient background */
+  .bg-gradient-brand {
+    background-image: linear-gradient(to right, var(--brand-gradient-from), var(--brand-gradient-to));
   }
   
   /* Smooth transitions */

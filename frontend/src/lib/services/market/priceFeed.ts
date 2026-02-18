@@ -1,7 +1,7 @@
 /**
  * Price Feed Service
  * 
- * Client module for fetching price and registry data from the YSL Price Cache Worker.
+ * Client module for fetching price and registry data from the Onchain Folio Price Cache Worker.
  * Provides cached access to cryptocurrency prices, logos, and identifiers.
  */
 

@@ -299,7 +299,7 @@ export function AssetTransactionModal({
                 type="button"
                 onClick={handleUseCurrentPrice}
                 disabled={isFetchingPrice || !symbol}
-                className="w-full bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] text-white font-semibold hover:shadow-[0_0_16px_rgba(6,182,212,0.4)] transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed border-0"
+                className="w-full bg-gradient-brand text-white font-semibold hover:shadow-[0_0_16px_var(--brand-glow-from)] transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed border-0"
               >
                 <DollarSign className="h-4 w-4 mr-2" />
                 {isFetchingPrice ? 'Fetching...' : 'Use Current Market Price'}
@@ -368,7 +368,7 @@ export function AssetTransactionModal({
           {/* Primary action button with gradient styling */}
           <Button 
             onClick={handleSubmit}
-            className="flex-1 bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] text-white font-semibold hover:shadow-[0_0_16px_rgba(6,182,212,0.4)] transition-all duration-150 border-0"
+            className="flex-1 bg-gradient-brand text-white font-semibold hover:shadow-[0_0_16px_var(--brand-glow-from)] transition-all duration-150 border-0"
           >
             {getActionLabel()}
           </Button>

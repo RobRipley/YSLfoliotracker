@@ -1,8 +1,8 @@
-# YSL Portfolio Tracker - Condensed Handoff
+# Onchain Portfolio Tracker - Handoff
 
 ## Project Overview
 
-**Name:** Yieldschool Portfolio Tracker (YSLfolioTracker)  
+**Name:** Onchain Portfolio Tracker (OnchainFolioTracker, formerly YSLfolioTracker)
 **Purpose:** Crypto portfolio tracking app for manual management with real-time prices, category-based allocation analysis, and exit strategy planning.  
 **Tech Stack:** ICP (Motoko backend), React/TypeScript/Vite frontend, TailwindCSS, Cloudflare Worker price cache  
 **Live URL:** https://portfolio.rumilabs.fyi/ (custom domain) or https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io/  
@@ -69,7 +69,7 @@ dfx deploy frontend --network ic
 ├── backend/
 │   └── main.mo                        # Motoko canister (not actively used - frontend uses localStorage)
 ├── workers/
-│   └── ysl-price-cache/               # Cloudflare Worker source
+│   └── price-cache/                   # Cloudflare Worker source (deployed as ysl-price-cache)
 ├── spec.md                            # Detailed feature specification (~700 lines)
 └── docs/HANDOFF.md                    # This file
 ```
@@ -275,7 +275,7 @@ npx wrangler deploy
 | Item | Effort | Notes |
 |------|--------|-------|
 | **Export to CSV/JSON** | Small | Trivial - serialize holdings from Zustand store, trigger download. Format: `symbol, tokens, avgCost, purchaseDate, notes, category` |
-| **Import from CSV** | Medium | Column mapping, validation, duplicate handling, symbol resolution. Start with YSL Google Sheets template format. |
+| **Import from CSV** | Medium | Column mapping, validation, duplicate handling, symbol resolution. Start with portfolio Google Sheets template format. |
 | **Exchange transaction import** | Large | Coinbase, Kraken, Binance each have different formats. Needs format detection, per-exchange parsers, transaction aggregation, avg cost calculation (FIFO/LIFO/average). Essentially a mini portfolio tracker engine. Consider existing parser libraries. |
 
 ### Notifications System
@@ -289,7 +289,7 @@ npx wrangler deploy
 
 | Item | Effort | Notes |
 |------|--------|-------|
-| **Yieldschool Research Hub** | Exploratory | Integrate research reports from Circle.so (yieldschool.app) into Market tab. |
+| **Research Hub** | Exploratory | Integrate research reports into Market tab. |
 
 **Circle.so API Limitations:** Their API is member/space management focused, not content retrieval. Options:
 1. **Manual JSON file** - `research-reports.json` with asset metadata and Circle links, manually updated. Simple and reliable.
@@ -431,7 +431,7 @@ The price service includes mappings for common symbols:
 |---------|------|
 | Full spec | `/spec.md` (~700 lines) |
 | Price service docs | `/PRICE_SERVICE.md`, `/QUICK_REF.md` |
-| Worker source | `/workers/ysl-price-cache/` |
+| Worker source | `/workers/price-cache/` (deployed as ysl-price-cache) |
 | Example data | `/Example Portfolio.xlsx`, `/*.csv` |
 | Market backup | `/frontend/src/components/Market.tsx.backup` |
 

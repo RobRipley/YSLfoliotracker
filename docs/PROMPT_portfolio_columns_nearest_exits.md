@@ -1,7 +1,7 @@
 # Prompt to Claude: Portfolio page space + Columns menu bug + "Nearest Exits" widget
 
 ## Context
-We're working in the Yieldschool Portfolio Tracker React UI (Portfolio page with category groups like Cash & Stablecoins, Blue Chip, Mid Cap, etc.). We have a table with optional columns controlled by a "Columns" dropdown menu. Right now:
+We're working in the Onchain Portfolio Tracker React UI (Portfolio page with category groups like Cash & Stablecoins, Blue Chip, Mid Cap, etc.). We have a table with optional columns controlled by a "Columns" dropdown menu. Right now:
 - The Actions column is too wide and forces wrapping when many columns are enabled.
 - The action icons are inside circles and laid out horizontally, wasting space.
 - The % change column shows "24h change" text below the percentage, which is redundant and takes space.

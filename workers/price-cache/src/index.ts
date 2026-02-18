@@ -1,7 +1,7 @@
 /**
- * YSL Price Cache Worker
- * 
- * Provides cached price data and token registry for the YSL Portfolio Tracker.
+ * Onchain Folio Price Cache Worker
+ *
+ * Provides cached price data and token registry for the Onchain Portfolio Tracker.
  * 
  * Architecture:
  * - KV: Hot cache for real-time access (single blob with embedded status)
