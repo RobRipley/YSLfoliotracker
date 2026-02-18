@@ -123,6 +123,12 @@ export default {
         return jsonResponse({ status: 'started', message: 'Snapshot write initiated' }, corsHeaders);
       }
 
+      // Image proxy — bypasses CORS for CoinGecko logo downloads
+      // GET /proxy/image?url=<encoded-url>
+      if (path === '/proxy/image') {
+        return await handleImageProxy(url, corsHeaders);
+      }
+
       // Health check with R2 status
       if (path === '/health' || path === '/') {
         return jsonResponse({
@@ -536,6 +542,68 @@ async function handleRegistryRequest(env: Env, corsHeaders: Record<string, strin
       'Cache-Control': 'public, max-age=3600'  // 1 hour browser cache
     }
   });
+}
+
+/**
+ * Handle GET /proxy/image?url=<encoded-url>
+ * Proxies image downloads from CoinGecko to bypass CORS restrictions.
+ * The IC frontend domain can't fetch directly from coin-images.coingecko.com.
+ */
+async function handleImageProxy(
+  requestUrl: URL,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  const imageUrl = requestUrl.searchParams.get('url');
+  if (!imageUrl) {
+    return jsonResponse({ error: 'Missing url parameter' }, corsHeaders, 400);
+  }
+
+  // Only allow CoinGecko image domains
+  let parsed: URL;
+  try {
+    parsed = new URL(imageUrl);
+  } catch {
+    return jsonResponse({ error: 'Invalid URL' }, corsHeaders, 400);
+  }
+
+  const allowedHosts = ['coin-images.coingecko.com', 'assets.coingecko.com'];
+  if (!allowedHosts.includes(parsed.hostname)) {
+    return jsonResponse({ error: 'Domain not allowed' }, corsHeaders, 403);
+  }
+
+  try {
+    const response = await fetch(imageUrl, {
+      headers: { 'User-Agent': 'OnchainFolio-Price-Cache/1.0' }
+    });
+
+    if (!response.ok) {
+      return new Response(`Upstream returned ${response.status}`, {
+        status: response.status,
+        headers: corsHeaders
+      });
+    }
+
+    const contentType = response.headers.get('content-type') || 'image/png';
+    const body = await response.arrayBuffer();
+
+    // Enforce 100KB limit
+    if (body.byteLength > 102_400) {
+      return jsonResponse({ error: 'Image too large (>100KB)' }, corsHeaders, 413);
+    }
+
+    return new Response(body, {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=86400', // 24h
+      }
+    });
+  } catch (error) {
+    return jsonResponse({
+      error: 'Failed to fetch image',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, corsHeaders, 502);
+  }
 }
 
 /**

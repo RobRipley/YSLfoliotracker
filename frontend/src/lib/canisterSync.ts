@@ -398,7 +398,8 @@ export function getLogoCanisterBaseUrl(): string {
     !window.location.hostname.startsWith('127.');
 
   if (isIC) {
-    return 'https://ranje-7qaaa-aaaas-qdwxq-cai.icp0.io';
+    // Must use .raw.icp0.io for uncertified http_request responses
+    return 'https://ranje-7qaaa-aaaas-qdwxq-cai.raw.icp0.io';
   }
   // Local development
   return 'http://127.0.0.1:4943/?canisterId=uxrrr-q7777-77774-qaaaq-cai';
@@ -407,6 +408,7 @@ export function getLogoCanisterBaseUrl(): string {
 /**
  * Get the direct URL for a logo image stored in the canister.
  * This URL is served via the http_request handler.
+ * Uses .raw.icp0.io since we don't have certified variables.
  */
 export function getLogoImageUrl(coingeckoId: string): string {
   const isIC = typeof window !== 'undefined' &&
@@ -414,7 +416,7 @@ export function getLogoImageUrl(coingeckoId: string): string {
     !window.location.hostname.startsWith('127.');
 
   if (isIC) {
-    return `https://ranje-7qaaa-aaaas-qdwxq-cai.icp0.io/logo/${coingeckoId}`;
+    return `https://ranje-7qaaa-aaaas-qdwxq-cai.raw.icp0.io/logo/${coingeckoId}`;
   }
   return `http://uxrrr-q7777-77774-qaaaq-cai.localhost:4943/logo/${coingeckoId}`;
 }
@@ -436,12 +438,22 @@ export async function loadLogoImageIds(actor: BackendActor): Promise<Set<string>
 }
 
 /**
+ * Cloudflare Worker proxy for downloading CoinGecko images.
+ * The IC frontend domain can't fetch directly from coin-images.coingecko.com
+ * due to CORS, so we route through the worker which adds CORS headers.
+ */
+const IMAGE_PROXY_BASE = 'https://ysl-price-cache.robertripleyjunior.workers.dev/proxy/image';
+
+/**
  * Fetch an image from a URL and return it as a Uint8Array + content type.
+ * Routes through the Cloudflare Worker proxy to avoid CORS issues.
  * Used to download logo images before uploading to the canister.
  */
 export async function fetchImageAsBytes(imageUrl: string): Promise<{ data: Uint8Array; contentType: string } | null> {
   try {
-    const response = await fetch(imageUrl);
+    // Route through worker proxy to bypass CORS
+    const proxyUrl = `${IMAGE_PROXY_BASE}?url=${encodeURIComponent(imageUrl)}`;
+    const response = await fetch(proxyUrl);
     if (!response.ok) return null;
 
     const contentType = response.headers.get('content-type') || 'image/png';
