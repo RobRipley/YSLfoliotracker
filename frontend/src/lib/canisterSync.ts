@@ -337,8 +337,10 @@ export async function loadFromCanister(actor: BackendActor): Promise<{ store: St
 // SHARED LOGO REGISTRY (on-chain, shared across all users)
 // ============================================================================
 
+// --- Legacy URL-based functions (kept for backward compat) ---
+
 /**
- * Load the entire shared logo registry from the canister.
+ * Load the entire shared logo URL registry from the canister.
  * Returns a Map of coingeckoId → logoUrl.
  * This is a query call (free, fast).
  */
@@ -349,7 +351,7 @@ export async function loadLogoRegistry(actor: BackendActor): Promise<Map<string,
     for (const [id, url] of entries) {
       map.set(id, url);
     }
-    console.log(`[CanisterSync] Loaded logo registry: ${map.size} entries`);
+    console.log(`[CanisterSync] Loaded logo URL registry: ${map.size} entries`);
     return map;
   } catch (err) {
     console.error('[CanisterSync] Failed to load logo registry:', err);
@@ -358,31 +360,184 @@ export async function loadLogoRegistry(actor: BackendActor): Promise<Map<string,
 }
 
 /**
- * Write a single logo to the shared registry.
- * Update call (costs cycles, but minimal for a single entry).
+ * Write a single logo URL to the shared registry.
  */
 export async function writeLogoToRegistry(actor: BackendActor, coingeckoId: string, logoUrl: string): Promise<void> {
   try {
     await actor.set_logo(coingeckoId, logoUrl);
-    console.log(`[CanisterSync] Wrote logo to registry: ${coingeckoId}`);
+    console.log(`[CanisterSync] Wrote logo URL to registry: ${coingeckoId}`);
   } catch (err) {
-    console.error(`[CanisterSync] Failed to write logo ${coingeckoId}:`, err);
+    console.error(`[CanisterSync] Failed to write logo URL ${coingeckoId}:`, err);
   }
 }
 
 /**
- * Bulk write logos to the shared registry.
- * Only writes entries that don't already exist (canister-side dedup).
- * Returns the number of new entries added.
+ * Bulk write logo URLs to the shared registry.
  */
 export async function writeLogosToRegistry(actor: BackendActor, entries: Array<[string, string]>): Promise<number> {
   if (entries.length === 0) return 0;
   try {
     const count = await actor.set_logos_bulk(entries);
-    console.log(`[CanisterSync] Bulk wrote ${Number(count)} new logos to registry (${entries.length} submitted)`);
+    console.log(`[CanisterSync] Bulk wrote ${Number(count)} new logo URLs to registry (${entries.length} submitted)`);
     return Number(count);
   } catch (err) {
-    console.error('[CanisterSync] Failed to bulk write logos:', err);
+    console.error('[CanisterSync] Failed to bulk write logo URLs:', err);
     return 0;
   }
+}
+
+// --- Image blob functions (actual image bytes stored on-chain) ---
+
+/**
+ * Get the backend canister ID for constructing logo URLs.
+ * Logos are served via http_request at: https://{canisterId}.icp0.io/logo/{coingeckoId}
+ */
+export function getLogoCanisterBaseUrl(): string {
+  const isIC = typeof window !== 'undefined' &&
+    !window.location.hostname.includes('localhost') &&
+    !window.location.hostname.startsWith('127.');
+
+  if (isIC) {
+    return 'https://ranje-7qaaa-aaaas-qdwxq-cai.icp0.io';
+  }
+  // Local development
+  return 'http://127.0.0.1:4943/?canisterId=uxrrr-q7777-77774-qaaaq-cai';
+}
+
+/**
+ * Get the direct URL for a logo image stored in the canister.
+ * This URL is served via the http_request handler.
+ */
+export function getLogoImageUrl(coingeckoId: string): string {
+  const isIC = typeof window !== 'undefined' &&
+    !window.location.hostname.includes('localhost') &&
+    !window.location.hostname.startsWith('127.');
+
+  if (isIC) {
+    return `https://ranje-7qaaa-aaaas-qdwxq-cai.icp0.io/logo/${coingeckoId}`;
+  }
+  return `http://uxrrr-q7777-77774-qaaaq-cai.localhost:4943/logo/${coingeckoId}`;
+}
+
+/**
+ * Load the list of all coingeckoIds that have stored logo images.
+ * Query call (free, fast). Use this to know which logos are already cached.
+ */
+export async function loadLogoImageIds(actor: BackendActor): Promise<Set<string>> {
+  try {
+    const ids = await actor.get_logo_image_ids();
+    const set = new Set(ids);
+    console.log(`[CanisterSync] Logo image registry: ${set.size} images stored`);
+    return set;
+  } catch (err) {
+    console.error('[CanisterSync] Failed to load logo image IDs:', err);
+    return new Set();
+  }
+}
+
+/**
+ * Fetch an image from a URL and return it as a Uint8Array + content type.
+ * Used to download logo images before uploading to the canister.
+ */
+export async function fetchImageAsBytes(imageUrl: string): Promise<{ data: Uint8Array; contentType: string } | null> {
+  try {
+    const response = await fetch(imageUrl);
+    if (!response.ok) return null;
+
+    const contentType = response.headers.get('content-type') || 'image/png';
+    const arrayBuffer = await response.arrayBuffer();
+    const data = new Uint8Array(arrayBuffer);
+
+    // Enforce 100KB limit (same as canister)
+    if (data.length > 102_400) {
+      console.warn(`[CanisterSync] Image too large (${(data.length / 1024).toFixed(1)}KB), skipping`);
+      return null;
+    }
+
+    // Normalize content type
+    let normalizedType = 'image/png';
+    if (contentType.includes('jpeg') || contentType.includes('jpg')) normalizedType = 'image/jpeg';
+    else if (contentType.includes('svg')) normalizedType = 'image/svg+xml';
+    else if (contentType.includes('webp')) normalizedType = 'image/webp';
+    else if (contentType.includes('png')) normalizedType = 'image/png';
+
+    return { data, contentType: normalizedType };
+  } catch (err) {
+    console.warn(`[CanisterSync] Failed to fetch image from ${imageUrl}:`, err);
+    return null;
+  }
+}
+
+/**
+ * Upload a single logo image (actual bytes) to the canister.
+ * Fetches the image from the URL, then stores the bytes on-chain.
+ */
+export async function uploadLogoImage(
+  actor: BackendActor,
+  coingeckoId: string,
+  imageUrl: string
+): Promise<boolean> {
+  try {
+    const result = await fetchImageAsBytes(imageUrl);
+    if (!result) return false;
+
+    await actor.set_logo_image(coingeckoId, result.contentType, result.data);
+    console.log(`[CanisterSync] Uploaded logo image: ${coingeckoId} (${(result.data.length / 1024).toFixed(1)}KB)`);
+    return true;
+  } catch (err) {
+    console.error(`[CanisterSync] Failed to upload logo image ${coingeckoId}:`, err);
+    return false;
+  }
+}
+
+/**
+ * Bulk upload logo images to the canister.
+ * Takes an array of [coingeckoId, imageUrl] pairs.
+ * Fetches each image, then uploads all as a batch.
+ * Returns the number of new images stored.
+ */
+export async function uploadLogoImagesBulk(
+  actor: BackendActor,
+  entries: Array<[string, string]>,
+  batchSize = 10
+): Promise<number> {
+  if (entries.length === 0) return 0;
+
+  let totalAdded = 0;
+
+  // Process in batches to avoid overwhelming the network
+  for (let i = 0; i < entries.length; i += batchSize) {
+    const batch = entries.slice(i, i + batchSize);
+
+    // Fetch all images in parallel
+    const fetchResults = await Promise.allSettled(
+      batch.map(async ([id, url]) => {
+        const result = await fetchImageAsBytes(url);
+        if (!result) return null;
+        return [id, result.contentType, result.data] as [string, string, Uint8Array];
+      })
+    );
+
+    // Filter to successful fetches
+    const validEntries: Array<[string, string, Uint8Array]> = [];
+    for (const result of fetchResults) {
+      if (result.status === 'fulfilled' && result.value) {
+        validEntries.push(result.value);
+      }
+    }
+
+    if (validEntries.length > 0) {
+      try {
+        const count = await actor.set_logo_images_bulk(validEntries);
+        const added = Number(count);
+        totalAdded += added;
+        console.log(`[CanisterSync] Batch ${Math.floor(i / batchSize) + 1}: uploaded ${added} new logo images`);
+      } catch (err) {
+        console.error(`[CanisterSync] Batch upload failed:`, err);
+      }
+    }
+  }
+
+  console.log(`[CanisterSync] Total: uploaded ${totalAdded} new logo images (${entries.length} attempted)`);
+  return totalAdded;
 }

@@ -27,11 +27,19 @@ export interface BackendActor {
   get_portfolio_timestamp: () => Promise<[] | [bigint]>;
   delete_portfolio_blob: () => Promise<{ ok: boolean }>;
 
-  // Shared logo registry methods
+  // Shared logo registry methods (legacy URL-based)
   get_logo_registry: () => Promise<Array<[string, string]>>;
   set_logo: (coingeckoId: string, logoUrl: string) => Promise<void>;
   set_logos_bulk: (entries: Array<[string, string]>) => Promise<bigint>;
   get_logo_registry_size: () => Promise<bigint>;
+
+  // Logo image blob storage (actual image bytes)
+  set_logo_image: (coingeckoId: string, contentType: string, imageData: Uint8Array | number[]) => Promise<void>;
+  set_logo_images_bulk: (entries: Array<[string, string, Uint8Array | number[]]>) => Promise<bigint>;
+  get_logo_image: (coingeckoId: string) => Promise<[] | [[string, Uint8Array]]>;
+  has_logo_image: (coingeckoId: string) => Promise<boolean>;
+  get_logo_image_ids: () => Promise<string[]>;
+  get_logo_image_count: () => Promise<bigint>;
 }
 
 // ============================================================================
@@ -74,11 +82,23 @@ const idlFactory = ({ IDL }: { IDL: any }) => {
     get_portfolio_timestamp: IDL.Func([], [IDL.Opt(IDL.Int)], ['query']),
     delete_portfolio_blob: IDL.Func([], [DeleteResult], []),
 
-    // Shared logo registry
+    // Shared logo registry (legacy URL-based)
     get_logo_registry: IDL.Func([], [IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text))], ['query']),
     set_logo: IDL.Func([IDL.Text, IDL.Text], [], []),
     set_logos_bulk: IDL.Func([IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text))], [IDL.Nat], []),
     get_logo_registry_size: IDL.Func([], [IDL.Nat], ['query']),
+
+    // Logo image blob storage (actual image bytes)
+    set_logo_image: IDL.Func([IDL.Text, IDL.Text, IDL.Vec(IDL.Nat8)], [], []),
+    set_logo_images_bulk: IDL.Func(
+      [IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text, IDL.Vec(IDL.Nat8)))],
+      [IDL.Nat],
+      []
+    ),
+    get_logo_image: IDL.Func([IDL.Text], [IDL.Opt(IDL.Tuple(IDL.Text, IDL.Vec(IDL.Nat8)))], ['query']),
+    has_logo_image: IDL.Func([IDL.Text], [IDL.Bool], ['query']),
+    get_logo_image_ids: IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
+    get_logo_image_count: IDL.Func([], [IDL.Nat], ['query']),
   });
 };
 

@@ -7,7 +7,10 @@ import Int "mo:base/Int";
 import Principal "mo:base/Principal";
 import Debug "mo:base/Debug";
 import Nat "mo:base/Nat";
+// Nat8 available via Blob.toArray if needed
 import Iter "mo:base/Iter";
+import Blob "mo:base/Blob";
+import Option "mo:base/Option";
 import AccessControl "authorization/access-control";
 
 persistent actor CryptoPortfolioTracker {
@@ -77,7 +80,9 @@ persistent actor CryptoPortfolioTracker {
   // SHARED LOGO REGISTRY FUNCTIONS
   // ============================================================================
 
-  /// Get the entire shared logo registry as an array of (coingeckoId, logoUrl) pairs.
+  // --- Legacy URL-based functions (kept for backward compat) ---
+
+  /// Get the entire shared logo URL registry as an array of (coingeckoId, logoUrl) pairs.
   /// Query call (free, fast) - any authenticated user can read.
   public query ({ caller }) func get_logo_registry() : async [(Text, Text)] {
     if (Principal.isAnonymous(caller)) {
@@ -86,8 +91,7 @@ persistent actor CryptoPortfolioTracker {
     Iter.toArray(textMap.entries(logoRegistry));
   };
 
-  /// Add or update a single logo in the shared registry.
-  /// Update call - any authenticated user can write.
+  /// Add or update a single logo URL in the shared registry.
   public shared ({ caller }) func set_logo(coingeckoId : Text, logoUrl : Text) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Debug.trap("Unauthorized: Only users can update the logo registry");
@@ -95,9 +99,7 @@ persistent actor CryptoPortfolioTracker {
     logoRegistry := textMap.put(logoRegistry, coingeckoId, logoUrl);
   };
 
-  /// Bulk add logos to the shared registry.
-  /// Only adds entries that don't already exist (won't overwrite).
-  /// Returns the number of NEW entries added.
+  /// Bulk add logo URLs to the shared registry.
   public shared ({ caller }) func set_logos_bulk(entries : [(Text, Text)]) : async Nat {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Debug.trap("Unauthorized: Only users can update the logo registry");
@@ -115,12 +117,205 @@ persistent actor CryptoPortfolioTracker {
     count;
   };
 
-  /// Get the number of entries in the logo registry (for monitoring).
+  // --- Image blob registry (actual image bytes) ---
+
+  /// Store a single logo image (actual PNG/JPEG bytes) in the shared registry.
+  /// Any authenticated user can upload. Will overwrite existing entry.
+  public shared ({ caller }) func set_logo_image(coingeckoId : Text, contentType : Text, imageData : Blob) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Debug.trap("Unauthorized: Only users can upload logo images");
+    };
+    // Validate content type
+    if (contentType != "image/png" and contentType != "image/jpeg" and contentType != "image/svg+xml" and contentType != "image/webp") {
+      Debug.trap("Invalid content type. Must be image/png, image/jpeg, image/svg+xml, or image/webp");
+    };
+    // Enforce max size: 100KB per image
+    if (Blob.toArray(imageData).size() > 102_400) {
+      Debug.trap("Image too large. Maximum 100KB per logo");
+    };
+    logoImageData := textMap.put(logoImageData, coingeckoId, imageData);
+    logoContentTypes := textMap.put(logoContentTypes, coingeckoId, contentType);
+  };
+
+  /// Bulk store logo images. Only adds entries that don't already exist.
+  /// Returns the number of NEW entries added.
+  public shared ({ caller }) func set_logo_images_bulk(entries : [(Text, Text, Blob)]) : async Nat {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Debug.trap("Unauthorized: Only users can upload logo images");
+    };
+    var count : Nat = 0;
+    for ((coingeckoId, contentType, imageData) in entries.vals()) {
+      switch (textMap.get(logoImageData, coingeckoId)) {
+        case (?_existing) {}; // Skip — already have this logo
+        case null {
+          // Only store if valid size and type
+          if (Blob.toArray(imageData).size() <= 102_400) {
+            logoImageData := textMap.put(logoImageData, coingeckoId, imageData);
+            logoContentTypes := textMap.put(logoContentTypes, coingeckoId, contentType);
+            count += 1;
+          };
+        };
+      };
+    };
+    count;
+  };
+
+  /// Get a single logo image by coingeckoId.
+  /// Returns null if not found. Query call (free, fast).
+  public query ({ caller }) func get_logo_image(coingeckoId : Text) : async ?(Text, Blob) {
+    if (Principal.isAnonymous(caller)) {
+      Debug.trap("Anonymous callers cannot access logo images");
+    };
+    switch (textMap.get(logoImageData, coingeckoId)) {
+      case (?data) {
+        let ct = Option.get(textMap.get(logoContentTypes, coingeckoId), "image/png");
+        ?(ct, data);
+      };
+      case null { null };
+    };
+  };
+
+  /// Check if a logo image exists for a given coingeckoId.
+  /// Query call (free, fast). Returns true/false.
+  public query ({ caller }) func has_logo_image(coingeckoId : Text) : async Bool {
+    if (Principal.isAnonymous(caller)) {
+      Debug.trap("Anonymous callers cannot access logo images");
+    };
+    Option.isSome(textMap.get(logoImageData, coingeckoId));
+  };
+
+  /// Get the list of all coingeckoIds that have stored logo images.
+  /// Query call (free, fast). Returns array of ids.
+  public query ({ caller }) func get_logo_image_ids() : async [Text] {
+    if (Principal.isAnonymous(caller)) {
+      Debug.trap("Anonymous callers cannot access logo images");
+    };
+    let entries = Iter.toArray(textMap.entries(logoImageData));
+    Array.map<(Text, Blob), Text>(entries, func((id, _)) { id });
+  };
+
+  /// Get the number of entries in the logo registries (for monitoring).
   public query ({ caller }) func get_logo_registry_size() : async Nat {
     if (Principal.isAnonymous(caller)) {
       Debug.trap("Anonymous callers cannot access the logo registry");
     };
     textMap.size(logoRegistry);
+  };
+
+  /// Get the number of logo IMAGES stored (actual bytes, not URLs).
+  public query ({ caller }) func get_logo_image_count() : async Nat {
+    if (Principal.isAnonymous(caller)) {
+      Debug.trap("Anonymous callers cannot access the logo registry");
+    };
+    textMap.size(logoImageData);
+  };
+
+  // ============================================================================
+  // HTTP REQUEST HANDLER — serves logo images directly via canister URL
+  // GET /logo/{coingeckoId} → returns the image bytes with correct Content-Type
+  // GET /logo-ids → returns JSON array of all stored coingeckoIds
+  // ============================================================================
+
+  public type HttpRequest = {
+    url : Text;
+    method : Text;
+    body : Blob;
+    headers : [(Text, Text)];
+  };
+
+  public type HttpResponse = {
+    status_code : Nat16;
+    headers : [(Text, Text)];
+    body : Blob;
+  };
+
+  public query func http_request(req : HttpRequest) : async HttpResponse {
+    let path = req.url;
+
+    // GET /logo/{coingeckoId} — serve logo image bytes
+    if (Text.startsWith(path, #text "/logo/")) {
+      let coingeckoId = stripPrefix(path, "/logo/");
+      switch (textMap.get(logoImageData, coingeckoId)) {
+        case (?data) {
+          let contentType = Option.get(textMap.get(logoContentTypes, coingeckoId), "image/png");
+          return {
+            status_code = 200;
+            headers = [
+              ("Content-Type", contentType),
+              ("Cache-Control", "public, max-age=86400"), // 24h cache
+              ("Access-Control-Allow-Origin", "*"),
+            ];
+            body = data;
+          };
+        };
+        case null {
+          return {
+            status_code = 404;
+            headers = [("Content-Type", "text/plain"), ("Access-Control-Allow-Origin", "*")];
+            body = Text.encodeUtf8("Logo not found: " # coingeckoId);
+          };
+        };
+      };
+    };
+
+    // GET /logo-ids — return JSON list of all stored logo IDs
+    if (path == "/logo-ids") {
+      let entries = Iter.toArray(textMap.entries(logoImageData));
+      var json = "[";
+      var first = true;
+      for ((id, _) in entries.vals()) {
+        if (not first) { json #= "," };
+        json #= "\"" # id # "\"";
+        first := false;
+      };
+      json #= "]";
+      return {
+        status_code = 200;
+        headers = [
+          ("Content-Type", "application/json"),
+          ("Cache-Control", "public, max-age=300"), // 5 min cache
+          ("Access-Control-Allow-Origin", "*"),
+        ];
+        body = Text.encodeUtf8(json);
+      };
+    };
+
+    // GET /logo-count — return count of stored logos
+    if (path == "/logo-count") {
+      let count = textMap.size(logoImageData);
+      return {
+        status_code = 200;
+        headers = [
+          ("Content-Type", "application/json"),
+          ("Access-Control-Allow-Origin", "*"),
+        ];
+        body = Text.encodeUtf8("{\"count\":" # Nat.toText(count) # "}");
+      };
+    };
+
+    // Default: 404
+    {
+      status_code = 404;
+      headers = [("Content-Type", "text/plain")];
+      body = Text.encodeUtf8("Not found");
+    };
+  };
+
+  /// Strip a prefix from a text string. Returns the remainder after the prefix.
+  private func stripPrefix(text : Text, prefix : Text) : Text {
+    let prefixSize = Text.size(prefix);
+    let textSize = Text.size(text);
+    if (textSize <= prefixSize) return "";
+    // Use Iter to skip prefix characters
+    var result = "";
+    var i = 0;
+    for (c in Text.toIter(text)) {
+      if (i >= prefixSize) {
+        result #= Text.fromChar(c);
+      };
+      i += 1;
+    };
+    result;
   };
 
   // Auto-register caller as user if not already registered
@@ -219,9 +414,21 @@ persistent actor CryptoPortfolioTracker {
 
   // ============================================================================
   // SHARED LOGO REGISTRY (persists across upgrades, shared across ALL users)
-  // Maps coingeckoId → logoUrl. Any authenticated user can read/write.
+  // Stores actual image bytes (PNG/JPEG) keyed by coingeckoId.
+  // Any authenticated user can read; any user can upload new logos.
   // When any user resolves a logo, it becomes available to all users instantly.
+  //
+  // Two maps:
+  //   logoImageData: coingeckoId → raw image bytes (Blob)
+  //   logoContentTypes: coingeckoId → MIME type ("image/png", "image/jpeg")
+  //
+  // Served via http_request at /logo/{coingeckoId}
   // ============================================================================
+  var logoImageData : OrderedMap.Map<Text, Blob> = textMap.empty<Blob>();
+  var logoContentTypes : OrderedMap.Map<Text, Text> = textMap.empty<Text>();
+
+  // Legacy URL registry — kept for backward compat during migration
+  // Once all logos are stored as blobs, this can be removed.
   var logoRegistry : OrderedMap.Map<Text, Text> = textMap.empty<Text>();
 
   type Holding = {

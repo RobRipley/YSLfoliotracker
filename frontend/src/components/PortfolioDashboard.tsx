@@ -23,7 +23,14 @@ import {
   saveCategoryExpandState,
   getDefaultExpandedCategories
 } from '@/lib/categoryExpandState';
-import { loadLogoRegistry, writeLogosToRegistry } from '@/lib/canisterSync';
+import {
+  loadLogoRegistry,
+  writeLogosToRegistry,
+  loadLogoImageIds,
+  getLogoImageUrl,
+  uploadLogoImage,
+  uploadLogoImagesBulk,
+} from '@/lib/canisterSync';
 
 const aggregator = getPriceAggregator();
 const marketDataService = getMarketDataService();
@@ -66,9 +73,13 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
   const [editNotes, setEditNotes] = useState('');
   const { allocations: allocationData } = usePortfolioSnapshots();
 
-  // Shared on-chain logo registry: coingeckoId → logoUrl
+  // Shared on-chain logo registry: coingeckoId → logoUrl (legacy, for fallback)
   const [logoRegistry, setLogoRegistry] = useState<Map<string, string>>(new Map());
   const logoRegistryLoaded = useRef(false);
+
+  // On-chain logo IMAGE registry: Set of coingeckoIds that have actual image bytes stored
+  const [logoImageIds, setLogoImageIds] = useState<Set<string>>(new Set());
+  const logoImageIdsLoaded = useRef(false);
 
   // Convert allocations array to Record<Category, number> for AllocationDonutChart
   const allocations = useMemo(() => {
@@ -119,29 +130,35 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     }
   }, [symbols]);
 
-  // Load shared logo registry from canister (once per session)
+  // Load shared logo registries from canister (once per session)
   useEffect(() => {
     if (!actor || logoRegistryLoaded.current) return;
     logoRegistryLoaded.current = true;
 
-    loadLogoRegistry(actor).then(registry => {
+    // Load both URL registry (legacy) and image ID list in parallel
+    Promise.all([
+      loadLogoRegistry(actor),
+      loadLogoImageIds(actor),
+    ]).then(([registry, imageIds]) => {
       setLogoRegistry(registry);
-      console.log(`[PortfolioDashboard] Logo registry loaded: ${registry.size} entries`);
+      setLogoImageIds(imageIds);
+      logoImageIdsLoaded.current = true;
+      console.log(`[PortfolioDashboard] Logo registries loaded: ${registry.size} URLs, ${imageIds.size} images`);
     });
   }, [actor]);
 
-  // Pre-seed registry if it's small (one-time per browser)
-  // Fetches from Cloudflare Worker registry (which has ~500 coins with logos from CoinGecko)
+  // Pre-seed logo IMAGES if canister has few stored (one-time per browser)
+  // Fetches logo URLs from Cloudflare Worker registry, downloads images, uploads bytes to canister
   useEffect(() => {
-    if (!actor || logoRegistry.size > 100) return;
+    if (!actor || !logoImageIdsLoaded.current || logoImageIds.size > 100) return;
 
-    const SEED_KEY = 'ysl-logo-registry-seeded';
+    const SEED_KEY = 'ysl-logo-images-seeded-v1';
     if (localStorage.getItem(SEED_KEY)) return;
 
-    console.log('[PortfolioDashboard] Registry is small, attempting pre-seed from worker...');
+    console.log(`[PortfolioDashboard] Image registry small (${logoImageIds.size}), attempting pre-seed...`);
     (async () => {
       try {
-        // Use the Cloudflare Worker registry (avoids CoinGecko CORS issues from IC domain)
+        // Fetch logo URLs from Cloudflare Worker registry
         const response = await fetch(
           'https://ysl-price-cache.robertripleyjunior.workers.dev/registry/latest.json'
         );
@@ -157,64 +174,78 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
         if (registry?.byId) {
           for (const [id, entry] of Object.entries(registry.byId)) {
             const logoUrl = (entry as any)?.logoUrl;
-            if (id && logoUrl) {
+            if (id && logoUrl && !logoImageIds.has(id)) {
               entries.push([id, logoUrl]);
             }
           }
         }
 
-        console.log(`[PortfolioDashboard] Worker registry has ${entries.length} logos to seed`);
+        console.log(`[PortfolioDashboard] ${entries.length} logos to download and upload as images`);
 
         if (entries.length > 0) {
-          const added = await writeLogosToRegistry(actor, entries);
-          console.log(`[PortfolioDashboard] Pre-seeded ${added} logos to canister registry`);
+          // Also seed the URL registry for backward compat
+          await writeLogosToRegistry(actor, entries);
+
+          // Download images and upload bytes to canister (in batches of 10)
+          const added = await uploadLogoImagesBulk(actor, entries, 10);
+          console.log(`[PortfolioDashboard] Pre-seeded ${added} logo images to canister`);
           localStorage.setItem(SEED_KEY, Date.now().toString());
 
-          // Reload registry with new entries
-          const updated = await loadLogoRegistry(actor);
-          setLogoRegistry(updated);
+          // Reload image IDs
+          const updatedIds = await loadLogoImageIds(actor);
+          setLogoImageIds(updatedIds);
+
+          // Also update URL registry
+          const updatedRegistry = await loadLogoRegistry(actor);
+          setLogoRegistry(updatedRegistry);
         }
       } catch (err) {
-        console.warn('[PortfolioDashboard] Pre-seed failed:', err);
+        console.warn('[PortfolioDashboard] Image pre-seed failed:', err);
       }
     })();
-  }, [actor, logoRegistry.size]);
+  }, [actor, logoImageIds.size]);
 
-  // Fetch logos: check on-chain registry first, then CoinGecko for misses, write back new logos
+  // Fetch logos: canister image → CoinGecko fallback → upload to canister
   const fetchLogos = useCallback(async () => {
     if (!symbols.length) return;
     try {
       const allLogos: Record<string, string> = {};
-      const newRegistryEntries: Array<[string, string]> = [];
-
-      // Step 1: Build symbol->coingeckoId map and resolve from registry
-      const symbolsMissingFromRegistry: string[] = [];
+      const symbolsMissingImage: string[] = [];
       const symbolToIdMap: Record<string, string> = {};
 
+      // Step 1: For holdings with coingeckoId that have stored images, use canister URL
       for (const holding of store.holdings) {
         const symbol = holding.symbol.toUpperCase();
         if (holding.coingeckoId) {
           symbolToIdMap[symbol] = holding.coingeckoId;
-          const registryLogo = logoRegistry.get(holding.coingeckoId);
-          if (registryLogo) {
-            allLogos[symbol] = registryLogo;
+          if (logoImageIds.has(holding.coingeckoId)) {
+            // Image is stored on-chain — use canister HTTP URL directly
+            allLogos[symbol] = getLogoImageUrl(holding.coingeckoId);
           } else {
-            symbolsMissingFromRegistry.push(symbol);
+            symbolsMissingImage.push(symbol);
           }
         } else {
-          symbolsMissingFromRegistry.push(symbol);
+          symbolsMissingImage.push(symbol);
         }
       }
 
-      console.log(`[PortfolioDashboard] Registry hits: ${Object.keys(allLogos).length}, misses: ${symbolsMissingFromRegistry.length}`);
+      console.log(`[PortfolioDashboard] Image hits: ${Object.keys(allLogos).length}, misses: ${symbolsMissingImage.length}`);
 
-      // Step 2: Fetch misses with coingeckoIds from CoinGecko
+      // Step 2: For misses with coingeckoIds, check URL registry then CoinGecko
       const idsToFetch: Record<string, string> = {};
-      for (const sym of symbolsMissingFromRegistry) {
+      for (const sym of symbolsMissingImage) {
         if (symbolToIdMap[sym]) {
-          idsToFetch[sym] = symbolToIdMap[sym];
+          // Check URL registry first
+          const registryUrl = logoRegistry.get(symbolToIdMap[sym]);
+          if (registryUrl) {
+            allLogos[sym] = registryUrl;
+          } else {
+            idsToFetch[sym] = symbolToIdMap[sym];
+          }
         }
       }
+
+      const newImageUploads: Array<[string, string]> = []; // [coingeckoId, logoUrl]
 
       if (Object.keys(idsToFetch).length > 0) {
         const idBasedLogos = await aggregator.getLogosWithIds(idsToFetch);
@@ -222,13 +253,13 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
           allLogos[sym] = url;
           const cgId = idsToFetch[sym];
           if (cgId && url) {
-            newRegistryEntries.push([cgId, url]);
+            newImageUploads.push([cgId, url]);
           }
         }
       }
 
       // Step 3: For symbols without coingeckoIds, use symbol-based lookup
-      const symbolsWithoutIds = symbolsMissingFromRegistry.filter(s => !symbolToIdMap[s]);
+      const symbolsWithoutIds = symbolsMissingImage.filter(s => !symbolToIdMap[s]);
       if (symbolsWithoutIds.length > 0) {
         const symbolBasedLogos = await aggregator.getLogos(symbolsWithoutIds);
         for (const [sym, url] of Object.entries(symbolBasedLogos)) {
@@ -243,15 +274,34 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
         return updated;
       });
 
-      // Step 5: Write newly fetched logos back to shared registry (fire-and-forget)
-      if (newRegistryEntries.length > 0 && actor) {
-        writeLogosToRegistry(actor, newRegistryEntries).then(count => {
+      // Step 5: Upload newly resolved logos as images to canister (fire-and-forget)
+      // This downloads the actual image bytes and stores them on-chain
+      if (newImageUploads.length > 0 && actor) {
+        // Also write URLs to legacy registry for backward compat
+        writeLogosToRegistry(actor, newImageUploads);
+
+        // Upload actual image bytes
+        uploadLogoImagesBulk(actor, newImageUploads, 5).then(count => {
           if (count > 0) {
-            setLogoRegistry(prev => {
-              const updated = new Map(prev);
-              for (const [id, url] of newRegistryEntries) {
-                updated.set(id, url);
+            console.log(`[PortfolioDashboard] Uploaded ${count} new logo images to canister`);
+            // Update local state with new IDs so next render uses canister URLs
+            setLogoImageIds(prev => {
+              const updated = new Set(prev);
+              for (const [cgId] of newImageUploads) {
+                updated.add(cgId);
               }
+              return updated;
+            });
+            // Also update logos to use canister URLs now
+            setLogos(prev => {
+              const updated = { ...prev };
+              for (const holding of store.holdings) {
+                const sym = holding.symbol.toUpperCase();
+                if (holding.coingeckoId && newImageUploads.some(([id]) => id === holding.coingeckoId)) {
+                  updated[sym] = getLogoImageUrl(holding.coingeckoId);
+                }
+              }
+              saveLogoCache(updated);
               return updated;
             });
           }
@@ -262,7 +312,7 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     } catch (err) {
       console.error('Failed to fetch logos', err);
     }
-  }, [symbols, store.holdings, logoRegistry, actor]);
+  }, [symbols, store.holdings, logoImageIds, logoRegistry, actor]);
 
   useEffect(() => {
     fetchPrices();
