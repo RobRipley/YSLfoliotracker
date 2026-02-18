@@ -755,8 +755,9 @@ interface FolderTabsProps {
 }
 
 function FolderTabs({ collections, activeCollection, onChange }: FolderTabsProps) {
+  const cols = collections.length <= 3 ? 'grid-cols-3' : 'grid-cols-4';
   return (
-    <div className="grid grid-cols-3 w-full">
+    <div className={`grid ${cols} w-full`}>
       {collections.map((collection, index) => {
         const isActive = collection.id === activeCollection;
         
@@ -801,8 +802,9 @@ interface ThemePanelProps {
 }
 
 function ThemePanel({ activeIndex, tabCount, children }: ThemePanelProps) {
-  const maskLeft = `${activeIndex * 33.3333}%`;
-  const maskWidth = '33.3333%';
+  const pct = 100 / tabCount;
+  const maskLeft = `${activeIndex * pct}%`;
+  const maskWidth = `${pct}%`;
   
   return (
     <div className="relative">

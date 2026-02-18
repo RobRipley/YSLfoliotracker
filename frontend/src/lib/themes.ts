@@ -319,6 +319,101 @@ export const THEME_COLLECTIONS: ThemeCollection[] = [
       },
     ],
   },
+  // --- Rumi Protocol branding colors ---
+  {
+    id: 'rumi-protocol',
+    name: 'Rumi Protocol',
+    themes: [
+      {
+        id: 'rumi-emerald',
+        name: 'Rumi Emerald',
+        colors: {
+          background: '#080b16',
+          accent: '#34d399',
+          buttons: '#10b981',
+          text: '#e8e4f0',
+          glow: '#6ee7b7',
+        },
+      },
+      {
+        id: 'rumi-amethyst',
+        name: 'Rumi Amethyst',
+        colors: {
+          background: '#080b16',
+          accent: '#d176e8',
+          buttons: '#7c3aed',
+          text: '#e8e4f0',
+          glow: '#d176e8',
+        },
+      },
+      {
+        id: 'rumi-identity',
+        name: 'Rumi Identity',
+        colors: {
+          background: '#080b16',
+          accent: '#34d399',
+          buttons: '#d176e8',
+          text: '#e8e4f0',
+          glow: '#2DE2A6',
+        },
+      },
+      {
+        id: 'rumi-teal',
+        name: 'Rumi Teal',
+        colors: {
+          background: '#0e1222',
+          accent: '#2DD4BF',
+          buttons: '#34d399',
+          text: '#e8e4f0',
+          glow: '#5eead4',
+        },
+      },
+      {
+        id: 'rumi-deep-purple',
+        name: 'Deep Purple',
+        colors: {
+          background: '#111635',
+          accent: '#7c3aed',
+          buttons: '#3b3d85',
+          text: '#e8e4f0',
+          glow: '#d176e8',
+        },
+      },
+      {
+        id: 'rumi-surface',
+        name: 'Rumi Surface',
+        colors: {
+          background: '#0e1222',
+          accent: '#2DE2A6',
+          buttons: '#F46AAE',
+          text: '#e8e4f0',
+          glow: '#2DE2A6',
+        },
+      },
+      {
+        id: 'rumi-caution',
+        name: 'Rumi Caution',
+        colors: {
+          background: '#080b16',
+          accent: '#fbbf24',
+          buttons: '#f87171',
+          text: '#e8e4f0',
+          glow: '#fbbf24',
+        },
+      },
+      {
+        id: 'rumi-midnight',
+        name: 'Rumi Midnight',
+        colors: {
+          background: '#080b16',
+          accent: '#3b3d85',
+          buttons: '#1e2854',
+          text: '#a09bb5',
+          glow: '#7c3aed',
+        },
+      },
+    ],
+  },
 ];
 
 // Create a flat lookup map for quick access
