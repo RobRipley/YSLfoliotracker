@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight, Edit, Trash2, Info, Target, Plus, Pencil, Ch
 import { type Holding, type Category, valueUsd, share } from '@/lib/dataModel';
 import { type ExtendedPriceQuote } from '@/lib/priceService';
 import { cn } from '@/lib/utils';
+import { GainLossPill } from '@/components/ui/gain-loss-pill';
 import {
   CATEGORY_COLORS,
   CATEGORY_LABELS as IMPORTED_LABELS,
@@ -84,6 +85,7 @@ interface CompactHoldingsTableProps {
   cashNotes: string;
   onUpdateCashNotes: (notes: string) => void;
   onUpdateNotes?: (holdingId: string, notes: string) => void;
+  flashStates?: Record<string, 'up' | 'down' | null>;
 }
 
 const categoryGradient = (category: Category) => CATEGORY_GRADIENTS[category] ?? CATEGORY_GRADIENTS['blue-chip'];
@@ -175,7 +177,8 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
   onUpdateCash,
   cashNotes,
   onUpdateCashNotes,
-  onUpdateNotes
+  onUpdateNotes,
+  flashStates = {}
 }: CompactHoldingsTableProps) {
   // Show ALL columns by default for now - no column toggling UI
   // Per requirement: "All columns should be visible by default"
@@ -671,17 +674,21 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
 
   // Standard holding row for non-stablecoin categories - WITH lock removed, Edit/Delete only
   // Column order: Symbol | Value | Share | Price | Tokens | Avg Cost | 24H | Exit | Notes | Actions
-  const renderHoldingRow = (holding: Holding, category: Category) => {
+  const renderHoldingRow = (holding: Holding, category: Category, idx: number = 0) => {
     const price = prices[holding.symbol]?.priceUsd ?? holding.avgCost ?? 0;
     const value = valueUsd(holding, price);
     const posShare = share(value, totals.totalValue);
     const percentChange = 0; // Not available in current ExtendedPriceQuote
 
+    const flashClass = flashStates[holding.symbol.toUpperCase()]
+      ? flashStates[holding.symbol.toUpperCase()] === 'up' ? 'flash-up' : 'flash-down'
+      : '';
+
     return (
-      <div key={holding.id}>
+      <div key={holding.id} className="stagger-item" style={{ animationDelay: `${idx * 40}ms` }}>
         {/* Desktop: 10-column grid row */}
         <div
-          className="group hidden sm:grid grid-cols-[1.6fr_1.2fr_0.8fr_1fr_1fr_1fr_0.8fr_1.2fr_1.4fr_auto] items-center gap-2 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth"
+          className={`group hidden sm:grid grid-cols-[1.6fr_1.2fr_0.8fr_1fr_1fr_1fr_0.8fr_1.2fr_1.4fr_auto] items-center gap-2 rounded-xl border border-divide/80 bg-gradient-to-br from-black/40 via-slate-900/60 to-black/30 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.55)] hover:border-divide/40 transition-smooth ${flashClass}`}
         >
           {/* 1. Symbol */}
           <div className="flex items-center gap-3">
@@ -738,16 +745,8 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
           </div>
 
           {/* 7. 24H % Change */}
-          <div className="text-sm">
-            <div
-              className={cn(
-                'font-mono',
-                percentChange > 0 ? 'text-emerald-400' : percentChange < 0 ? 'text-rose-400' : 'text-muted-foreground'
-              )}
-            >
-              {percentChange > 0 ? '+' : ''}
-              {percentChange.toFixed(2)}%
-            </div>
+          <div className="text-sm flex items-center">
+            <GainLossPill value={percentChange} format="percent" size="xs" />
           </div>
 
           {/* 8. Exit */}
@@ -1377,10 +1376,10 @@ const CompactHoldingsTable = memo(function CompactHoldingsTable({
                     )}
                     
                     {/* Render asset rows */}
-                    {sortedHoldings.map(holding => 
-                      isCashCategory 
-                        ? renderStablecoinRow(holding) 
-                        : renderHoldingRow(holding, category)
+                    {sortedHoldings.map((holding, idx) =>
+                      isCashCategory
+                        ? renderStablecoinRow(holding)
+                        : renderHoldingRow(holding, category, idx)
                     )}
                   </div>
                 )}

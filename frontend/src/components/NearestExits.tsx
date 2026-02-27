@@ -100,10 +100,11 @@ export const NearestExits = memo(function NearestExits({
       <CardContent className="pt-1">
         {hasExits ? (
           <div className="space-y-1.5">
-            {nearestExits.map((exit) => (
+            {nearestExits.map((exit, idx) => (
               <div
                 key={`${exit.holdingId}-${exit.rungIndex}`}
-                className="flex flex-col sm:flex-row sm:items-center sm:justify-between rounded-md bg-secondary/40 px-2.5 py-2 text-xs gap-1 sm:gap-0"
+                className="stagger-item flex flex-col sm:flex-row sm:items-center sm:justify-between rounded-md bg-secondary/40 px-2.5 py-2 text-xs gap-1 sm:gap-0 hover:bg-secondary/60 transition-smooth"
+                style={{ animationDelay: `${idx * 60}ms` }}
               >
                 <div className="flex items-center gap-2.5">
                   <span className="font-semibold text-foreground/90">
@@ -134,10 +135,20 @@ export const NearestExits = memo(function NearestExits({
             ))}
           </div>
         ) : (
-          <div className="py-3 text-center">
-            <p className="text-[11px] text-muted-foreground/70">
-              Configure exit ladders from the Exit Strategy tab to see your targets here.
-            </p>
+          <div className="py-6 flex flex-col items-center text-center space-y-3">
+            {/* Animated crosshair icon */}
+            <div className="relative w-12 h-12 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[var(--brand-gradient-from)]/10 to-[var(--brand-gradient-to)]/10 animate-pulse" />
+              <Target className="h-5 w-5 text-muted-foreground/50 relative z-10" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-foreground/60">
+                No exit targets yet
+              </p>
+              <p className="text-[11px] text-muted-foreground/50 max-w-[200px] leading-relaxed">
+                Set exit ladders in the Exit Strategy tab to track your nearest profit targets here.
+              </p>
+            </div>
           </div>
         )}
       </CardContent>

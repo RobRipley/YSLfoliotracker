@@ -10,7 +10,7 @@ import { getMarketDataService } from '@/lib/marketDataService';
 import { usePortfolioSnapshots } from '@/hooks/usePortfolioSnapshots';
 import { AllocationDonutChart } from './AllocationDonutChart';
 import { Button } from '@/components/ui/button';
-import { Plus, TrendingUp, PieChart } from 'lucide-react';
+import { Plus, TrendingUp, PieChart, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { UnifiedAssetModal } from './UnifiedAssetModal';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -18,6 +18,13 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { AnimatedNumber } from '@/components/ui/animated-number';
+import { GainLossPill } from '@/components/ui/gain-loss-pill';
+import { DataFreshness } from '@/components/ui/data-freshness';
+import { DashboardSkeleton } from '@/components/ui/skeleton';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { PullIndicator } from '@/components/ui/pull-indicator';
+import { HealthRing, computeDiversificationScore, computeExitReadiness } from '@/components/ui/health-ring';
 import {
   loadCategoryExpandState,
   saveCategoryExpandState,
@@ -36,7 +43,7 @@ const aggregator = getPriceAggregator();
 const marketDataService = getMarketDataService();
 
 // Logo cache helpers
-const LOGO_CACHE_KEY = 'ysl-logo-cache';
+const LOGO_CACHE_KEY = 'oft-logo-cache';
 function loadLogoCache(): Record<string, string> {
   try {
     const cached = localStorage.getItem(LOGO_CACHE_KEY);
@@ -72,6 +79,15 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
   const [editAvgCost, setEditAvgCost] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const { allocations: allocationData } = usePortfolioSnapshots();
+
+  // Data freshness tracking
+  const [lastPriceUpdate, setLastPriceUpdate] = useState<Date | null>(null);
+  const [isRefreshingPrices, setIsRefreshingPrices] = useState(false);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+
+  // Previous prices for flash effect
+  const previousPricesRef = useRef<Record<string, number>>({});
+  const [flashStates, setFlashStates] = useState<Record<string, 'up' | 'down' | null>>({});
 
   // Shared on-chain logo registry: coingeckoId → logoUrl (legacy, for fallback)
   const [logoRegistry, setLogoRegistry] = useState<Map<string, string>>(new Map());
@@ -115,18 +131,45 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
 
   const fetchPrices = useCallback(async () => {
     if (!symbols.length) return;
+    setIsRefreshingPrices(true);
     try {
       const quotes = await aggregator.getPrice(symbols);
       const priceMap: Record<string, ExtendedPriceQuote> = {};
       for (const quote of quotes) {
         priceMap[quote.symbol.toUpperCase()] = quote;
       }
+
+      // Compute flash states by comparing to previous prices
+      const newFlashStates: Record<string, 'up' | 'down' | null> = {};
+      for (const [sym, quote] of Object.entries(priceMap)) {
+        const prevPrice = previousPricesRef.current[sym];
+        if (prevPrice !== undefined && quote.priceUsd !== prevPrice) {
+          newFlashStates[sym] = quote.priceUsd > prevPrice ? 'up' : 'down';
+        }
+      }
+      // Update previous prices ref
+      const currentPriceSnapshot: Record<string, number> = {};
+      for (const [sym, quote] of Object.entries(priceMap)) {
+        currentPriceSnapshot[sym] = quote.priceUsd;
+      }
+      previousPricesRef.current = currentPriceSnapshot;
+
+      // Set flash states and clear them after animation
+      if (Object.keys(newFlashStates).length > 0) {
+        setFlashStates(newFlashStates);
+        setTimeout(() => setFlashStates({}), 900);
+      }
+
       setPrices(priceMap);
+      setLastPriceUpdate(new Date());
+      setInitialLoadDone(true);
       
       // Update holdings with fresh market data (stale-while-revalidate persistence)
       marketDataService.refreshForSymbols(symbols);
     } catch (err) {
       console.error('Failed to fetch prices', err);
+    } finally {
+      setIsRefreshingPrices(false);
     }
   }, [symbols]);
 
@@ -152,13 +195,13 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
   useEffect(() => {
     if (!actor || !logoImageIdsLoaded.current || logoImageIds.size > 100) return;
 
-    const SEED_KEY = 'ysl-logo-images-seeded-v1';
+    const SEED_KEY = 'oft-logo-images-seeded-v1';
     if (localStorage.getItem(SEED_KEY)) return;
 
     console.log(`[PortfolioDashboard] Image registry small (${logoImageIds.size}), attempting pre-seed...`);
     (async () => {
       try {
-        // Fetch logo URLs from Cloudflare Worker registry
+        // Fetch logo URLs from Cloudflare Worker registry (legacy worker name)
         const response = await fetch(
           'https://ysl-price-cache.robertripleyjunior.workers.dev/registry/latest.json'
         );
@@ -321,6 +364,11 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     return () => clearInterval(interval);
   }, [fetchPrices, fetchLogos]);
 
+  // Pull-to-refresh on mobile
+  const { pullDistance, isRefreshing: isPullRefreshing, containerRef: pullContainerRef, indicatorStyle } = usePullToRefresh({
+    onRefresh: fetchPrices,
+  });
+
   const totals = useMemo(() => {
     const totalValue = store.holdings.reduce((sum, holding) => {
       // Stale-while-revalidate: use live price > cached price > avg cost
@@ -354,6 +402,69 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
 
     return { totalValue, byCategory };
   }, [store.holdings, prices, store.cash]);
+
+  // Portfolio-level stats for bento tiles: 24h change, top gainer/loser
+  const portfolioStats = useMemo(() => {
+    let weightedChange24h = 0;
+    let totalWeightForChange = 0;
+    let topGainer = { symbol: '', change: -Infinity };
+    let topLoser = { symbol: '', change: Infinity };
+
+    for (const holding of store.holdings) {
+      const sym = holding.symbol.toUpperCase();
+      const priceData = prices[sym];
+      if (!priceData) continue;
+
+      const price = priceData.priceUsd ?? 0;
+      const value = holding.tokensOwned * price;
+      const change24h = priceData.change24h ?? 0;
+
+      // Weight 24h change by position size
+      if (value > 0 && change24h !== 0) {
+        weightedChange24h += change24h * value;
+        totalWeightForChange += value;
+      }
+
+      // Track top gainer and loser (skip stablecoins)
+      if (Math.abs(change24h) > 0.01) {
+        if (change24h > topGainer.change) {
+          topGainer = { symbol: sym, change: change24h };
+        }
+        if (change24h < topLoser.change) {
+          topLoser = { symbol: sym, change: change24h };
+        }
+      }
+    }
+
+    const portfolioChange24h = totalWeightForChange > 0
+      ? weightedChange24h / totalWeightForChange
+      : 0;
+
+    return {
+      change24h: portfolioChange24h,
+      topGainer: topGainer.symbol ? topGainer : null,
+      topLoser: topLoser.symbol ? topLoser : null,
+    };
+  }, [store.holdings, prices]);
+
+  // Portfolio health ring scores
+  const healthScores = useMemo(() => {
+    const diversification = computeDiversificationScore(totals.byCategory, totals.totalValue);
+    // Count non-stablecoin holdings that have exit plans
+    const nonStableHoldings = store.holdings.filter(h => {
+      const sym = h.symbol.toUpperCase();
+      // Exclude known stablecoins
+      return !['USDT', 'USDC', 'DAI', 'BUSD', 'TUSD', 'USDD', 'FRAX'].includes(sym);
+    });
+    const holdingsWithPlans = nonStableHoldings.filter(h => {
+      const plan = exitPlans[h.id];
+      return plan && plan.length > 0;
+    }).length;
+    const exitReadiness = computeExitReadiness(nonStableHoldings.length, holdingsWithPlans);
+    const pnlTrend: 'up' | 'down' | 'flat' = portfolioStats.change24h > 0.5 ? 'up' : portfolioStats.change24h < -0.5 ? 'down' : 'flat';
+
+    return { diversification, exitReadiness, pnlTrend };
+  }, [totals, store.holdings, exitPlans, portfolioStats.change24h]);
 
   const groups = useMemo(() => {
     const result: Record<Category, Holding[]> = {
@@ -482,11 +593,11 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     setSelectedPreset(preset);
   };
 
-  // Load raw exit plans from localStorage (ysl-exit-plans key) - for NearestExits component
+  // Load raw exit plans from localStorage (oft-exit-plans key) - for NearestExits component
   // This preserves the full structure with rungs array
   const exitPlanStates = useMemo(() => {
     try {
-      const stored = localStorage.getItem('ysl-exit-plans');
+      const stored = localStorage.getItem('oft-exit-plans');
       if (!stored) return {};
       return JSON.parse(stored);
     } catch (error) {
@@ -515,8 +626,8 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     return result;
   }, [exitPlanStates]);
 
-  // Show table even when empty - category shells always visible
-  const showEmptyState = false; // Always show the table structure
+  // Show guided first-action when user has no holdings at all
+  const showEmptyState = store.holdings.length === 0 && store.cash === 0;
 
   // Format total value for display
   const formattedTotalValue = useMemo(() => {
@@ -529,106 +640,204 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
   }, [totals.totalValue]);
 
   return (
-    <div className="space-y-4">
-      {/* Header removed per requirement - nav tab already indicates location */}
+    <div ref={pullContainerRef as any} className="space-y-4">
+      {/* Pull-to-refresh indicator (mobile only) */}
+      <PullIndicator
+        pullDistance={pullDistance}
+        isRefreshing={isPullRefreshing}
+        style={indicatorStyle}
+      />
 
       {showEmptyState ? (
         <Card className="glass-panel border-divide/80 py-10 shadow-[0_22px_60px_rgba(0,0,0,0.8)]">
-          <div className="mx-auto flex max-w-xl flex-col items-center text-center">
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary shadow-inner shadow-primary/40">
-              <TrendingUp className="h-7 w-7" />
+          <div className="mx-auto flex max-w-xl flex-col items-center text-center px-4">
+            {/* Animated icon */}
+            <div className="relative mb-5">
+              <div className="absolute inset-0 w-16 h-16 rounded-full bg-gradient-to-br from-[var(--brand-gradient-from)]/15 to-[var(--brand-gradient-to)]/15 animate-pulse" />
+              <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <TrendingUp className="h-7 w-7" />
+              </div>
             </div>
-            <h3 className="mb-1 text-lg font-semibold text-foreground">Add your first positions</h3>
-            <p className="mb-5 text-sm text-muted-foreground">
-              Start by adding the BTC, ETH, ICP, or other positions you already hold. The tracker will pull live
-              prices and show your allocation at a glance.
+            <h3 className="mb-1 text-lg font-semibold font-heading text-foreground">Add your first positions</h3>
+            <p className="mb-6 text-sm text-muted-foreground max-w-sm">
+              Start tracking your crypto portfolio. Add what you hold and we'll pull live prices automatically.
             </p>
+            {/* Quick-add popular tokens */}
+            <div className="flex flex-wrap justify-center gap-2 mb-6">
+              {['BTC', 'ETH', 'SOL', 'ICP', 'XRP', 'ADA'].map((sym, idx) => (
+                <button
+                  key={sym}
+                  onClick={() => { setPrefilledSymbol(sym); setShowUnifiedModal(true); }}
+                  className="stagger-item px-3 py-1.5 rounded-full bg-secondary/40 border border-divide-lighter/15 text-xs font-medium text-foreground/70 hover:bg-secondary/70 hover:text-foreground hover:border-divide-lighter/30 transition-smooth"
+                  style={{ animationDelay: `${idx * 60}ms` }}
+                >
+                  + {sym}
+                </button>
+              ))}
+            </div>
             <Button
               size="sm"
-              className="rounded-full bg-gradient-to-r from-primary to-primary/60 px-4 text-xs font-medium shadow-lg shadow-primary/30 transition-smooth hover:shadow-primary/50"
+              className="rounded-full bg-gradient-to-r from-primary to-primary/60 px-5 text-xs font-medium shadow-lg shadow-primary/30 transition-smooth hover:shadow-primary/50"
               onClick={handleAddAssetClick}
             >
               <Plus className="mr-1.5 h-3.5 w-3.5" />
-              Add your first asset
+              Search for any asset
             </Button>
+            <button
+              onClick={() => {/* Skip — empty table will show */}}
+              className="mt-3 text-[11px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-smooth"
+            >
+              I'll explore first →
+            </button>
           </div>
         </Card>
       ) : (
-        <div className="grid gap-4 grid-cols-1 lg:grid-cols-[minmax(0,3.5fr)_minmax(0,1.8fr)]">
-          <div className="space-y-4 min-w-0">
-            <CompactHoldingsTable
-              groups={groups}
-              prices={prices}
-              logos={logos}
-              totals={totals}
-              expandedCategories={expandedCategories}
-              onToggleCategory={toggleCategory}
-              onEditHolding={handleEditHoldingInit}
-              onRemoveHolding={handleRemoveHolding}
-              onToggleLock={handleToggleLock}
-              onAddAsset={handleAddAssetClick}
-              selectedPreset={selectedPreset}
-              selectedCategory={selectedCategory}
-              displayedCategories={displayedCategories}
-              exitPlans={exitPlans}
-              cash={store.cash}
-              onUpdateCash={store.setCash}
-              cashNotes={store.cashNotes}
-              onUpdateCashNotes={store.setCashNotes}
-              onUpdateNotes={handleUpdateNotes}
-            />
-          </div>
-
-          <div className="space-y-4">
-            {/* Allocation Overview with Total Value prominently displayed */}
-            <Card className="glass-panel border-divide/80 !p-0">
-              {/* Total Value Header */}
-              <div className="px-4 pt-3 pb-1.5">
+        <div className="space-y-4">
+          {/* ── Bento Hero Row ─────────────────────────────────── */}
+          <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+            {/* Hero: Total Value (spans 2 cols) */}
+            <Card className="glass-panel border-divide/80 !p-0 col-span-2 stagger-item">
+              <div className="px-4 pt-3 pb-3">
                 <div className="flex items-start justify-between">
-                  <div>
-                    <div 
-                      className="inline-block rounded-lg px-3 py-1 -mx-3 -my-1"
-                      style={{ 
-                        background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(59, 130, 246, 0.05) 100%)',
-                        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 0 20px rgba(139, 92, 246, 0.15)'
-                      }}
-                    >
-                      <span
-                        className="text-2xl sm:text-4xl font-bold tracking-tight text-foreground"
+                  <div className="flex items-start gap-4">
+                    {/* Health Ring (hidden on very small screens) */}
+                    {store.holdings.length > 0 && (
+                      <div className="hidden sm:block flex-shrink-0 mt-0.5">
+                        <HealthRing
+                          diversification={healthScores.diversification}
+                          exitReadiness={healthScores.exitReadiness}
+                          pnlTrend={healthScores.pnlTrend}
+                          size={64}
+                        />
+                      </div>
+                    )}
+                    <div>
+                      <div
+                        className="inline-block rounded-lg px-3 py-1 -mx-3 -my-1"
                         style={{
-                          textShadow: '0 0 8px rgba(139, 92, 246, 0.6), 0 0 20px rgba(139, 92, 246, 0.4), 0 0 40px rgba(99, 102, 241, 0.25)'
+                          background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(59, 130, 246, 0.05) 100%)',
+                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 0 20px rgba(139, 92, 246, 0.15)'
                         }}
                       >
-                        {formattedTotalValue}
-                      </span>
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Total value
+                        <AnimatedNumber
+                          value={totals.totalValue}
+                          duration={700}
+                          className="text-2xl sm:text-4xl font-bold tracking-tight text-foreground"
+                        />
+                      </div>
+                      <div className="flex items-center gap-3 mt-1.5">
+                        <span className="text-xs text-muted-foreground">Total value</span>
+                        <DataFreshness
+                          lastUpdated={lastPriceUpdate}
+                          isRefreshing={isRefreshingPrices}
+                        />
+                      </div>
                     </div>
                   </div>
+                  {portfolioStats.change24h !== 0 && (
+                    <GainLossPill
+                      value={portfolioStats.change24h}
+                      format="percent"
+                      size="sm"
+                    />
+                  )}
+                </div>
+              </div>
+            </Card>
+
+            {/* Top Gainer tile */}
+            <Card className="glass-panel border-divide/80 !p-0 stagger-item" style={{ animationDelay: '80ms' }}>
+              <div className="px-3 py-3 flex flex-col justify-between h-full">
+                <div className="flex items-center gap-1 text-muted-foreground/50">
+                  <ArrowUpRight className="h-3 w-3 text-emerald-400/70" />
+                  <span className="text-[10px] font-medium uppercase tracking-wider">Top Gainer</span>
+                </div>
+                {portfolioStats.topGainer ? (
+                  <div className="mt-1.5">
+                    <span className="text-sm font-semibold text-foreground/90">{portfolioStats.topGainer.symbol}</span>
+                    <GainLossPill value={portfolioStats.topGainer.change} format="percent" size="xs" className="ml-2" />
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground/40 mt-1.5">—</span>
+                )}
+              </div>
+            </Card>
+
+            {/* Top Loser tile */}
+            <Card className="glass-panel border-divide/80 !p-0 stagger-item" style={{ animationDelay: '160ms' }}>
+              <div className="px-3 py-3 flex flex-col justify-between h-full">
+                <div className="flex items-center gap-1 text-muted-foreground/50">
+                  <ArrowDownRight className="h-3 w-3 text-red-400/70" />
+                  <span className="text-[10px] font-medium uppercase tracking-wider">Top Loser</span>
+                </div>
+                {portfolioStats.topLoser ? (
+                  <div className="mt-1.5">
+                    <span className="text-sm font-semibold text-foreground/90">{portfolioStats.topLoser.symbol}</span>
+                    <GainLossPill value={portfolioStats.topLoser.change} format="percent" size="xs" className="ml-2" />
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground/40 mt-1.5">—</span>
+                )}
+              </div>
+            </Card>
+          </div>
+
+          {/* ── Main Content: Holdings + Sidebar ──────────────── */}
+          <div className="grid gap-4 grid-cols-1 lg:grid-cols-[minmax(0,3.5fr)_minmax(0,1.8fr)]">
+            {/* Holdings Table */}
+            <div className="min-w-0">
+              <CompactHoldingsTable
+                groups={groups}
+                prices={prices}
+                logos={logos}
+                totals={totals}
+                expandedCategories={expandedCategories}
+                onToggleCategory={toggleCategory}
+                flashStates={flashStates}
+                onEditHolding={handleEditHoldingInit}
+                onRemoveHolding={handleRemoveHolding}
+                onToggleLock={handleToggleLock}
+                onAddAsset={handleAddAssetClick}
+                selectedPreset={selectedPreset}
+                selectedCategory={selectedCategory}
+                displayedCategories={displayedCategories}
+                exitPlans={exitPlans}
+                cash={store.cash}
+                onUpdateCash={store.setCash}
+                cashNotes={store.cashNotes}
+                onUpdateCashNotes={store.setCashNotes}
+                onUpdateNotes={handleUpdateNotes}
+              />
+            </div>
+
+            {/* Sidebar: Allocation + Exits */}
+            <div className="space-y-4">
+              {/* Allocation Donut */}
+              <Card className="glass-panel border-divide/80 !p-0">
+                <div className="px-4 pt-3 pb-1.5">
                   <div className="flex items-center gap-1.5 text-muted-foreground/60">
                     <PieChart className="h-4 w-4" />
                     <span className="text-[10px] font-medium uppercase tracking-wider">Allocation</span>
                   </div>
                 </div>
-              </div>
-              <div className="border-t border-divide/60" />
-              <div className="space-y-3 px-4 py-3">
-                <AllocationDonutChart
-                  allocations={totals.byCategory}
-                  onSliceClick={handleSliceClick}
-                  selectedCategory={selectedCategory}
-                  cashValue={store.cash}
-                  stablecoinsOnlyValue={totals.byCategory['stablecoin'] - store.cash}
-                />
-              </div>
-            </Card>
+                <div className="border-t border-divide/60" />
+                <div className="space-y-3 px-4 py-3">
+                  <AllocationDonutChart
+                    allocations={totals.byCategory}
+                    onSliceClick={handleSliceClick}
+                    selectedCategory={selectedCategory}
+                    cashValue={store.cash}
+                    stablecoinsOnlyValue={totals.byCategory['stablecoin'] - store.cash}
+                  />
+                </div>
+              </Card>
 
-            <NearestExits
-              holdings={store.holdings}
-              prices={prices}
-              exitPlans={exitPlanStates}
-            />
+              <NearestExits
+                holdings={store.holdings}
+                prices={prices}
+                exitPlans={exitPlanStates}
+              />
+            </div>
           </div>
         </div>
       )}

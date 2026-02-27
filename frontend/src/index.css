@@ -200,14 +200,133 @@
     background-image: linear-gradient(to right, var(--brand-gradient-from), var(--brand-gradient-to));
   }
   
+  /* Gradient underline for hero headings */
+  .gradient-underline {
+    position: relative;
+    display: inline-block;
+  }
+
+  .gradient-underline::after {
+    content: '';
+    position: absolute;
+    left: 10%;
+    right: 10%;
+    bottom: -4px;
+    height: 3px;
+    border-radius: 2px;
+    background: linear-gradient(to right, var(--brand-gradient-from), var(--brand-gradient-to));
+    opacity: 0.5;
+  }
+
   /* Smooth transitions */
   .transition-smooth {
     transition: all 150ms ease-out;
   }
-  
+
   .transition-smooth-slow {
     transition: all 180ms ease-out;
   }
+}
+
+/* ── Premium animation system ──────────────────────────── */
+
+/* Skeleton shimmer loader */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    hsl(215 25% 14%) 25%,
+    hsl(215 25% 19%) 50%,
+    hsl(215 25% 14%) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Price change flash */
+@keyframes flash-green {
+  0% { background-color: rgba(52, 211, 153, 0.18); }
+  100% { background-color: transparent; }
+}
+
+@keyframes flash-red {
+  0% { background-color: rgba(239, 68, 68, 0.18); }
+  100% { background-color: transparent; }
+}
+
+.flash-up {
+  animation: flash-green 800ms ease-out forwards;
+}
+
+.flash-down {
+  animation: flash-red 800ms ease-out forwards;
+}
+
+/* Stagger-in animation for list items */
+@keyframes stagger-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stagger-item {
+  animation: stagger-in 250ms ease-out both;
+}
+
+/* Hero background mesh animation for landing page */
+@keyframes mesh-drift {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  25% {
+    background-position: 50% 0%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  75% {
+    background-position: 50% 100%;
+  }
+}
+
+.hero-mesh {
+  background: radial-gradient(ellipse at 20% 50%, rgba(52, 211, 153, 0.06) 0%, transparent 50%),
+              radial-gradient(ellipse at 80% 50%, rgba(209, 118, 232, 0.05) 0%, transparent 50%),
+              radial-gradient(ellipse at 50% 20%, rgba(99, 102, 241, 0.04) 0%, transparent 50%);
+  background-size: 200% 200%;
+  animation: mesh-drift 20s ease-in-out infinite;
+}
+
+/* Sparkline progressive draw */
+@keyframes draw-line {
+  from { stroke-dashoffset: var(--line-length, 1000); }
+  to { stroke-dashoffset: 0; }
+}
+
+.sparkline-draw path,
+.sparkline-draw line {
+  stroke-dasharray: var(--line-length, 1000);
+  animation: draw-line 800ms ease-out forwards;
+}
+
+/* Calm success confirmation */
+@keyframes calm-check {
+  0% { transform: scale(0.8); opacity: 0; }
+  50% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.calm-confirm {
+  animation: calm-check 400ms ease-out;
 }
 
 /* Custom animations */
