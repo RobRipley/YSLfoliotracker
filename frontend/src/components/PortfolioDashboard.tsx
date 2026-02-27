@@ -447,25 +447,6 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     };
   }, [store.holdings, prices]);
 
-  // Portfolio health ring scores
-  const healthScores = useMemo(() => {
-    const diversification = computeDiversificationScore(totals.byCategory, totals.totalValue);
-    // Count non-stablecoin holdings that have exit plans
-    const nonStableHoldings = store.holdings.filter(h => {
-      const sym = h.symbol.toUpperCase();
-      // Exclude known stablecoins
-      return !['USDT', 'USDC', 'DAI', 'BUSD', 'TUSD', 'USDD', 'FRAX'].includes(sym);
-    });
-    const holdingsWithPlans = nonStableHoldings.filter(h => {
-      const plan = exitPlans[h.id];
-      return plan && plan.length > 0;
-    }).length;
-    const exitReadiness = computeExitReadiness(nonStableHoldings.length, holdingsWithPlans);
-    const pnlTrend: 'up' | 'down' | 'flat' = portfolioStats.change24h > 0.5 ? 'up' : portfolioStats.change24h < -0.5 ? 'down' : 'flat';
-
-    return { diversification, exitReadiness, pnlTrend };
-  }, [totals, store.holdings, exitPlans, portfolioStats.change24h]);
-
   const groups = useMemo(() => {
     const result: Record<Category, Holding[]> = {
       'blue-chip': [],
@@ -625,6 +606,24 @@ export const PortfolioDashboard = memo(function PortfolioDashboard() {
     
     return result;
   }, [exitPlanStates]);
+
+  // Portfolio health ring scores
+  const healthScores = useMemo(() => {
+    const diversification = computeDiversificationScore(totals.byCategory, totals.totalValue);
+    // Count non-stablecoin holdings that have exit plans
+    const nonStableHoldings = store.holdings.filter(h => {
+      const sym = h.symbol.toUpperCase();
+      return !['USDT', 'USDC', 'DAI', 'BUSD', 'TUSD', 'USDD', 'FRAX'].includes(sym);
+    });
+    const holdingsWithPlans = nonStableHoldings.filter(h => {
+      const plan = exitPlans[h.id];
+      return plan && plan.length > 0;
+    }).length;
+    const exitReadiness = computeExitReadiness(nonStableHoldings.length, holdingsWithPlans);
+    const pnlTrend: 'up' | 'down' | 'flat' = portfolioStats.change24h > 0.5 ? 'up' : portfolioStats.change24h < -0.5 ? 'down' : 'flat';
+
+    return { diversification, exitReadiness, pnlTrend };
+  }, [totals, store.holdings, exitPlans, portfolioStats.change24h]);
 
   // Show guided first-action when user has no holdings at all
   const showEmptyState = store.holdings.length === 0 && store.cash === 0;
