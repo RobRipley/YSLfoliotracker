@@ -133,7 +133,7 @@ export default {
       if (path === '/health' || path === '/') {
         return jsonResponse({
           status: 'ok',
-          service: 'ysl-price-cache',
+          service: 'onchain-folio-price-cache',
           timestamp: new Date().toISOString(),
           r2Enabled: !!env.PRICE_R2,
           kvEnabled: !!env.PRICE_KV,
@@ -180,7 +180,7 @@ export default {
           };
           await env.PRICE_KV.put(KV_PRICES_LATEST, JSON.stringify(errorBlob));
           console.error('[Daily] R2 is not configured! Daily snapshots require R2 bucket.');
-          throw new Error('R2 is not configured. Daily snapshot requires R2 bucket "ysl-price-snapshots".');
+          throw new Error('R2 is not configured. Daily snapshot requires R2 bucket.');
         }
         
         await writeDailySnapshot(env, 'scheduled');
@@ -485,7 +485,7 @@ async function handleStatusRequest(env: Env, corsHeaders: Record<string, string>
       trigger: blob.fetchTrigger,
       lastSuccess: blob.lastSuccessTimestamp,
       r2Enabled: blob.r2Enabled,
-      service: 'ysl-price-cache',
+      service: 'onchain-folio-price-cache',
       kvWritesPerDay: '~289 (down from 577, well under 1,000 free tier limit)',
       kvOptimization: 'Skip-if-unchanged enabled - writes only when data changes'
     };
@@ -496,7 +496,7 @@ async function handleStatusRequest(env: Env, corsHeaders: Record<string, string>
       timestamp: new Date().toISOString(),
       trigger: 'unknown',
       r2Enabled: !!env.PRICE_R2,
-      service: 'ysl-price-cache'
+      service: 'onchain-folio-price-cache'
     };
   }
 

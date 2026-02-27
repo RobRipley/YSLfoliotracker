@@ -1565,11 +1565,9 @@ function ToolsContent() {
   const [activeToolTab, setActiveToolTab] = useState<'tests' | 'holdings' | 'transactions' | 'settings'>('tests');
   const [brandingMode, setBrandingModeState] = useState(loadBrandingMode);
 
-  const handleBrandingToggle = (checked: boolean) => {
-    const newMode = checked ? 'yieldschool' : 'neutral';
-    const brand = setBrandingMode(newMode);
-    setBrandingModeState(newMode);
-    toast.success(`Branding switched to ${brand.appName}`);
+  const handleBrandingToggle = (_checked: boolean) => {
+    // Single brand mode — toggle is a no-op
+    toast.info('Only neutral branding is available');
   };
 
   const runTests = () => {
@@ -1637,20 +1635,14 @@ function ToolsContent() {
             </div>
           </div>
 
-          {/* Branding Toggle */}
+          {/* Branding Info */}
           <div className="flex items-center justify-between p-4 rounded-lg border border-divide/30 bg-card/50">
             <div className="space-y-1">
-              <Label className="text-sm font-medium">YieldSchool Branding</Label>
+              <Label className="text-sm font-medium">Branding</Label>
               <p className="text-xs text-muted-foreground">
-                {brandingMode === 'yieldschool'
-                  ? 'Active — cyan/violet theme with YieldSchool identity'
-                  : 'Off — neutral Onchain Portfolio Tracker identity'}
+                Onchain Portfolio Tracker — Rumi Protocol identity
               </p>
             </div>
-            <Switch
-              checked={brandingMode === 'yieldschool'}
-              onCheckedChange={handleBrandingToggle}
-            />
           </div>
 
           {/* Tool Tabs */}

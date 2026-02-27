@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Name:** Onchain Portfolio Tracker (OnchainFolioTracker, formerly YSLfolioTracker)
+**Name:** Onchain Portfolio Tracker (OnchainFolioTracker)
 **Purpose:** Crypto portfolio tracking app for manual management with real-time prices, category-based allocation analysis, and exit strategy planning.  
 **Tech Stack:** ICP (Motoko backend), React/TypeScript/Vite frontend, TailwindCSS, Cloudflare Worker price cache  
 **Live URL:** https://portfolio.rumilabs.fyi/ (custom domain) or https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io/  
@@ -18,7 +18,7 @@
 | Frontend (local) | `ulvla-h7777-77774-qaacq-cai` | http://ulvla-h7777-77774-qaacq-cai.localhost:4943/ |
 | Backend (local) | `uxrrr-q7777-77774-qaaaq-cai` | - |
 | Price Cache | Cloudflare Worker | https://ysl-price-cache.robertripleyjunior.workers.dev/ |
-| GitHub | RobRipley/YSLfoliotracker | https://github.com/RobRipley/YSLfoliotracker |
+| GitHub | RobRipley/OnchainFolioTracker | https://github.com/RobRipley/OnchainFolioTracker |
 
 ---
 
@@ -26,7 +26,7 @@
 
 ```bash
 # Navigate
-cd /Users/robertripley/coding/YSLfolioTracker
+cd /Users/robertripley/coding/OnchainFolioTracker
 
 # Set npm path (required due to nvm)
 export PATH="/Users/robertripley/.nvm/versions/node/v20.20.0/bin:$PATH"
@@ -39,7 +39,7 @@ dfx canister install frontend --mode reinstall -y
 dfx deploy frontend --network ic
 
 # Use specific identity for deployment
-dfx identity use RobRipley_YSL
+dfx identity use RobRipley_YSL  # legacy dfx identity name
 dfx deploy frontend --network ic
 ```
 
@@ -48,7 +48,7 @@ dfx deploy frontend --network ic
 ## Repository Structure (Key Files)
 
 ```
-/Users/robertripley/coding/YSLfolioTracker/
+/Users/robertripley/coding/OnchainFolioTracker/
 ├── frontend/src/
 │   ├── components/
 │   │   ├── CompactHoldingsTable.tsx   # Main portfolio table (categories, holdings, cash)
@@ -68,7 +68,7 @@ dfx deploy frontend --network ic
 ├── backend/
 │   └── main.mo                        # Motoko canister (not actively used - frontend uses localStorage)
 ├── workers/
-│   └── price-cache/                   # Cloudflare Worker source (deployed as ysl-price-cache)
+│   └── price-cache/                   # Cloudflare Worker source (legacy Cloudflare name: ysl-price-cache)
 ├── spec.md                            # Detailed feature specification (~700 lines)
 └── docs/HANDOFF_CONDENSED.md          # This file
 ```
@@ -90,7 +90,7 @@ Cloudflare Worker (primary) → CoinGecko (fallback)
   PortfolioDashboard → CompactHoldingsTable
 ```
 
-**Price Cache Worker:** `ysl-price-cache.robertripleyjunior.workers.dev`
+**Price Cache Worker:** `ysl-price-cache.robertripleyjunior.workers.dev` (legacy worker name)
 - Caches 499 crypto prices in Cloudflare KV
 - 5-minute refresh cycle
 - Endpoints: `/prices` (all), `/price/:symbol` (single), `/health`
@@ -107,7 +107,7 @@ Micro Cap:  < $10M
 - **Canister Storage (primary):** Portfolio holdings synced to ICP backend via `canisterSync.ts`
 - **localStorage (fast cache):** Same data cached locally for instant loads
 - **Sync Logic:** On startup, loads localStorage first, then checks canister for newer data
-- **Exit Plans:** Still localStorage-only in `ysl-exit-plans` key
+- **Exit Plans:** Still localStorage-only in `oft-exit-plans` key
 - **Holdings:** Stored in canister AND localStorage key `crypto-portfolio-store-{principal}`
 
 ---
@@ -152,7 +152,7 @@ curl https://ysl-price-cache.robertripleyjunior.workers.dev/prices/status.json
 
 **Deploy worker changes:**
 ```bash
-cd /Users/robertripley/coding/YSLfolioTracker/workers/price-cache
+cd /Users/robertripley/coding/OnchainFolioTracker/workers/price-cache
 export PATH="/Users/robertripley/.nvm/versions/node/v20.20.0/bin:$PATH"
 npx wrangler deploy
 ```
@@ -193,13 +193,13 @@ CryptoRates.ai fails from localhost (CORS), so the chain is:
 3. CoinGecko direct (final fallback)
 
 ### 5. Exit Plans Storage Key
-Exit plans are stored at `ysl-exit-plans` in localStorage, keyed by holding ID. The ExitStrategy page manages this directly.
+Exit plans are stored at `oft-exit-plans` in localStorage, keyed by holding ID. The ExitStrategy page manages this directly.
 
 ### 6. Motoko 0.29+ Persistence
 Backend uses `persistent actor` with all data marked `transient` (does NOT persist across upgrades). If data persistence is needed, implement stable storage patterns.
 
 ### 7. dfx Identity for Deployment
-Use `dfx identity use RobRipley_YSL` before deploying to ensure correct controller.
+Use `dfx identity use RobRipley_YSL` (legacy identity name) before deploying to ensure correct controller.
 
 ### 8. Custom Domain & Principal Derivation
 - `portfolio.rumilabs.fyi` is the custom domain, registered via `.well-known/ic-domains`
@@ -253,7 +253,7 @@ The price service includes mappings for common symbols:
 |---------|------|
 | Full spec | `/spec.md` (~700 lines) |
 | Price service docs | `/PRICE_SERVICE.md`, `/QUICK_REF.md` |
-| Worker source | `/workers/price-cache/` (deployed as ysl-price-cache) |
+| Worker source | `/workers/price-cache/` (legacy Cloudflare name: ysl-price-cache) |
 | Example data | `/Example Portfolio.xlsx`, `/*.csv` |
 
 ---

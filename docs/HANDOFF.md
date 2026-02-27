@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Name:** Onchain Portfolio Tracker (OnchainFolioTracker, formerly YSLfolioTracker)
+**Name:** Onchain Portfolio Tracker (OnchainFolioTracker)
 **Purpose:** Crypto portfolio tracking app for manual management with real-time prices, category-based allocation analysis, and exit strategy planning.  
 **Tech Stack:** ICP (Motoko backend), React/TypeScript/Vite frontend, TailwindCSS, Cloudflare Worker price cache  
 **Live URL:** https://portfolio.rumilabs.fyi/ (custom domain) or https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io/  
@@ -18,7 +18,7 @@
 | Frontend (local) | `ulvla-h7777-77774-qaacq-cai` | http://ulvla-h7777-77774-qaacq-cai.localhost:4943/ |
 | Backend (local) | `uxrrr-q7777-77774-qaaaq-cai` | - |
 | Price Cache | Cloudflare Worker | https://ysl-price-cache.robertripleyjunior.workers.dev/ |
-| GitHub | RobRipley/YSLfoliotracker | https://github.com/RobRipley/YSLfoliotracker |
+| GitHub | RobRipley/OnchainFolioTracker | https://github.com/RobRipley/OnchainFolioTracker |
 
 ---
 
@@ -26,7 +26,7 @@
 
 ```bash
 # Navigate
-cd /Users/robertripley/coding/YSLfolioTracker
+cd /Users/robertripley/coding/OnchainFolioTracker
 
 # Set npm path (required due to nvm)
 export PATH="/Users/robertripley/.nvm/versions/node/v20.20.0/bin:$PATH"
@@ -39,7 +39,7 @@ dfx canister install frontend --mode reinstall -y
 dfx deploy frontend --network ic
 
 # Use specific identity for deployment
-dfx identity use RobRipley_YSL
+dfx identity use RobRipley_YSL  # legacy dfx identity name
 dfx deploy frontend --network ic
 ```
 
@@ -48,7 +48,7 @@ dfx deploy frontend --network ic
 ## Repository Structure (Key Files)
 
 ```
-/Users/robertripley/coding/YSLfolioTracker/
+/Users/robertripley/coding/OnchainFolioTracker/
 ├── frontend/src/
 │   ├── components/
 │   │   ├── CompactHoldingsTable.tsx   # Main portfolio table (categories, holdings, cash)
@@ -69,7 +69,7 @@ dfx deploy frontend --network ic
 ├── backend/
 │   └── main.mo                        # Motoko canister (not actively used - frontend uses localStorage)
 ├── workers/
-│   └── price-cache/                   # Cloudflare Worker source (deployed as ysl-price-cache)
+│   └── price-cache/                   # Cloudflare Worker source (legacy Cloudflare name: ysl-price-cache)
 ├── spec.md                            # Detailed feature specification (~700 lines)
 └── docs/HANDOFF.md                    # This file
 ```
@@ -91,7 +91,7 @@ Cloudflare Worker (primary) → CoinGecko (fallback)
   PortfolioDashboard → CompactHoldingsTable
 ```
 
-**Price Cache Worker:** `ysl-price-cache.robertripleyjunior.workers.dev`
+**Price Cache Worker:** `ysl-price-cache.robertripleyjunior.workers.dev` (legacy name)
 - Caches 499 crypto prices in Cloudflare KV
 - 5-minute refresh cycle
 - Endpoints: `/prices` (all), `/price/:symbol` (single), `/health`
@@ -114,7 +114,7 @@ Micro Cap:  < $10M
   - On startup: loads localStorage first (instant), then checks canister for newer data
   - If localStorage empty but canister has data → canister data wins (cross-domain scenario)
   - If both have data → compares timestamps, newer wins
-- **Exit Plans:** Still localStorage-only in `ysl-exit-plans` key (not yet synced to canister)
+- **Exit Plans:** Still localStorage-only in `oft-exit-plans` key (not yet synced to canister)
 - **Theme/Settings:** localStorage-only in `crypto-portfolio-theme-settings`, `crypto-portfolio-admin-settings`
 
 ### Custom Domain & Principal Derivation
@@ -197,13 +197,14 @@ const IS_ADMIN = import.meta.env.VITE_ADMIN_MODE === 'true' || import.meta.env.D
 
 **Verify fix is working:**
 ```bash
+# Note: ysl-price-cache is the legacy Cloudflare worker name
 curl https://ysl-price-cache.robertripleyjunior.workers.dev/prices/status.json
 # Should show: "kvWritesPerDay": "~289 (down from 577...)"
 ```
 
 **Deploy worker changes:**
 ```bash
-cd /Users/robertripley/coding/YSLfolioTracker/workers/price-cache
+cd /Users/robertripley/coding/OnchainFolioTracker/workers/price-cache
 export PATH="/Users/robertripley/.nvm/versions/node/v20.20.0/bin:$PATH"
 npx wrangler deploy
 ```
@@ -323,13 +324,13 @@ CryptoRates.ai fails from localhost (CORS), so the chain is:
 3. CoinGecko direct (final fallback)
 
 ### 5. Exit Plans Storage Key
-Exit plans are stored at `ysl-exit-plans` in localStorage, keyed by holding ID. The ExitStrategy page manages this directly.
+Exit plans are stored at `oft-exit-plans` in localStorage, keyed by holding ID. The ExitStrategy page manages this directly.
 
 ### 6. Motoko 0.29+ Persistence
 Backend uses `persistent actor` with all data marked `transient` (does NOT persist across upgrades). If data persistence is needed, implement stable storage patterns.
 
 ### 7. dfx Identity for Deployment
-Use `dfx identity use RobRipley_YSL` before deploying to ensure correct controller.
+Use `dfx identity use RobRipley_YSL` (legacy identity name) before deploying to ensure correct controller.
 
 ---
 
@@ -431,7 +432,7 @@ The price service includes mappings for common symbols:
 |---------|------|
 | Full spec | `/spec.md` (~700 lines) |
 | Price service docs | `/PRICE_SERVICE.md`, `/QUICK_REF.md` |
-| Worker source | `/workers/price-cache/` (deployed as ysl-price-cache) |
+| Worker source | `/workers/price-cache/` (legacy Cloudflare name: ysl-price-cache) |
 | Example data | `/Example Portfolio.xlsx`, `/*.csv` |
 | Market backup | `/frontend/src/components/Market.tsx.backup` |
 
@@ -671,7 +672,7 @@ dfx deploy frontend --network ic
 
 **Technical Notes:**
 - The `usePortfolioStore` hook returns principal-aware data; the global store in `dataModel.ts` is a singleton that may be stale
-- Exit plans are stored in localStorage (`ysl-exit-plans` key) and persist across sessions
+- Exit plans are stored in localStorage (`oft-exit-plans` key) and persist across sessions
 - When a user updates token amounts for a holding, the exit plan's `tokensToSell` values must be recalculated based on the percentages
 
 ---
@@ -689,12 +690,12 @@ dfx deploy frontend --network ic
   - **Avg + cushion (default):** avgCost × (1 + cushionPct/100), with editable percentage field (defaults to 10%)
   - **Custom:** User-defined custom price
 - Live-updating header shows "PLAN BASIS FOR [SYMBOL]" with calculated value
-- Persisted per-holding in localStorage (`ysl-plan-basis-configs` key)
+- Persisted per-holding in localStorage (`oft-plan-basis-configs` key)
 
 **Storage Keys:**
-- `ysl-exit-plans`: Exit plan configurations per holding
-- `ysl-plan-basis-configs`: Plan basis mode and values per holding
-- `ysl-logo-cache`: Token logo URLs
+- `oft-exit-plans`: Exit plan configurations per holding
+- `oft-plan-basis-configs`: Plan basis mode and values per holding
+- `oft-logo-cache`: Token logo URLs
 
 ### SegmentedControl
 

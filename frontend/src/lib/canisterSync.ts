@@ -440,7 +440,8 @@ export async function loadLogoImageIds(actor: BackendActor): Promise<Set<string>
 /**
  * Cloudflare Worker proxy for downloading CoinGecko images.
  * The IC frontend domain can't fetch directly from coin-images.coingecko.com
- * due to CORS, so we route through the worker which adds CORS headers.
+ * due to CORS, so we route through the price cache worker which adds CORS headers.
+ * NOTE: Worker URL still uses legacy ysl-price-cache name on Cloudflare.
  */
 const IMAGE_PROXY_BASE = 'https://ysl-price-cache.robertripleyjunior.workers.dev/proxy/image';
 

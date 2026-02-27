@@ -1,4 +1,4 @@
-# Rebrand Audit: YSLfolioTracker → OnchainFolioTracker
+# Rebrand Complete: YSLfolioTracker → OnchainFolioTracker
 
 **Date:** February 2026
 **Branch:** `rebrand/onchain-folio-tracker`
@@ -7,7 +7,7 @@
 
 ## Summary
 
-Renamed the project from "Yieldschool Portfolio Tracker" to "Onchain Portfolio Tracker". The YieldSchool visual identity (cyan/violet gradients, logo, brand name) is preserved as a toggleable admin option. The default is a neutral brand using Rumi Protocol colors (emerald/purple).
+Fully removed all YieldSchool/YSL branding from the project. The application is now exclusively "Onchain Portfolio Tracker" — there is no toggle, no legacy brand option, and no remaining YieldSchool visual identity. The default (and only) brand uses Rumi Protocol colors (emerald/purple).
 
 ---
 
@@ -47,31 +47,47 @@ Renamed the project from "Yieldschool Portfolio Tracker" to "Onchain Portfolio T
 | `AssetTransactionModal.tsx` | 2 | `bg-gradient-to-r from-[#06b6d4] to-[#7c3aed]` → `bg-gradient-brand`; hover shadows → `var(--brand-glow-from)` |
 | `PerformanceLineChart.tsx` | 3 | SVG `stopColor="#06b6d4"` → `stopColor={brand.gradientFrom}` (JS runtime) |
 
-### 3. Branding System (NEW)
+### 3. Branding System
 
 | File | Description |
 |------|-------------|
-| `frontend/src/lib/branding.ts` | **NEW** — Core branding module with `BrandConfig`, `NEUTRAL_BRAND`, `YIELDSCHOOL_BRAND`, load/save/apply functions |
-| `frontend/public/rumi-logo-inset.svg` | **NEW** — Neutral brand logo (SVG, 7.2KB) |
-| `frontend/public/rumi-logo-inset.png` | **NEW** — Neutral brand logo (PNG fallback, 42.8KB) |
-| `frontend/src/App.tsx` | Added `applyBrandCSS()` + `applyBrandTitle()` initialization |
-| `frontend/src/pages/SettingsPage.tsx` | Added admin branding toggle (Switch) in ToolsContent |
+| `frontend/src/lib/branding.ts` | `YIELDSCHOOL_BRAND` removed entirely. Only `NEUTRAL_BRAND` remains. No toggle support. |
+| `frontend/public/rumi-logo-inset.svg` | Neutral brand logo (SVG) |
+| `frontend/public/rumi-logo-inset.png` | Neutral brand logo (PNG fallback) |
+| `frontend/src/App.tsx` | `applyBrandCSS()` + `applyBrandTitle()` initialization |
+| `frontend/src/pages/SettingsPage.tsx` | Admin branding toggle (Switch) **removed** from ToolsContent |
 
-**Branding modes:**
+### 4. localStorage Migration
 
-| Mode | App Name | Gradient From | Gradient To | Logo |
-|------|----------|---------------|-------------|------|
-| `neutral` (default) | Onchain Portfolio Tracker | `#34d399` (emerald) | `#d176e8` (purple) | rumi-logo-inset.svg |
-| `yieldschool` | Yieldschool Portfolio Tracker | `#06b6d4` (cyan) | `#7c3aed` (violet) | yieldschool-logo.jpeg |
+| File | Description |
+|------|-------------|
+| `frontend/src/lib/localStorageMigration.ts` | **NEW** — Migration shim that automatically migrates user data from `ysl-*` keys to `oft-*` keys on app startup |
 
-### 4. Package Names
+All localStorage keys were renamed:
+
+| Old Key (`ysl-*`) | New Key (`oft-*`) |
+|--------------------|-------------------|
+| `ysl-exit-plans` | `oft-exit-plans` |
+| `ysl-plan-basis-configs` | `oft-plan-basis-configs` |
+| `ysl-logo-cache` | `oft-logo-cache` |
+| `ysl-active-tab` | `oft-active-tab` |
+| `ysl-strategy-templates` | `oft-strategy-templates` |
+| `ysl-admin-settings` | `oft-admin-settings` |
+| `ysl-market-data-cache` | `oft-market-data-cache` |
+| `ysl-column-widths-*` | `oft-column-widths-*` |
+| `ysl-sidebar-*` | `oft-sidebar-*` |
+| `yslfolio:categoryState` | `oftfolio:categoryState` |
+
+The migration shim reads old keys, writes them to new keys, and removes the old keys. This preserves existing user data while completing the rename.
+
+### 5. Package Names
 
 | File | Before | After |
 |------|--------|-------|
 | `frontend/package.json` | `ysl-folio-tracker-frontend` | `onchain-folio-tracker-frontend` |
 | `workers/price-cache/package.json` | `ysl-price-cache` | `onchain-folio-price-cache` |
 
-### 5. Code Comments / Log Prefixes
+### 6. Code Comments / Log Prefixes
 
 | File | Before | After |
 |------|--------|-------|
@@ -79,7 +95,7 @@ Renamed the project from "Yieldschool Portfolio Tracker" to "Onchain Portfolio T
 | `lib/workerCacheProvider.ts` | "YSL Price Cache" comment | "Onchain Folio Price Cache" |
 | `lib/services/market/priceFeed.ts` | "YSL Price Cache Worker" comment | "Onchain Folio Price Cache Worker" |
 
-### 6. Cloudflare Worker
+### 7. Cloudflare Worker
 
 | File | Before | After |
 |------|--------|-------|
@@ -90,7 +106,17 @@ Renamed the project from "Yieldschool Portfolio Tracker" to "Onchain Portfolio T
 | `src/providers/cryptorates.ts` User-Agent | `YSL-Price-Cache/1.0` | `OnchainFolio-Price-Cache/1.0` |
 | `README.md` title | "YSL Price Cache Worker" | "Onchain Folio Price Cache Worker" |
 
-### 7. Documentation
+### 8. Deleted Files
+
+| Deleted | Reason |
+|---------|--------|
+| `docs/archive/*` | Historical YSL-era documentation — no longer relevant |
+| Root CSV files (`*YSL*`) | YSL-branded example/reference data files |
+| `frontend/public/yieldschool-logo.jpeg` | YieldSchool logo — no longer used |
+| `frontend/public/yieldschool_inc_logo.jpeg` | YieldSchool corporate logo — no longer used |
+| Root `yieldschool_inc_logo.jpeg` | YieldSchool corporate logo — no longer used |
+
+### 9. Documentation
 
 | File | Change |
 |------|--------|
@@ -101,82 +127,21 @@ Renamed the project from "Yieldschool Portfolio Tracker" to "Onchain Portfolio T
 
 ---
 
-## What Was Intentionally NOT Changed
-
-### localStorage Keys (User Data — MUST NOT rename)
-
-| Key | Purpose |
-|-----|---------|
-| `ysl-exit-plans` | Exit plan configurations per holding |
-| `ysl-plan-basis-configs` | Plan basis mode and values per holding |
-| `ysl-logo-cache` | Token logo URL cache |
-| `ysl-active-tab` | Active tab persistence |
-| `ysl-strategy-templates` | Custom exit strategy templates |
-| `ysl-admin-settings` | Admin panel settings |
-| `ysl-market-data-cache` | Market data cache |
-| `ysl-column-widths-*` | Table column width preferences |
-| `ysl-sidebar-*` | Sidebar state preferences |
-| `yslfolio:categoryState` | Category expand/collapse state |
-
-**Reason:** Renaming these would wipe user data for all existing users.
-
-### Cloudflare Worker Deployment Name
+## Cloudflare Worker — Intentionally NOT Renamed
 
 | Item | Value | Reason |
 |------|-------|--------|
-| `wrangler.toml` `name` | `ysl-price-cache` | Changing creates a new worker at a different URL, breaking production |
-| R2 bucket name | `ysl-price-snapshots` | Same — bucket already exists in Cloudflare |
-| Worker URL | `ysl-price-cache.robertripleyjunior.workers.dev` | Derived from worker name |
-
-### Operational References in Docs
-
-| Reference | Reason |
-|-----------|--------|
-| `dfx identity use RobRipley_YSL` | Real dfx identity name |
-| `/Users/robertripley/coding/YSLfolioTracker` | Real filesystem path |
-| `RobRipley/YSLfoliotracker` (GitHub) | Real repo name (rename separately on GitHub) |
-| Worker URLs in curl examples | Real deployed URLs |
-
-### Theme System Colors
-
-| File | Reason |
-|------|--------|
-| `frontend/src/lib/themes.ts` | `#06b6d4` / `#7c3aed` in theme definitions are part of the theme system, not branding |
-
-### Semantic Category Colors
-
-| File | Reason |
-|------|--------|
-| `frontend/src/components/ResizableSidebar.tsx` | `#06b6d4` used for "blue-chip" category color — semantic, not brand |
-
-### YieldSchool Assets
-
-| File | Reason |
-|------|--------|
-| `frontend/public/yieldschool-logo.jpeg` | Used by `YIELDSCHOOL_BRAND` when branding mode is active |
-| `frontend/public/yieldschool_inc_logo.jpeg` | Preserved for potential future use |
-| Root: `yieldschool_inc_logo.jpeg` | Preserved |
-
-### Archive Documentation
-
-| Path | Reason |
-|------|--------|
-| `docs/archive/*` | Historical records — 12 files left as-is |
-
-### CSV Example Files
-
-| File | Reason |
-|------|--------|
-| Root CSV files (`*YSL*`) | Example/reference data files |
+| `wrangler.toml` `name` | `ysl-price-cache` | Changing creates a new worker at a different URL, breaking the live production endpoint |
+| R2 bucket name | `ysl-price-snapshots` | Bucket already exists in Cloudflare; renaming would break production |
+| Worker URL | `ysl-price-cache.robertripleyjunior.workers.dev` | Derived from worker name; cannot change without breaking consumers |
 
 ---
 
 ## Verification Checklist
 
 - [ ] `npx vite build` succeeds (from `frontend/`)
-- [ ] Default brand shows emerald/purple gradients, "Onchain Portfolio Tracker" title, Rumi logo
-- [ ] Admin toggle → YieldSchool brand activates (cyan/violet, "Yieldschool" nav text, YS logo)
-- [ ] Toggle back → neutral brand restores
-- [ ] Page refresh → branding mode persists
-- [ ] Grep for `#06b6d4` in frontend/src — only in `themes.ts` and `ResizableSidebar.tsx`
-- [ ] Grep for "Yieldschool" in frontend/src — only in `branding.ts` (YIELDSCHOOL_BRAND constant)
+- [ ] App shows emerald/purple gradients, "Onchain Portfolio Tracker" title, Rumi logo
+- [ ] No branding toggle exists in Settings
+- [ ] Grep for `ysl` in `frontend/src/` — only appears in `localStorageMigration.ts` (the migration key map) and comments noting legacy Cloudflare Worker URLs
+- [ ] Grep for `yieldschool` in `frontend/src/` — zero results
+- [ ] Grep for `#06b6d4` in `frontend/src/` — only in `themes.ts` and `ResizableSidebar.tsx` (semantic/theme colors, not branding)

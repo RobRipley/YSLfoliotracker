@@ -1,7 +1,7 @@
 /**
  * Price Feed Service
  * 
- * Client for the YSL Price Cache Cloudflare Worker.
+ * Client for the Onchain Folio Price Cache Cloudflare Worker.
  * Provides access to cached price data and token registry.
  */
 

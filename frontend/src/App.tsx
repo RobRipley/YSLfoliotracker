@@ -13,6 +13,7 @@ import { loadThemeSettings, applyTheme } from '@/lib/themes';
 import { applyBrandCSS, applyBrandTitle } from '@/lib/branding';
 import { ErrorBoundary, setupGlobalErrorHandlers } from '@/components/ErrorBoundary';
 import { initializeMarketData } from '@/lib/marketDataService';
+import { runLocalStorageMigration } from '@/lib/localStorageMigration';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,7 +26,7 @@ const queryClient = new QueryClient({
 
 type Tab = 'landing' | 'portfolio' | 'exit-strategy' | 'market' | 'settings';
 
-const TAB_STORAGE_KEY = 'ysl-active-tab';
+const TAB_STORAGE_KEY = 'oft-active-tab';
 const VALID_TABS: Tab[] = ['landing', 'portfolio', 'exit-strategy', 'market', 'settings'];
 
 // Load persisted tab from localStorage
@@ -57,6 +58,11 @@ function AppContent() {
     return loadPersistedTab();
   });
   const { identity, isInitializing } = useInternetIdentity();
+
+  // Run localStorage key migration (ysl-* → oft-*) before anything reads keys
+  useEffect(() => {
+    runLocalStorageMigration();
+  }, []);
 
   // Apply theme and branding on mount
   useEffect(() => {
