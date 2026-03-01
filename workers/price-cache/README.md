@@ -1,6 +1,8 @@
-# YSL Price Cache Worker
+# Onchain Folio Price Cache Worker
 
-A Cloudflare Worker that provides cached cryptocurrency price data and token registry for the YSL Portfolio Tracker.
+A Cloudflare Worker that provides cached cryptocurrency price data and token registry for the Onchain Portfolio Tracker.
+
+> **Note:** The deployed worker name remains `ysl-price-cache` in `wrangler.toml` and Cloudflare to preserve the live URL. Do not rename it.
 
 ## Architecture
 

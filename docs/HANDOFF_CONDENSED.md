@@ -1,8 +1,8 @@
-# YSL Portfolio Tracker - Condensed Handoff
+# Onchain Portfolio Tracker - Condensed Handoff
 
 ## Project Overview
 
-**Name:** Yieldschool Portfolio Tracker (YSLfolioTracker)  
+**Name:** Onchain Portfolio Tracker (OnchainFolioTracker, formerly YSLfolioTracker)
 **Purpose:** Crypto portfolio tracking app for manual management with real-time prices, category-based allocation analysis, and exit strategy planning.  
 **Tech Stack:** ICP (Motoko backend), React/TypeScript/Vite frontend, TailwindCSS, Cloudflare Worker price cache  
 **Live URL:** https://portfolio.rumilabs.fyi/ (custom domain) or https://t5qhm-myaaa-aaaas-qdwya-cai.icp0.io/  
@@ -68,7 +68,7 @@ dfx deploy frontend --network ic
 ├── backend/
 │   └── main.mo                        # Motoko canister (not actively used - frontend uses localStorage)
 ├── workers/
-│   └── ysl-price-cache/               # Cloudflare Worker source
+│   └── price-cache/                   # Cloudflare Worker source (deployed as ysl-price-cache)
 ├── spec.md                            # Detailed feature specification (~700 lines)
 └── docs/HANDOFF_CONDENSED.md          # This file
 ```
@@ -253,7 +253,7 @@ The price service includes mappings for common symbols:
 |---------|------|
 | Full spec | `/spec.md` (~700 lines) |
 | Price service docs | `/PRICE_SERVICE.md`, `/QUICK_REF.md` |
-| Worker source | `/workers/ysl-price-cache/` |
+| Worker source | `/workers/price-cache/` (deployed as ysl-price-cache) |
 | Example data | `/Example Portfolio.xlsx`, `/*.csv` |
 
 ---

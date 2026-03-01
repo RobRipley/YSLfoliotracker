@@ -1,5 +1,5 @@
 /**
- * Type definitions for YSL Price Cache Worker
+ * Type definitions for Onchain Folio Price Cache Worker
  * 
  * Data Storage Architecture:
  * 

@@ -1,7 +1,7 @@
 /**
  * Worker Cache Provider
  * 
- * Fetches price data from the YSL Price Cache Cloudflare Worker.
+ * Fetches price data from the Onchain Folio Price Cache Cloudflare Worker.
  * This is the preferred primary provider when the Worker is deployed and available.
  */
 

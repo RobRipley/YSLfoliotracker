@@ -610,7 +610,7 @@ export function UnifiedAssetModal({
             className="gradient-outline-btn transition-smooth"
             disabled={isSubmitting}
           >
-            <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent">
+            <span className="text-gradient-brand">
               Cancel
             </span>
           </Button>
@@ -624,7 +624,7 @@ export function UnifiedAssetModal({
             {isSubmitting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent">
+              <span className="text-gradient-brand">
                 {secondaryButtonText}
               </span>
             )}
@@ -638,7 +638,7 @@ export function UnifiedAssetModal({
             {isSubmitting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent">
+              <span className="text-gradient-brand">
                 {primaryButtonText}
               </span>
             )}

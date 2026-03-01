@@ -34,7 +34,7 @@ export async function fetchCoinGeckoMarkets(
       method: 'GET',
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'YSL-Price-Cache/1.0'
+        'User-Agent': 'OnchainFolio-Price-Cache/1.0'
       },
       signal: controller.signal
     });

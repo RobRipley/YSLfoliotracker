@@ -329,7 +329,7 @@ function TemplateEditor({ template, onSave, onCancel }: TemplateEditorProps) {
           disabled={!isFormValid}
           className="gradient-outline-btn transition-smooth disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:transform-none disabled:hover:shadow-none"
         >
-          <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-semibold text-sm">
+          <span className="text-gradient-brand font-semibold text-sm">
             {isEditing ? 'Save Changes' : 'Create Strategy'}
           </span>
         </button>
@@ -825,7 +825,7 @@ export function StrategyLibrary() {
           className="gradient-outline-btn transition-smooth inline-flex items-center gap-2"
         >
           <Plus className="h-4 w-4 text-cyan-400" />
-          <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-semibold text-sm">
+          <span className="text-gradient-brand font-semibold text-sm">
             Create Strategy
           </span>
         </button>

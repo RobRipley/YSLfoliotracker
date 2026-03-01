@@ -18,6 +18,7 @@ import {
   FlaskConical, Library, Settings, ShieldCheck
 } from 'lucide-react';
 import { DEFAULT_SETTINGS, getStore, categorize } from '@/lib/dataModel';
+import { loadBrandingMode, setBrandingMode } from '@/lib/branding';
 import { exportJSON, exportHoldingsCSV, exportTransactionsCSV, exportLadderPlansCSV, importJSON, importHoldingsCSV, generateCSVImportPreview, applyJSONImport, type ImportPreview } from '@/lib/importExport';
 import { 
   THEME_COLLECTIONS, 
@@ -918,7 +919,7 @@ function ThemeContent({ themeSettings, handleThemeChange, handleHueChange, handl
                       boxShadow: `0 0 8px ${previewColors.glow}60`
                     }}
                   />
-                  <span className="text-xs font-medium" style={{ color: previewColors.text }}>YSL Portfolio</span>
+                  <span className="text-xs font-medium" style={{ color: previewColors.text }}>Portfolio</span>
                 </div>
                 <div className="flex gap-1.5">
                   <div className="w-8 h-4 rounded-full bg-secondary/50" />
@@ -1560,6 +1561,14 @@ function ToolsContent() {
   const [testResults, setTestResults] = useState<{name: string; passed: boolean; message: string}[]>([]);
   const [storeState, setStoreState] = useState(getStore());
   const [activeToolTab, setActiveToolTab] = useState<'tests' | 'holdings' | 'transactions' | 'settings'>('tests');
+  const [brandingMode, setBrandingModeState] = useState(loadBrandingMode);
+
+  const handleBrandingToggle = (checked: boolean) => {
+    const newMode = checked ? 'yieldschool' : 'neutral';
+    const brand = setBrandingMode(newMode);
+    setBrandingModeState(newMode);
+    toast.success(`Branding switched to ${brand.appName}`);
+  };
 
   const runTests = () => {
     const results: {name: string; passed: boolean; message: string}[] = [];
@@ -1624,6 +1633,22 @@ function ToolsContent() {
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* Branding Toggle */}
+          <div className="flex items-center justify-between p-4 rounded-lg border border-divide/30 bg-card/50">
+            <div className="space-y-1">
+              <Label className="text-sm font-medium">YieldSchool Branding</Label>
+              <p className="text-xs text-muted-foreground">
+                {brandingMode === 'yieldschool'
+                  ? 'Active — cyan/violet theme with YieldSchool identity'
+                  : 'Off — neutral Onchain Portfolio Tracker identity'}
+              </p>
+            </div>
+            <Switch
+              checked={brandingMode === 'yieldschool'}
+              onCheckedChange={handleBrandingToggle}
+            />
           </div>
 
           {/* Tool Tabs */}

@@ -82,7 +82,7 @@ export function AddAssetDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="glass-panel border-divide/50 shadow-[0_4px_24px_rgba(0,0,0,0.3)] max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-xl font-semibold bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent">
+          <DialogTitle className="text-xl font-semibold text-gradient-brand">
             Add Asset
           </DialogTitle>
         </DialogHeader>
@@ -125,7 +125,7 @@ export function AddAssetDialog({
             disabled={isFetchingPrice || !symbol}
             className="w-full gradient-outline-btn disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150"
           >
-            <span className="flex items-center justify-center gap-2 bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-medium">
+            <span className="flex items-center justify-center gap-2 text-gradient-brand font-medium">
               <DollarSign className="h-4 w-4" />
               {isFetchingPrice ? 'Fetching...' : 'Use Current Market Price'}
             </span>
@@ -186,7 +186,7 @@ export function AddAssetDialog({
             onClick={() => onOpenChange(false)} 
             className="gradient-outline-btn flex-1"
           >
-            <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-medium">
+            <span className="text-gradient-brand font-medium">
               Cancel
             </span>
           </Button>
@@ -194,7 +194,7 @@ export function AddAssetDialog({
             onClick={handleSubmit} 
             className="gradient-outline-btn flex-1"
           >
-            <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-medium">
+            <span className="text-gradient-brand font-medium">
               Add Asset
             </span>
           </Button>

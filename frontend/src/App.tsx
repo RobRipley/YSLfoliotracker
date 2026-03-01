@@ -10,6 +10,7 @@ import { SettingsPage } from '@/pages/SettingsPage';
 import { ExitStrategy } from '@/pages/ExitStrategy';
 import { useInternetIdentity } from '@/hooks/useInternetIdentity';
 import { loadThemeSettings, applyTheme } from '@/lib/themes';
+import { applyBrandCSS, applyBrandTitle } from '@/lib/branding';
 import { ErrorBoundary, setupGlobalErrorHandlers } from '@/components/ErrorBoundary';
 import { initializeMarketData } from '@/lib/marketDataService';
 
@@ -57,10 +58,12 @@ function AppContent() {
   });
   const { identity, isInitializing } = useInternetIdentity();
 
-  // Apply theme on mount
+  // Apply theme and branding on mount
   useEffect(() => {
     const themeSettings = loadThemeSettings();
     applyTheme(themeSettings.selectedTheme, themeSettings.hueAdjustment);
+    applyBrandCSS();
+    applyBrandTitle();
   }, []);
 
   // Setup global error handlers on mount

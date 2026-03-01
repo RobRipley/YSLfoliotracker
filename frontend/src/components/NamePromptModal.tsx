@@ -150,12 +150,12 @@ export function NamePromptModal({
             {isLoading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-semibold">
+                <span className="text-gradient-brand font-semibold">
                   Saving...
                 </span>
               </>
             ) : (
-              <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-semibold">
+              <span className="text-gradient-brand font-semibold">
                 {isEditMode ? 'Update' : 'Save'}
               </span>
             )}

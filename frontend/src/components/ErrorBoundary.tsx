@@ -75,7 +75,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 className="gradient-outline-btn text-sm inline-flex items-center gap-2"
               >
                 <RefreshCw className="h-4 w-4" />
-                <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-semibold">
+                <span className="text-gradient-brand font-semibold">
                   Try Again
                 </span>
               </button>
@@ -96,7 +96,7 @@ export class ErrorBoundary extends Component<Props, State> {
 export function setupGlobalErrorHandlers(): void {
   // Log uncaught errors with clear prefix for easy identification
   window.onerror = (message, source, lineno, colno, error) => {
-    console.error('[YSL-ERROR] Uncaught error:', {
+    console.error('[OFT-ERROR] Uncaught error:', {
       message,
       source,
       lineno,
@@ -109,11 +109,11 @@ export function setupGlobalErrorHandlers(): void {
 
   // Log unhandled promise rejections
   window.onunhandledrejection = (event: PromiseRejectionEvent) => {
-    console.error('[YSL-ERROR] Unhandled promise rejection:', {
+    console.error('[OFT-ERROR] Unhandled promise rejection:', {
       reason: event.reason,
       stack: event.reason instanceof Error ? event.reason.stack : undefined
     });
   };
 
-  console.log('[YSL] Global error handlers installed');
+  console.log('[OFT] Global error handlers installed');
 }

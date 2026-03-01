@@ -20,7 +20,7 @@ export function QuickActionBar({ onAddAsset, onLogSale, activeFilters = [] }: Qu
             className="gradient-outline-btn transition-smooth"
           >
             <Plus className="h-4 w-4 mr-2" />
-            <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-semibold">
+            <span className="text-gradient-brand font-semibold">
               Add Asset
             </span>
           </Button>
@@ -31,7 +31,7 @@ export function QuickActionBar({ onAddAsset, onLogSale, activeFilters = [] }: Qu
             className="gradient-outline-btn transition-smooth"
           >
             <TrendingDown className="h-4 w-4 mr-2" />
-            <span className="bg-gradient-to-r from-[#06b6d4] to-[#7c3aed] bg-clip-text text-transparent font-semibold">
+            <span className="text-gradient-brand font-semibold">
               Log Sale
             </span>
           </Button>
