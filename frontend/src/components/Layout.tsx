@@ -19,8 +19,8 @@ interface LayoutProps {
 }
 
 // Storage keys
-const NAME_PROMPT_SKIPPED_KEY = 'ysl-name-prompt-skipped';
-const LOCAL_PROFILE_KEY = 'ysl-local-profile';
+const NAME_PROMPT_SKIPPED_KEY = 'oft-name-prompt-skipped';
+const LOCAL_PROFILE_KEY = 'oft-local-profile';
 
 // Helper to serialize profile with BigInt support
 function serializeProfile(profile: UserProfile): string {
@@ -310,11 +310,9 @@ export function Layout({ children, activeTab, onTabChange, onEnterPortfolio }: L
                 alt={brand.logoAlt}
                 className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg object-cover"
               />
-              <div className="flex items-baseline gap-1 sm:gap-1.5">
-                <h1 className="text-sm sm:text-base font-bold font-heading tracking-tight gradient-underline">
-                  {brand.navTitle}
-                </h1>
-              </div>
+              <span className="text-base sm:text-lg font-medium tracking-[0.12em] text-[#e8e4f0]" style={{ fontFamily: "'Inter', sans-serif" }}>
+                {brand.navTitle}
+              </span>
             </div>
 
             {/* Center: Navigation Tabs - hidden on mobile (shown in bottom nav) */}

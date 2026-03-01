@@ -42,7 +42,7 @@ export interface CalculatedExitRung {
 // STORAGE
 // ============================================================================
 
-const TEMPLATES_STORAGE_KEY = 'ysl-strategy-templates';
+const TEMPLATES_STORAGE_KEY = 'oft-strategy-templates';
 
 let templateIdCounter = 1;
 

@@ -83,13 +83,13 @@ npx wrangler kv:namespace create PRICE_KV
 
 1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com/) → R2 Object Storage
 2. Enable R2 for your account (requires payment method on file)
-3. Create bucket named `ysl-price-snapshots`
+3. Create bucket named `ysl-price-snapshots` (legacy name)
 4. Uncomment the `[[r2_buckets]]` section in `wrangler.toml`:
 
 ```toml
 [[r2_buckets]]
 binding = "PRICE_R2"
-bucket_name = "ysl-price-snapshots"
+bucket_name = "ysl-price-snapshots"  # legacy name
 ```
 
 ### 4. Deploy
@@ -219,7 +219,7 @@ Same as normalized prices, plus:
   "trigger": "scheduled",
   "lastSuccess": "2026-01-28T03:10:00.000Z",
   "r2Enabled": true,
-  "service": "ysl-price-cache",
+  "service": "onchain-folio-price-cache",
   "kvWritesPerDay": "~577 (well under 1,000 free tier limit)"
 }
 ```

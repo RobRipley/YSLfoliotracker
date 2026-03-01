@@ -20,9 +20,9 @@ import {
 } from '@/lib/categoryColors';
 import { loadTemplates, type ExitStrategyTemplate } from '@/lib/strategyTemplates';
 
-const EXIT_PLANS_STORAGE_KEY = 'ysl-exit-plans';
-const PLAN_BASIS_CONFIG_KEY = 'ysl-plan-basis-configs';
-const LOGO_CACHE_KEY = 'ysl-logo-cache';
+const EXIT_PLANS_STORAGE_KEY = 'oft-exit-plans';
+const PLAN_BASIS_CONFIG_KEY = 'oft-plan-basis-configs';
+const LOGO_CACHE_KEY = 'oft-logo-cache';
 
 // Plan Basis Configuration Types
 type PlanBasisMode = 'avg_cost' | 'avg_cushion' | 'custom';
@@ -801,7 +801,7 @@ export function ExitStrategy() {
   // Reload templates when localStorage changes (e.g., from Settings)
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'ysl-strategy-templates') {
+      if (e.key === 'oft-strategy-templates') {
         setTemplates(loadTemplates());
       }
     };

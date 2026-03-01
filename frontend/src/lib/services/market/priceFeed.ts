@@ -6,7 +6,7 @@
  */
 
 // Worker endpoint configuration
-const WORKER_BASE_URL = import.meta.env.VITE_PRICE_CACHE_URL || 'https://ysl-price-cache.YOUR-SUBDOMAIN.workers.dev';
+const WORKER_BASE_URL = import.meta.env.VITE_PRICE_CACHE_URL || 'https://onchain-folio-price-cache.YOUR-SUBDOMAIN.workers.dev';
 
 // Cache TTL in milliseconds
 const PRICES_CACHE_TTL = 2 * 60 * 1000;  // 2 minutes

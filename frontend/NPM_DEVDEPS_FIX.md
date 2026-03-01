@@ -17,7 +17,7 @@ This caused `npm install` to only install 59 packages (dependencies only) instea
 
 ## How to Reproduce the Failure
 ```bash
-cd /Users/robertripley/coding/YSLfolioTracker/frontend
+cd /Users/robertripley/coding/OnchainFolioTracker/frontend
 export NODE_ENV=production
 rm -rf node_modules package-lock.json .npmrc
 npm install
@@ -26,7 +26,7 @@ npm run build         # Will fail with "Cannot find module 'vite'"
 ```
 
 ## The Fix
-Created `/Users/robertripley/coding/YSLfolioTracker/frontend/.npmrc` with:
+Created `/Users/robertripley/coding/OnchainFolioTracker/frontend/.npmrc` with:
 ```
 # Ensure devDependencies are always installed regardless of NODE_ENV
 include=dev
@@ -36,7 +36,7 @@ This forces npm to always include devDependencies during install, regardless of 
 
 ## Verification Steps (all must pass)
 ```bash
-cd /Users/robertripley/coding/YSLfolioTracker/frontend
+cd /Users/robertripley/coding/OnchainFolioTracker/frontend
 rm -rf node_modules package-lock.json
 NODE_ENV=production npm install
 ls node_modules/vite/package.json   # Should exist

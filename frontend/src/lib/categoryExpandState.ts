@@ -7,7 +7,7 @@
 
 import { type Category } from './dataModel';
 
-const STORAGE_KEY_PREFIX = 'yslfolio:categoryState';
+const STORAGE_KEY_PREFIX = 'oft:categoryState';
 
 export interface CategoryExpandState {
   expandedCategories: Category[];
